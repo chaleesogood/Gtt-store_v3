@@ -111,3 +111,34 @@ export interface ProductOrder {
   cancelledAt?: string; // เวลาที่ยกเลิกรายการ
 }
 
+export interface Job {
+  id: string;
+  jobNo: string; // JOB No.
+  module: string; // Module / ระบบงาน
+  assignee: string; // ผู้รับผิดชอบ (Responsible person)
+  description: string; // รายละเอียดงาน
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'; // สถานะงาน
+  priority: 'low' | 'medium' | 'high'; // ระดับความสำคัญ
+  targetDate?: string; // กำหนดเสร็จ (YYYY-MM-DD)
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Employee {
+  id: string;
+  name: string;
+  role?: string;
+  phone?: string;
+  createdAt: string;
+}
+
+export interface JobProject {
+  id: string;
+  jobNo: string; // JOB No.
+  year: string;  // ปี (e.g. 2026)
+  customer: string; // ลูกค้า (Customer)
+  projectName: string; // ชื่อโครงการ
+  createdAt: string;
+}
+
+

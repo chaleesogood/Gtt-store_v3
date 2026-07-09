@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Product, Category, StockActivity, Project, Bom } from './types';
+import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_ACTIVITIES } from './initialData';
 import Toast, { ToastMessage } from './components/Toast';
 import DashboardView from './components/DashboardView';
@@ -7,9 +7,10 @@ import ProductListView from './components/ProductListView';
 import ActivityLogView from './components/ActivityLogView';
 import BomProcurementView from './components/BomProcurementView';
 import ReportsView from './components/ReportsView';
+import JobAssignmentView from './components/JobAssignmentView';
 import Logo from './components/Logo';
 
-import { LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -20,6 +21,10 @@ export default function App() {
   const [activities, setActivities] = useState<StockActivity[]>([]);
   const [boms, setBoms] = useState<Bom[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [jobProjects, setJobProjects] = useState<JobProject[]>([]);
+
 
   // Auth / Admin state
   const [adminEmail, setAdminEmail] = useState<string | null>(() => localStorage.getItem('admin_email'));
@@ -194,6 +199,150 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Sync jobs from Firestore (seed if empty)
+  useEffect(() => {
+    const q = query(collection(db, 'jobs'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: Job[] = [];
+      snapshot.forEach((document) => {
+        list.push({ id: document.id, ...document.data() } as Job);
+      });
+      if (list.length === 0) {
+        const INITIAL_JOBS: Job[] = [
+          {
+            id: 'job-1',
+            jobNo: 'JOB-2607-001',
+            module: 'Power Control Panel (ระบบควบคุมกำลัง)',
+            assignee: 'ช่างสมคิด (Somkid)',
+            description: 'ประกอบตู้ควบคุม MDB และเข้าสายไฟเฟสหลัก สำหรับสายการผลิตใหม่',
+            status: 'in_progress',
+            priority: 'high',
+            targetDate: '2026-07-15',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          {
+            id: 'job-2',
+            jobNo: 'JOB-2607-002',
+            module: 'Pneumatic & Valve (ระบบนิวเมติกส์)',
+            assignee: 'ช่างวิชัย (Wichai)',
+            description: 'ทดสอบระบบลมรั่วซึม และติดตั้งกระบอกสูบหลักของเครื่องจักรคัดแยก',
+            status: 'pending',
+            priority: 'medium',
+            targetDate: '2026-07-20',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          {
+            id: 'job-3',
+            jobNo: 'JOB-2607-003',
+            module: 'PLC Programming (โปรแกรมควบคุม)',
+            assignee: 'วิศวกรสมเกียรติ (Somkiat)',
+            description: 'เขียนโปรแกรมควบคุม HMI และทดสอบ Logic ทำงานอัตโนมัติ สำหรับตู้คอนโทรล',
+            status: 'completed',
+            priority: 'high',
+            targetDate: '2026-07-05',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          {
+            id: 'job-4',
+            jobNo: 'JOB-2607-004',
+            module: 'Machine Frame (โครงสร้างเครื่องจักร)',
+            assignee: 'ช่างอนุรักษ์ (Anurak)',
+            description: 'เชื่อมประกอบโครงสร้างเหล็กหลักและพ่นสีกันสนิมตามแบบร่าง GTT-001',
+            status: 'completed',
+            priority: 'high',
+            targetDate: '2026-07-01',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }
+        ];
+        INITIAL_JOBS.forEach((job) => {
+          setDoc(doc(db, 'jobs', job.id), job).catch((err) => console.error("Seeding job error:", err));
+        });
+        setJobs(INITIAL_JOBS);
+        localStorage.setItem('stock_manager_jobs_list', JSON.stringify(INITIAL_JOBS));
+      } else {
+        list.sort((a, b) => b.jobNo.localeCompare(a.jobNo));
+        setJobs(list);
+        localStorage.setItem('stock_manager_jobs_list', JSON.stringify(list));
+      }
+    }, (error) => {
+      console.error("Firestore jobs sync error:", error);
+      const saved = localStorage.getItem('stock_manager_jobs_list');
+      setJobs(saved ? JSON.parse(saved) : []);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync employees from Firestore (seed if empty)
+  useEffect(() => {
+    const q = query(collection(db, 'employees'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: Employee[] = [];
+      snapshot.forEach((document) => {
+        list.push({ id: document.id, ...document.data() } as Employee);
+      });
+      if (list.length === 0) {
+        const INITIAL_EMPLOYEES: Employee[] = [
+          { id: 'emp-1', name: 'ช่างสมคิด (Somkid)', role: 'หัวหน้าช่างไฟฟ้า', phone: '081-234-5678', createdAt: new Date().toISOString() },
+          { id: 'emp-2', name: 'ช่างวิชัย (Wichai)', role: 'ช่างเทคนิคปนิวเมติกส์', phone: '082-345-6789', createdAt: new Date().toISOString() },
+          { id: 'emp-3', name: 'วิศวกรสมเกียรติ (Somkiat)', role: 'วิศวกรระบบควบคุม & PLC', phone: '083-456-7890', createdAt: new Date().toISOString() },
+          { id: 'emp-4', name: 'ช่างอนุรักษ์ (Anurak)', role: 'ช่างเชื่อมประกอบโครงสร้าง', phone: '084-567-8901', createdAt: new Date().toISOString() }
+        ];
+        INITIAL_EMPLOYEES.forEach((emp) => {
+          setDoc(doc(db, 'employees', emp.id), emp).catch((err) => console.error("Seeding employee error:", err));
+        });
+        setEmployees(INITIAL_EMPLOYEES);
+        localStorage.setItem('stock_manager_employees_list', JSON.stringify(INITIAL_EMPLOYEES));
+      } else {
+        list.sort((a, b) => a.name.localeCompare(b.name, 'th'));
+        setEmployees(list);
+        localStorage.setItem('stock_manager_employees_list', JSON.stringify(list));
+      }
+    }, (error) => {
+      console.error("Firestore employees sync error:", error);
+      const saved = localStorage.getItem('stock_manager_employees_list');
+      setEmployees(saved ? JSON.parse(saved) : []);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync job projects from Firestore (seed if empty)
+  useEffect(() => {
+    const q = query(collection(db, 'jobProjects'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: JobProject[] = [];
+      snapshot.forEach((document) => {
+        list.push({ id: document.id, ...document.data() } as JobProject);
+      });
+      if (list.length === 0) {
+        const INITIAL_PROJECTS: JobProject[] = [
+          { id: 'proj-1', jobNo: 'JOB-2607-001', year: '2026', customer: 'Gtt-store', projectName: 'ติดตั้งตู้คุมมอเตอร์หลัก', createdAt: new Date().toISOString() },
+          { id: 'proj-2', jobNo: 'JOB-2607-002', year: '2026', customer: 'Gtt-store', projectName: 'ระบบนิวเมติกส์เครื่องจักรคัดแยก', createdAt: new Date().toISOString() },
+          { id: 'proj-3', jobNo: 'JOB-2607-003', year: '2026', customer: 'Siam Solar Co.', projectName: 'ระบบโซลาร์เซลล์ตู้ HMI', createdAt: new Date().toISOString() },
+          { id: 'proj-4', jobNo: 'JOB-2607-004', year: '2026', customer: 'T-Automative', projectName: 'ประกอบโครงสร้างแบบ GTT-001', createdAt: new Date().toISOString() }
+        ];
+        INITIAL_PROJECTS.forEach((proj) => {
+          setDoc(doc(db, 'jobProjects', proj.id), proj).catch((err) => console.error("Seeding jobProject error:", err));
+        });
+        setJobProjects(INITIAL_PROJECTS);
+        localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(INITIAL_PROJECTS));
+      } else {
+        list.sort((a, b) => b.jobNo.localeCompare(a.jobNo));
+        setJobProjects(list);
+        localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(list));
+      }
+    }, (error) => {
+      console.error("Firestore jobProjects sync error:", error);
+      const saved = localStorage.getItem('stock_manager_job_projects_list');
+      setJobProjects(saved ? JSON.parse(saved) : []);
+    });
+    return () => unsubscribe();
+  }, []);
+
 
 
   // Toast Helpers
@@ -471,6 +620,207 @@ export default function App() {
     }
   };
 
+  // -------------------- JOBS WORKFLOWS --------------------
+
+  const handleAddJob = async (newJobData: Omit<Job, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const jobId = `job-${Math.random().toString(36).substring(2, 9)}`;
+    const job: Job = {
+      ...newJobData,
+      id: jobId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Optimistically update state
+    const updatedJobs = [job, ...jobs];
+    setJobs(updatedJobs);
+    localStorage.setItem('stock_manager_jobs_list', JSON.stringify(updatedJobs));
+
+    try {
+      await setDoc(doc(db, 'jobs', job.id), job);
+      addToast('success', 'บันทึกสั่งงานสำเร็จ', `งานหมายเลข ${job.jobNo} มอดูล "${job.module}" ได้รับการบันทึกแล้ว`);
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถเพิ่มใบสั่งงานได้: ${error.message}`);
+    }
+  };
+
+  const handleEditJob = async (id: string, updatedFields: Partial<Job>) => {
+    // Optimistically update state
+    const updatedJobs = jobs.map((job) =>
+      job.id === id ? { ...job, ...updatedFields, updatedAt: new Date().toISOString() } : job
+    );
+    setJobs(updatedJobs);
+    localStorage.setItem('stock_manager_jobs_list', JSON.stringify(updatedJobs));
+
+    try {
+      const jobRef = doc(db, 'jobs', id);
+      const cleanFields: Record<string, any> = {};
+      Object.entries(updatedFields).forEach(([key, val]) => {
+        if (val !== undefined) {
+          cleanFields[key] = val;
+        }
+      });
+      cleanFields.updatedAt = new Date().toISOString();
+      await updateDoc(jobRef, cleanFields);
+      addToast('success', 'ปรับปรุงใบงานสำเร็จ', 'บันทึกข้อมูลและสถานะการเปลี่ยนความคืบหน้าของงานแล้ว');
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถปรับปรุงใบสั่งงานได้: ${error.message}`);
+    }
+  };
+
+  const handleDeleteJob = async (id: string) => {
+    const jobToDelete = jobs.find((j) => j.id === id);
+    if (!jobToDelete) return;
+
+    // Optimistically update state
+    const updatedJobs = jobs.filter((job) => job.id !== id);
+    setJobs(updatedJobs);
+    localStorage.setItem('stock_manager_jobs_list', JSON.stringify(updatedJobs));
+
+    try {
+      await deleteDoc(doc(db, 'jobs', id));
+      addToast('info', 'ลบใบงานสำเร็จ', `งานหมายเลข ${jobToDelete.jobNo} มอดูล "${jobToDelete.module}" ถูกลบออกจากระบบแล้ว`);
+    } catch (error: any) {
+      console.error(error);
+      // Rollback
+      setJobs(jobs);
+      localStorage.setItem('stock_manager_jobs_list', JSON.stringify(jobs));
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถลบใบสั่งงานได้: ${error.message}`);
+    }
+  };
+
+  // -------------------- EMPLOYEES WORKFLOWS --------------------
+
+  const handleAddEmployee = async (newEmployeeData: Omit<Employee, 'id' | 'createdAt'>) => {
+    const empId = `emp-${Math.random().toString(36).substring(2, 9)}`;
+    const emp: Employee = {
+      ...newEmployeeData,
+      id: empId,
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedEmployees = [...employees, emp];
+    setEmployees(updatedEmployees);
+    localStorage.setItem('stock_manager_employees_list', JSON.stringify(updatedEmployees));
+
+    try {
+      await setDoc(doc(db, 'employees', emp.id), emp);
+      addToast('success', 'เพิ่มพนักงานสำเร็จ', `พนักงาน "${emp.name}" ถูกเพิ่มเข้าสู่ระบบแล้ว`);
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถเพิ่มพนักงานได้: ${error.message}`);
+    }
+  };
+
+  const handleEditEmployee = async (id: string, updatedFields: Partial<Employee>) => {
+    const updatedEmployees = employees.map((emp) =>
+      emp.id === id ? { ...emp, ...updatedFields } : emp
+    );
+    setEmployees(updatedEmployees);
+    localStorage.setItem('stock_manager_employees_list', JSON.stringify(updatedEmployees));
+
+    try {
+      const empRef = doc(db, 'employees', id);
+      const cleanFields: Record<string, any> = {};
+      Object.entries(updatedFields).forEach(([key, val]) => {
+        if (val !== undefined) {
+          cleanFields[key] = val;
+        }
+      });
+      await updateDoc(empRef, cleanFields);
+      addToast('success', 'ปรับปรุงข้อมูลพนักงานสำเร็จ', 'ข้อมูลของพนักงานได้รับการปรับปรุงในระบบแล้ว');
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถปรับปรุงพนักงานได้: ${error.message}`);
+    }
+  };
+
+  const handleDeleteEmployee = async (id: string) => {
+    const empToDelete = employees.find((e) => e.id === id);
+    if (!empToDelete) return;
+
+    const updatedEmployees = employees.filter((emp) => emp.id !== id);
+    setEmployees(updatedEmployees);
+    localStorage.setItem('stock_manager_employees_list', JSON.stringify(updatedEmployees));
+
+    try {
+      await deleteDoc(doc(db, 'employees', id));
+      addToast('info', 'ลบพนักงานสำเร็จ', `พนักงาน "${empToDelete.name}" ถูกนำออกจากระบบแล้ว`);
+    } catch (error: any) {
+      console.error(error);
+      setEmployees(employees);
+      localStorage.setItem('stock_manager_employees_list', JSON.stringify(employees));
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถลบพนักงานได้: ${error.message}`);
+    }
+  };
+
+  // -------------------- JOB PROJECTS WORKFLOWS --------------------
+
+  const handleAddJobProject = async (newProjData: Omit<JobProject, 'id' | 'createdAt'>) => {
+    const projId = `proj-${Math.random().toString(36).substring(2, 9)}`;
+    const proj: JobProject = {
+      ...newProjData,
+      id: projId,
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedProjs = [proj, ...jobProjects];
+    setJobProjects(updatedProjs);
+    localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(updatedProjs));
+
+    try {
+      await setDoc(doc(db, 'jobProjects', proj.id), proj);
+      addToast('success', 'เพิ่มโปรเจกต์สำเร็จ', `หมายเลขงาน ${proj.jobNo} ของลูกค้า "${proj.customer}" ถูกบันทึกแล้ว`);
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถเพิ่มโปรเจกต์ได้: ${error.message}`);
+    }
+  };
+
+  const handleEditJobProject = async (id: string, updatedFields: Partial<JobProject>) => {
+    const updatedProjs = jobProjects.map((proj) =>
+      proj.id === id ? { ...proj, ...updatedFields } : proj
+    );
+    setJobProjects(updatedProjs);
+    localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(updatedProjs));
+
+    try {
+      const projRef = doc(db, 'jobProjects', id);
+      const cleanFields: Record<string, any> = {};
+      Object.entries(updatedFields).forEach(([key, val]) => {
+        if (val !== undefined) {
+          cleanFields[key] = val;
+        }
+      });
+      await updateDoc(projRef, cleanFields);
+      addToast('success', 'แก้ไขโปรเจกต์สำเร็จ', 'ข้อมูลโปรเจกต์ได้รับการปรับปรุงในระบบแล้ว');
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถปรับปรุงโปรเจกต์ได้: ${error.message}`);
+    }
+  };
+
+  const handleDeleteJobProject = async (id: string) => {
+    const projToDelete = jobProjects.find((p) => p.id === id);
+    if (!projToDelete) return;
+
+    const updatedProjs = jobProjects.filter((proj) => proj.id !== id);
+    setJobProjects(updatedProjs);
+    localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(updatedProjs));
+
+    try {
+      await deleteDoc(doc(db, 'jobProjects', id));
+      addToast('info', 'ลบโปรเจกต์สำเร็จ', `หมายเลขงาน ${projToDelete.jobNo} ถูกลบออกจากระบบแล้ว`);
+    } catch (error: any) {
+      console.error(error);
+      setJobProjects(jobProjects);
+      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(jobProjects));
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถลบโปรเจกต์ได้: ${error.message}`);
+    }
+  };
+
   const handleClearLogs = async () => {
     if (confirm('คุณแน่ใจหรือไม่ที่ต้องการจะเคลียร์ประวัติการทำรายการในอดีตทั้งหมด? (ประวัติจะหายไปถาวร)')) {
       try {
@@ -542,6 +892,23 @@ export default function App() {
             products={products}
             categories={categories}
             activities={activities}
+          />
+        );
+      case 'jobs':
+        return (
+          <JobAssignmentView
+            jobs={jobs}
+            onAddJob={handleAddJob}
+            onEditJob={handleEditJob}
+            onDeleteJob={handleDeleteJob}
+            employees={employees}
+            onAddEmployee={handleAddEmployee}
+            onEditEmployee={handleEditEmployee}
+            onDeleteEmployee={handleDeleteEmployee}
+            jobProjects={jobProjects}
+            onAddJobProject={handleAddJobProject}
+            onEditJobProject={handleEditJobProject}
+            onDeleteJobProject={handleDeleteJobProject}
           />
         );
 
@@ -695,6 +1062,18 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => setCurrentTab('jobs')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+              currentTab === 'jobs'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
+                : 'hover:bg-slate-800/60 hover:text-slate-100 text-slate-400'
+            }`}
+          >
+            <Briefcase className="h-4.5 w-4.5 flex-shrink-0" />
+            ระบบสั่งงาน & มอบหมาย
+          </button>
+
+          <button
             onClick={() => setCurrentTab('logs')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
               currentTab === 'logs'
@@ -792,6 +1171,15 @@ export default function App() {
             >
               <FolderKanban className="h-4.5 w-4.5" />
               BOM & ระบบจัดซื้อ
+            </button>
+            <button
+              onClick={() => { setCurrentTab('jobs'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
+                currentTab === 'jobs' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
+              }`}
+            >
+              <Briefcase className="h-4.5 w-4.5" />
+              ระบบสั่งงาน & มอบหมาย
             </button>
             <button
               onClick={() => { setCurrentTab('logs'); setIsMobileMenuOpen(false); }}
