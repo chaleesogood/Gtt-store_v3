@@ -200,7 +200,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sync jobs from Firestore (seed if empty)
+  // Sync jobs from Firestore
   useEffect(() => {
     const q = query(collection(db, 'jobs'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -208,67 +208,9 @@ export default function App() {
       snapshot.forEach((document) => {
         list.push({ id: document.id, ...document.data() } as Job);
       });
-      if (list.length === 0) {
-        const INITIAL_JOBS: Job[] = [
-          {
-            id: 'job-1',
-            jobNo: 'JOB-2607-001',
-            module: 'Power Control Panel (ระบบควบคุมกำลัง)',
-            assignee: 'ช่างสมคิด (Somkid)',
-            description: 'ประกอบตู้ควบคุม MDB และเข้าสายไฟเฟสหลัก สำหรับสายการผลิตใหม่',
-            status: 'in_progress',
-            priority: 'high',
-            targetDate: '2026-07-15',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          {
-            id: 'job-2',
-            jobNo: 'JOB-2607-002',
-            module: 'Pneumatic & Valve (ระบบนิวเมติกส์)',
-            assignee: 'ช่างวิชัย (Wichai)',
-            description: 'ทดสอบระบบลมรั่วซึม และติดตั้งกระบอกสูบหลักของเครื่องจักรคัดแยก',
-            status: 'pending',
-            priority: 'medium',
-            targetDate: '2026-07-20',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          {
-            id: 'job-3',
-            jobNo: 'JOB-2607-003',
-            module: 'PLC Programming (โปรแกรมควบคุม)',
-            assignee: 'วิศวกรสมเกียรติ (Somkiat)',
-            description: 'เขียนโปรแกรมควบคุม HMI และทดสอบ Logic ทำงานอัตโนมัติ สำหรับตู้คอนโทรล',
-            status: 'completed',
-            priority: 'high',
-            targetDate: '2026-07-05',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          {
-            id: 'job-4',
-            jobNo: 'JOB-2607-004',
-            module: 'Machine Frame (โครงสร้างเครื่องจักร)',
-            assignee: 'ช่างอนุรักษ์ (Anurak)',
-            description: 'เชื่อมประกอบโครงสร้างเหล็กหลักและพ่นสีกันสนิมตามแบบร่าง GTT-001',
-            status: 'completed',
-            priority: 'high',
-            targetDate: '2026-07-01',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }
-        ];
-        INITIAL_JOBS.forEach((job) => {
-          setDoc(doc(db, 'jobs', job.id), job).catch((err) => console.error("Seeding job error:", err));
-        });
-        setJobs(INITIAL_JOBS);
-        localStorage.setItem('stock_manager_jobs_list', JSON.stringify(INITIAL_JOBS));
-      } else {
-        list.sort((a, b) => b.jobNo.localeCompare(a.jobNo));
-        setJobs(list);
-        localStorage.setItem('stock_manager_jobs_list', JSON.stringify(list));
-      }
+      list.sort((a, b) => b.jobNo.localeCompare(a.jobNo));
+      setJobs(list);
+      localStorage.setItem('stock_manager_jobs_list', JSON.stringify(list));
     }, (error) => {
       console.error("Firestore jobs sync error:", error);
       const saved = localStorage.getItem('stock_manager_jobs_list');
@@ -277,7 +219,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sync employees from Firestore (seed if empty)
+  // Sync employees from Firestore
   useEffect(() => {
     const q = query(collection(db, 'employees'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -285,23 +227,9 @@ export default function App() {
       snapshot.forEach((document) => {
         list.push({ id: document.id, ...document.data() } as Employee);
       });
-      if (list.length === 0) {
-        const INITIAL_EMPLOYEES: Employee[] = [
-          { id: 'emp-1', name: 'ช่างสมคิด (Somkid)', role: 'หัวหน้าช่างไฟฟ้า', phone: '081-234-5678', createdAt: new Date().toISOString() },
-          { id: 'emp-2', name: 'ช่างวิชัย (Wichai)', role: 'ช่างเทคนิคปนิวเมติกส์', phone: '082-345-6789', createdAt: new Date().toISOString() },
-          { id: 'emp-3', name: 'วิศวกรสมเกียรติ (Somkiat)', role: 'วิศวกรระบบควบคุม & PLC', phone: '083-456-7890', createdAt: new Date().toISOString() },
-          { id: 'emp-4', name: 'ช่างอนุรักษ์ (Anurak)', role: 'ช่างเชื่อมประกอบโครงสร้าง', phone: '084-567-8901', createdAt: new Date().toISOString() }
-        ];
-        INITIAL_EMPLOYEES.forEach((emp) => {
-          setDoc(doc(db, 'employees', emp.id), emp).catch((err) => console.error("Seeding employee error:", err));
-        });
-        setEmployees(INITIAL_EMPLOYEES);
-        localStorage.setItem('stock_manager_employees_list', JSON.stringify(INITIAL_EMPLOYEES));
-      } else {
-        list.sort((a, b) => a.name.localeCompare(b.name, 'th'));
-        setEmployees(list);
-        localStorage.setItem('stock_manager_employees_list', JSON.stringify(list));
-      }
+      list.sort((a, b) => a.name.localeCompare(b.name, 'th'));
+      setEmployees(list);
+      localStorage.setItem('stock_manager_employees_list', JSON.stringify(list));
     }, (error) => {
       console.error("Firestore employees sync error:", error);
       const saved = localStorage.getItem('stock_manager_employees_list');
@@ -310,7 +238,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sync job projects from Firestore (seed if empty)
+  // Sync job projects from Firestore
   useEffect(() => {
     const q = query(collection(db, 'jobProjects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -318,23 +246,9 @@ export default function App() {
       snapshot.forEach((document) => {
         list.push({ id: document.id, ...document.data() } as JobProject);
       });
-      if (list.length === 0) {
-        const INITIAL_PROJECTS: JobProject[] = [
-          { id: 'proj-1', jobNo: 'JOB-2607-001', year: '2026', customer: 'Gtt-store', projectName: 'ติดตั้งตู้คุมมอเตอร์หลัก', createdAt: new Date().toISOString() },
-          { id: 'proj-2', jobNo: 'JOB-2607-002', year: '2026', customer: 'Gtt-store', projectName: 'ระบบนิวเมติกส์เครื่องจักรคัดแยก', createdAt: new Date().toISOString() },
-          { id: 'proj-3', jobNo: 'JOB-2607-003', year: '2026', customer: 'Siam Solar Co.', projectName: 'ระบบโซลาร์เซลล์ตู้ HMI', createdAt: new Date().toISOString() },
-          { id: 'proj-4', jobNo: 'JOB-2607-004', year: '2026', customer: 'T-Automative', projectName: 'ประกอบโครงสร้างแบบ GTT-001', createdAt: new Date().toISOString() }
-        ];
-        INITIAL_PROJECTS.forEach((proj) => {
-          setDoc(doc(db, 'jobProjects', proj.id), proj).catch((err) => console.error("Seeding jobProject error:", err));
-        });
-        setJobProjects(INITIAL_PROJECTS);
-        localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(INITIAL_PROJECTS));
-      } else {
-        list.sort((a, b) => b.jobNo.localeCompare(a.jobNo));
-        setJobProjects(list);
-        localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(list));
-      }
+      list.sort((a, b) => b.jobNo.localeCompare(a.jobNo));
+      setJobProjects(list);
+      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(list));
     }, (error) => {
       console.error("Firestore jobProjects sync error:", error);
       const saved = localStorage.getItem('stock_manager_job_projects_list');
