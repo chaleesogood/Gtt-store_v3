@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Job, Employee, JobProject } from '../types';
+import { Job, Employee, JobProject, DailyReport } from '../types';
 import { 
   Briefcase, 
   User, 
@@ -28,8 +28,10 @@ import {
   Compass,
   Camera,
   Image as ImageIcon,
-  Eye
+  Eye,
+  ClipboardList
 } from 'lucide-react';
+import DailyReportView from './DailyReportView';
 
 interface JobAssignmentViewProps {
   jobs: Job[];
@@ -46,9 +48,15 @@ interface JobAssignmentViewProps {
   onAddJobProject: (proj: Omit<JobProject, 'id' | 'createdAt'>) => Promise<void>;
   onEditJobProject: (id: string, updatedFields: Partial<JobProject>) => Promise<void>;
   onDeleteJobProject: (id: string) => Promise<void>;
+
+  // Combined daily report props
+  dailyReports: DailyReport[];
+  onAddDailyReport: (newReport: Omit<DailyReport, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onEditDailyReport: (id: string, updatedFields: Partial<DailyReport>) => void;
+  onDeleteDailyReport: (id: string) => void;
 }
 
-type ActiveTab = 'tasks' | 'projects' | 'employees';
+type ActiveTab = 'tasks' | 'projects' | 'employees' | 'daily_reports';
 
 export default function JobAssignmentView({
   jobs,
@@ -62,7 +70,11 @@ export default function JobAssignmentView({
   jobProjects,
   onAddJobProject,
   onEditJobProject,
-  onDeleteJobProject
+  onDeleteJobProject,
+  dailyReports,
+  onAddDailyReport,
+  onEditDailyReport,
+  onDeleteDailyReport
 }: JobAssignmentViewProps) {
   
   // Navigation tabs
@@ -379,15 +391,15 @@ export default function JobAssignmentView({
           </div>
           <h2 className="text-xl font-black text-white font-sans flex items-center gap-2 mt-1.5">
             <Briefcase className="h-6 w-6 text-indigo-400" />
-            ระบบจ่ายงาน & จัดการโครงการ
+            ระบบจ่ายงาน & รายงานความคืบหน้าประจำวัน
           </h2>
           <p className="text-xs text-slate-400 font-sans mt-1 max-w-xl">
-            บันทึกรหัสงานปีพนักงาน มอบหมายและติดตามความคืบหน้าระบบงานมอดูลอย่างมีประสิทธิภาพในที่เดียว
+            บันทึกรหัสงานปีพนักงาน มอบหมายและติดตามความคืบหน้า และรายงานการทำงานประจำวันแบบครบวงจรในที่เดียว
           </p>
         </div>
 
         {/* Tab Controls */}
-        <div className="flex bg-slate-800/80 p-1.5 rounded-2xl border border-slate-700/60 shrink-0 self-start xl:self-center z-10">
+        <div className="flex flex-wrap gap-1 bg-slate-800/80 p-1.5 rounded-2xl border border-slate-700/60 shrink-0 self-start xl:self-center z-10">
           <button
             onClick={() => setSubTab('tasks')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
@@ -422,6 +434,18 @@ export default function JobAssignmentView({
           >
             <Users className="h-4 w-4" />
             <span>จัดการรายชื่อพนักงาน ({employees.length})</span>
+          </button>
+          <button
+            onClick={() => setSubTab('daily_reports')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+              subTab === 'daily_reports' 
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
+            }`}
+            id="tab-daily-reports"
+          >
+            <ClipboardList className="h-4 w-4" />
+            <span>รายงานประจำวัน ({dailyReports.length})</span>
           </button>
         </div>
       </div>
@@ -1186,6 +1210,19 @@ export default function JobAssignmentView({
             </div>
           )}
 
+        </div>
+      )}
+
+      {subTab === 'daily_reports' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <DailyReportView
+            dailyReports={dailyReports}
+            onAddDailyReport={onAddDailyReport}
+            onEditDailyReport={onEditDailyReport}
+            onDeleteDailyReport={onDeleteDailyReport}
+            employees={employees}
+            jobs={jobs}
+          />
         </div>
       )}
 

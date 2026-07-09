@@ -873,6 +873,7 @@ export default function App() {
             onAddCategory={handleAddCategory}
             onEditCategory={handleEditCategory}
             onDeleteCategory={handleDeleteCategory}
+            addToast={addToast}
           />
         );
       case 'logs':
@@ -911,17 +912,10 @@ export default function App() {
             onAddJobProject={handleAddJobProject}
             onEditJobProject={handleEditJobProject}
             onDeleteJobProject={handleDeleteJobProject}
-          />
-        );
-      case 'daily_reports':
-        return (
-          <DailyReportView
             dailyReports={dailyReports}
             onAddDailyReport={handleAddDailyReport}
             onEditDailyReport={handleEditDailyReport}
             onDeleteDailyReport={handleDeleteDailyReport}
-            employees={employees}
-            jobs={jobs}
           />
         );
 
@@ -1071,7 +1065,7 @@ export default function App() {
             }`}
           >
             <FolderKanban className="h-4.5 w-4.5 flex-shrink-0" />
-            BOM & ระบบจัดซื้อ
+            แผนประกอบวัตถุดิบ (BOM)
           </button>
 
           <button
@@ -1083,19 +1077,7 @@ export default function App() {
             }`}
           >
             <Briefcase className="h-4.5 w-4.5 flex-shrink-0" />
-            ระบบสั่งงาน & มอบหมาย
-          </button>
-
-          <button
-            onClick={() => setCurrentTab('daily_reports')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
-              currentTab === 'daily_reports'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
-                : 'hover:bg-slate-800/60 hover:text-slate-100 text-slate-400'
-            }`}
-          >
-            <ClipboardList className="h-4.5 w-4.5 flex-shrink-0" />
-            รายงานประจำวัน (Daily Report)
+            จ่ายงาน & รายงานประจำวัน
           </button>
 
           <button
@@ -1195,7 +1177,7 @@ export default function App() {
               }`}
             >
               <FolderKanban className="h-4.5 w-4.5" />
-              BOM & ระบบจัดซื้อ
+              แผนประกอบวัตถุดิบ (BOM)
             </button>
             <button
               onClick={() => { setCurrentTab('jobs'); setIsMobileMenuOpen(false); }}
@@ -1204,16 +1186,7 @@ export default function App() {
               }`}
             >
               <Briefcase className="h-4.5 w-4.5" />
-              ระบบสั่งงาน & มอบหมาย
-            </button>
-            <button
-              onClick={() => { setCurrentTab('daily_reports'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
-                currentTab === 'daily_reports' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
-              }`}
-            >
-              <ClipboardList className="h-4.5 w-4.5" />
-              รายงานประจำวัน (Daily Report)
+              จ่ายงาน & รายงานประจำวัน
             </button>
             <button
               onClick={() => { setCurrentTab('logs'); setIsMobileMenuOpen(false); }}

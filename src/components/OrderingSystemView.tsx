@@ -37,6 +37,8 @@ interface OrderingSystemViewProps {
   products: Product[];
   addToast: (type: 'success' | 'warning' | 'info', title: string, message: string) => void;
   onAdjustStock: (productId: string, change: number, reason: string) => Promise<void>;
+  preselectedProductId?: string;
+  onClearPreselectedProductId?: () => void;
 }
 
 enum OperationType {
@@ -58,9 +60,26 @@ interface FirestoreErrorInfo {
   }
 }
 
-export default function OrderingSystemView({ products, addToast, onAdjustStock }: OrderingSystemViewProps) {
+export default function OrderingSystemView({ 
+  products, 
+  addToast, 
+  onAdjustStock,
+  preselectedProductId,
+  onClearPreselectedProductId
+}: OrderingSystemViewProps) {
   const [orders, setOrders] = useState<ProductOrder[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Auto open form and set product on preselect
+  useEffect(() => {
+    if (preselectedProductId) {
+      setSelectedProductId(preselectedProductId);
+      setIsFormOpen(true);
+      if (onClearPreselectedProductId) {
+        onClearPreselectedProductId();
+      }
+    }
+  }, [preselectedProductId]);
 
   // Form states (Create)
   const [requesterName, setRequesterName] = useState('');

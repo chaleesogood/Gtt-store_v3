@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { Product, Category } from '../types';
-import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package } from 'lucide-react';
+import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart } from 'lucide-react';
 import CategoryView from './CategoryView';
+import OrderingSystemView from './OrderingSystemView';
 import { INITIAL_CATEGORIES } from '../initialData';
 
 interface ProductListViewProps {
@@ -10,12 +11,13 @@ interface ProductListViewProps {
   onAddProduct: (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onEditProduct: (id: string, updated: Partial<Product>) => void;
   onDeleteProduct: (id: string) => void;
-  onAdjustStock: (id: string, change: number, reason: string) => void;
+  onAdjustStock: (id: string, change: number, reason: string) => any;
   statusFilter: string;
   onSetStatusFilter: (filter: string) => void;
   onAddCategory: (category: Omit<Category, 'id'>) => void;
   onEditCategory: (id: string, updated: Partial<Category>) => void;
   onDeleteCategory: (id: string) => void;
+  addToast: (type: 'success' | 'warning' | 'info', title: string, message: string) => void;
 }
 
 // Curated stock photos for quick selection
@@ -42,9 +44,11 @@ export default function ProductListView({
   onAddCategory,
   onEditCategory,
   onDeleteCategory,
+  addToast,
 }: ProductListViewProps) {
   // Filters & Search
-  const [activeSubTab, setActiveSubTab] = useState<'products' | 'categories'>('products');
+  const [activeSubTab, setActiveSubTab] = useState<'products' | 'categories' | 'ordering'>('products');
+  const [preselectedProductId, setPreselectedProductId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
@@ -341,6 +345,19 @@ export default function ProductListView({
           <Layers className="h-4.5 w-4.5" />
           กลุ่มสินค้า & หมวดหมู่ (Categories)
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('ordering')}
+          className={`pb-3 px-6 text-xs font-black tracking-wide font-sans transition-all border-b-2 relative -mb-[2px] cursor-pointer flex items-center gap-2 ${
+            activeSubTab === 'ordering'
+              ? 'border-indigo-600 text-indigo-600 font-extrabold'
+              : 'border-transparent text-slate-400 hover:text-slate-600 font-medium'
+          }`}
+          id="btn-subtab-ordering"
+        >
+          <ShoppingCart className="h-4.5 w-4.5" />
+          ระบบจัดซื้อและสั่งซื้อ (Purchasing)
+        </button>
       </div>
 
       {activeSubTab === 'categories' ? (
@@ -350,6 +367,14 @@ export default function ProductListView({
           onAddCategory={onAddCategory}
           onEditCategory={onEditCategory}
           onDeleteCategory={onDeleteCategory}
+        />
+      ) : activeSubTab === 'ordering' ? (
+        <OrderingSystemView
+          products={products}
+          addToast={addToast}
+          onAdjustStock={onAdjustStock}
+          preselectedProductId={preselectedProductId}
+          onClearPreselectedProductId={() => setPreselectedProductId('')}
         />
       ) : (
         <>
@@ -718,6 +743,17 @@ export default function ProductListView({
                                 <td className="py-4 px-6 text-right">
                                   <div className="flex items-center justify-end gap-2">
                                     <button
+                                      onClick={() => {
+                                        setPreselectedProductId(p.id);
+                                        setActiveSubTab('ordering');
+                                      }}
+                                      className="px-2.5 py-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-50 border border-emerald-100 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                                      title="สร้างใบขอสั่งซื้อสำหรับสินค้าชิ้นนี้"
+                                      id={`btn-purchase-item-grp-${p.id}`}
+                                    >
+                                      <ShoppingCart className="h-3 w-3" /> สั่งซื้อ
+                                    </button>
+                                    <button
                                       onClick={() => handleOpenAdjustDialog(p)}
                                       className="px-2.5 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 border border-indigo-100 rounded-lg transition-colors cursor-pointer"
                                       title="ทำรายการรับเข้า/จ่ายออกละเอียด"
@@ -868,6 +904,17 @@ export default function ProductListView({
                       {/* CRUD Actions */}
                       <td className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => {
+                              setPreselectedProductId(p.id);
+                              setActiveSubTab('ordering');
+                            }}
+                            className="px-2.5 py-1.5 text-xs font-bold text-emerald-600 hover:bg-emerald-50 border border-emerald-100 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                            title="สร้างใบขอสั่งซื้อสำหรับสินค้าชิ้นนี้"
+                            id={`btn-purchase-item-${p.id}`}
+                          >
+                            <ShoppingCart className="h-3 w-3" /> สั่งซื้อ
+                          </button>
                           {/* Detailed stock movement */}
                           <button
                             onClick={() => handleOpenAdjustDialog(p)}

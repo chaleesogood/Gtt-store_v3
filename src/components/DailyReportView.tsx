@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { DailyReport, Employee, Job } from '../types';
 import { 
-  FileText, Plus, Search, Download, Trash2, Edit3, 
-  CheckCircle, Clock, User, Calendar, AlertCircle, 
-  ThumbsUp, Check, Printer, X, ChevronRight, MessageSquare
+  FileText, Search, CheckCircle, Clock, User, Calendar, 
+  AlertCircle, ThumbsUp, Check, Printer, X, ChevronRight, 
+  MessageSquare, Sparkles, ImageIcon
 } from 'lucide-react';
-import jsPDF from 'jspdf';
 
 interface DailyReportViewProps {
   dailyReports: DailyReport[];
@@ -24,56 +23,24 @@ export default function DailyReportView({
   employees,
   jobs
 }: DailyReportViewProps) {
-  // Filter States
+  // 1. Selected Date & Filtering States
+  const [selectedReportDate, setSelectedReportDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
   const [searchEmployee, setSearchEmployee] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending_review' | 'reviewed'>('all');
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
 
-  // Modals
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  // 2. Modals & Detail Review states
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
-  const [activeReport, setActiveReport] = useState<DailyReport | null>(null);
+  const [activeReport, setActiveReport] = useState<(DailyReport & { isReal: boolean }) | null>(null);
 
-  // Form States (New Report)
-  const [newEmployeeName, setNewEmployeeName] = useState('');
-  const [newDate, setNewDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [newTitle, setNewTitle] = useState('');
-  const [newJobsDetail, setNewJobsDetail] = useState('');
-  const [newProblems, setNewProblems] = useState('');
-  const [newRemark, setNewRemark] = useState('');
-  const [newHours, setNewHours] = useState<number>(8);
-
-  // Review Comment States
+  // 3. Review Comment Inputs
   const [reviewCommentInput, setReviewCommentInput] = useState('');
   const [reviewerNameInput, setReviewerNameInput] = useState('');
 
-  // Filter Logic
-  const filteredReports = dailyReports.filter(rep => {
-    const matchEmp = rep.employeeName.toLowerCase().includes(searchEmployee.toLowerCase());
-    const matchStatus = filterStatus === 'all' ? true : rep.status === filterStatus;
-    
-    let matchDate = true;
-    if (filterStartDate) {
-      matchDate = matchDate && rep.date >= filterStartDate;
-    }
-    if (filterEndDate) {
-      matchDate = matchDate && rep.date <= filterEndDate;
-    }
-    
-    return matchEmp && matchStatus && matchDate;
-  });
-
-  // Calculate stats
-  const totalReportsCount = filteredReports.length;
-  const pendingCount = filteredReports.filter(r => r.status === 'pending_review').length;
-  const reviewedCount = filteredReports.filter(r => r.status === 'reviewed').length;
-  const totalHoursWorked = filteredReports.reduce((sum, r) => sum + (r.hoursWorked || 0), 0);
-
-  // Fetch jobs done by this employee on this specific date
+  // Helper to fetch jobs done by employee on a specific date
   const getAssociatedJobsForDate = (empName: string, dateStr: string) => {
     return jobs.filter(j => {
-      // Normalize name comparisons
       const isSameAssignee = j.assignee.trim().toLowerCase() === empName.trim().toLowerCase() ||
                              j.assignee.includes(empName) || empName.includes(j.assignee);
       
@@ -82,67 +49,113 @@ export default function DailyReportView({
     });
   };
 
-  // Submit Handler (New Report)
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newEmployeeName) {
-      alert('กรุณาเลือกชื่อพนักงาน');
-      return;
-    }
-    if (!newTitle.trim()) {
-      alert('กรุณากรอกหัวข้อรายงานประจำวัน');
-      return;
-    }
-    if (!newJobsDetail.trim()) {
-      alert('กรุณากรอกรายละเอียดผลการปฏิบัติงาน');
-      return;
+  // 4. Auto-Compile Logic for each Employee under the selected date
+  const compiledReports = employees.map(emp => {
+    const dbReport = dailyReports.find(
+      r => r.employeeName === emp.name && r.date === selectedReportDate
+    );
+
+    const empJobs = getAssociatedJobsForDate(emp.name, selectedReportDate);
+
+    // Build default dynamic texts from actual tasks
+    const compiledTitle = `รายงานความคืบหน้าประจำวัน - ${emp.name}`;
+    let compiledJobsDetail = '';
+    let compiledProblems = '';
+
+    if (empJobs.length > 0) {
+      compiledJobsDetail = empJobs.map((j, i) => {
+        const stat = j.status === 'completed' ? 'เสร็จสิ้น' : j.status === 'in_progress' ? 'กำลังดำเนินการ' : 'รอดำเนินการ';
+        return `${i + 1}. [มอดูล: ${j.module}] ${j.description} (สถานะ: ${stat})`;
+      }).join('\n');
+
+      const failedJobs = empJobs.filter(j => j.status !== 'completed');
+      if (failedJobs.length > 0) {
+        compiledProblems = failedJobs.map(j => `มอดูล: ${j.module} ค้างดำเนินการหรือพบปัญหาหน้างาน`).join('\n');
+      } else {
+        compiledProblems = 'ประกอบติดตั้งเสร็จสมบูรณ์เรียบร้อยดีทุกรายการ';
+      }
+    } else {
+      compiledJobsDetail = 'ไม่มีรายการงานที่อัปเดตหรือกำหนดส่งในระบบวันนี้';
+      compiledProblems = 'ไม่มี';
     }
 
-    onAddDailyReport({
-      employeeName: newEmployeeName,
-      date: newDate,
-      reportTitle: newTitle.trim(),
-      jobsDetail: newJobsDetail.trim(),
-      problems: newProblems.trim() || undefined,
-      remark: newRemark.trim() || undefined,
-      hoursWorked: Number(newHours) || 8,
-      status: 'pending_review'
-    });
+    return {
+      id: dbReport?.id || `temp_${emp.id}_${selectedReportDate}`,
+      employeeName: emp.name,
+      date: selectedReportDate,
+      reportTitle: dbReport?.reportTitle || compiledTitle,
+      jobsDetail: dbReport?.jobsDetail || compiledJobsDetail,
+      problems: dbReport?.problems || compiledProblems,
+      remark: dbReport?.remark || 'รายงานรวบรวมอัตโนมัติโดยระบบ',
+      hoursWorked: dbReport?.hoursWorked || 8,
+      status: dbReport?.status || 'pending_review',
+      reviewComment: dbReport?.reviewComment || '',
+      reviewedBy: dbReport?.reviewedBy || '',
+      createdAt: dbReport?.createdAt || new Date().toISOString(),
+      updatedAt: dbReport?.updatedAt || new Date().toISOString(),
+      isReal: !!dbReport,
+      jobsCount: empJobs.length,
+      completedCount: empJobs.filter(j => j.status === 'completed').length,
+      inProgressCount: empJobs.filter(j => j.status === 'in_progress').length,
+      pendingCount: empJobs.filter(j => j.status === 'pending').length,
+      hasImages: empJobs.some(j => !!j.imageUrl)
+    };
+  });
 
-    // Reset Form
-    setNewTitle('');
-    setNewJobsDetail('');
-    setNewProblems('');
-    setNewRemark('');
-    setNewHours(8);
-    setIsCreateModalOpen(false);
-  };
+  // Apply filters on the compiled list
+  const filteredReports = compiledReports.filter(rep => {
+    const matchEmp = rep.employeeName.toLowerCase().includes(searchEmployee.toLowerCase());
+    const matchStatus = filterStatus === 'all' ? true : rep.status === filterStatus;
+    return matchEmp && matchStatus;
+  });
 
-  // Open Review Details Modal
-  const handleOpenReview = (report: DailyReport) => {
+  // Stats calculation
+  const totalEmployeesWithJobs = compiledReports.filter(r => r.jobsCount > 0).length;
+  const reviewedCount = compiledReports.filter(r => r.status === 'reviewed' && r.isReal).length;
+  const pendingCount = compiledReports.filter(r => r.jobsCount > 0 && r.status === 'pending_review').length;
+  const totalHoursWorked = compiledReports.reduce((sum, r) => sum + (r.hoursWorked || 8), 0);
+
+  // Open review panel
+  const handleOpenReview = (report: any) => {
     setActiveReport(report);
     setReviewCommentInput(report.reviewComment || '');
     setReviewerNameInput(report.reviewedBy || localStorage.getItem('admin_email') || 'ผู้ดูแลระบบ (Admin)');
     setIsReviewModalOpen(true);
   };
 
-  // Submit Review Comments & Status
+  // Save review comments & status
   const handleSaveReview = (status: 'pending_review' | 'reviewed') => {
     if (!activeReport) return;
 
-    onEditDailyReport(activeReport.id, {
-      status,
-      reviewedBy: reviewerNameInput.trim() || undefined,
-      reviewComment: reviewCommentInput.trim() || undefined
-    });
+    if (activeReport.isReal) {
+      // Edit existing database entry
+      onEditDailyReport(activeReport.id, {
+        status,
+        reviewedBy: reviewerNameInput.trim() || undefined,
+        reviewComment: reviewCommentInput.trim() || undefined
+      });
+    } else {
+      // Add new persistent database entry
+      onAddDailyReport({
+        employeeName: activeReport.employeeName,
+        date: activeReport.date,
+        reportTitle: activeReport.reportTitle,
+        jobsDetail: activeReport.jobsDetail,
+        problems: activeReport.problems || undefined,
+        remark: activeReport.remark || undefined,
+        hoursWorked: activeReport.hoursWorked || 8,
+        status,
+        reviewedBy: reviewerNameInput.trim() || undefined,
+        reviewComment: reviewCommentInput.trim() || undefined
+      });
+    }
 
     setIsReviewModalOpen(false);
     setActiveReport(null);
   };
 
-  // PDF Export and Elegant print layout (Uses standard layout with clean layout design fallback)
-  const handlePrintOrDownloadPDF = (report: DailyReport) => {
-    // We will generate a dedicated, beautifully styled print window for perfect Unicode rendering
+  // PDF Export and Elegant print layout (HTML page preview style)
+  const handlePrintOrDownloadPDF = (report: any) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       alert('กรุณาปิดตัวบล็อกป็อปอัปของเบราว์เซอร์เพื่อทำการพิมพ์หรือเซฟ PDF');
@@ -267,12 +280,12 @@ export default function DailyReportView({
           <table class="header-table">
             <tr>
               <td>
-                <div class="title">รายงานการปฏิบัติงานประจำวัน (Daily Work Report)</div>
-                <div class="subtitle">GTT EE STORE • INVENTORY & WORKFLOW SYSTEM</div>
+                <div class="title">รายงานการปฏิบัติงานประจำวันอัตโนมัติ (Daily Work Report)</div>
+                <div class="subtitle">GTT EE STORE • AUTO REPORT SYSTEM</div>
               </td>
               <td style="text-align: right; font-size: 11px; font-family: monospace; color: #64748b;">
-                วันที่สร้างรายงาน: ${new Date(report.createdAt).toLocaleString('th-TH')}<br />
-                รหัสเอกสาร: DWR-${report.id.toUpperCase()}
+                รหัสรายงาน: DWR-AUTO-${report.id.toUpperCase()}<br />
+                สืบค้นข้อมูลประจำวันที่: ${report.date}
               </td>
             </tr>
           </table>
@@ -284,47 +297,40 @@ export default function DailyReportView({
                 <td style="width: 50%; padding: 4px 0;"><strong>วันที่ปฏิบัติงาน:</strong> ${report.date}</td>
               </tr>
               <tr>
-                <td style="padding: 4px 0;"><strong>หัวข้อรายงานประจำวัน:</strong> ${report.reportTitle}</td>
-                <td style="padding: 4px 0;"><strong>จำนวนชั่วโมงปฏิบัติงาน:</strong> ${report.hoursWorked || 8} ชั่วโมง</td>
+                <td style="padding: 4px 0;"><strong>ประเภทรายงาน:</strong> ระบบอัตโนมัติดึงตามใบงานคลังรายวัน</td>
+                <td style="padding: 4px 0;"><strong>เวลาชั่วโมงทำงาน:</strong> ${report.hoursWorked || 8} ชั่วโมง</td>
               </tr>
               <tr>
-                <td style="padding: 4px 0;"><strong>สถานะรีวิวตรวจสอบ:</strong> 
+                <td style="padding: 4px 0;"><strong>สถานะการประเมิน:</strong> 
                   <span style="color: ${report.status === 'reviewed' ? '#16a34a' : '#d97706'}; font-weight: bold;">
-                    ${report.status === 'reviewed' ? 'ตรวจสอบเสร็จสิ้นแล้ว' : 'รอการตรวจสอบรีวิว'}
+                    ${report.status === 'reviewed' ? 'ตรวจสอบและประเมินเรียบร้อยแล้ว' : 'รอกรรมการตรวจสอบรีวิว'}
                   </span>
                 </td>
-                <td style="padding: 4px 0;"><strong>ผู้ตรวจทานรีวิว:</strong> ${report.reviewedBy || '-'}</td>
+                <td style="padding: 4px 0;"><strong>ผู้รีวิวตรวจสอบ:</strong> ${report.reviewedBy || '-'}</td>
               </tr>
             </table>
           </div>
 
-          <div class="section-title">1. รายละเอียดชิ้นงานความคืบหน้าที่ปฏิบัติ (Completed / In-Progress Tasks)</div>
+          <div class="section-title">1. สรุปรายละเอียดรายการงานที่ปฏิบัติ (Compiled Daily Work Details)</div>
           <div class="content-text">${report.jobsDetail}</div>
 
-          ${report.problems ? `
-            <div class="section-title">2. ปัญหาและอุปสรรคที่ตรวจพบ (Problems / Obstacles Encountered)</div>
-            <div class="content-text" style="border-left-color: #f87171; color: #991b1b; background-color: #fef2f2;">${report.problems}</div>
-          ` : ''}
-
-          ${report.remark ? `
-            <div class="section-title">3. ข้อคิดเห็นหรือความเห็นร้องขอเพิ่มเติม (Additional Notes / Requests)</div>
-            <div class="content-text" style="border-left-color: #a78bfa;">${report.remark}</div>
-          ` : ''}
+          <div class="section-title">2. ปัญหาหน้าไซต์ / มอดูลค้างดำเนินงาน (Outstanding Items & Roadblocks)</div>
+          <div class="content-text" style="border-left-color: #f87171; color: #991b1b; background-color: #fef2f2;">${report.problems}</div>
 
           ${report.reviewComment ? `
-            <div class="section-title">4. ความคิดเห็นหลังตรวจประเมินของผู้ดูแลคลัง (Supervisor Review & Evaluation Comments)</div>
+            <div class="section-title">3. ความคิดเห็นหรือคำแนะนำประเมินของผู้ดูแลระบบ (Supervisor Review Comments)</div>
             <div class="content-text" style="border-left-color: #10b981; background-color: #f0fdf4; color: #065f46;">${report.reviewComment}</div>
           ` : ''}
 
           ${associatedJobs.length > 0 ? `
-            <div class="section-title">5. ชิ้นงานย่อยในระบบสั่งการที่ผูกพัน (Linked Order Modules)</div>
+            <div class="section-title">4. รายละเอียดใบสั่งงานที่เชื่อมโยงในระบบ (Linked Active Jobs)</div>
             <table class="job-table">
               <thead>
                 <tr>
                   <th style="width: 15%">Job No</th>
-                  <th style="width: 35%">มอดูลย่อย / ระบบงาน</th>
+                  <th style="width: 35%">มอดูลระบบงาน</th>
                   <th style="width: 35%">รายละเอียดชิ้นงาน</th>
-                  <th style="width: 15%; text-align: center;">สถานะใบงาน</th>
+                  <th style="width: 15%; text-align: center;">สถานะ</th>
                 </tr>
               </thead>
               <tbody>
@@ -336,23 +342,23 @@ export default function DailyReportView({
           <table class="footer-sign">
             <tr>
               <td>
-                <p>ลงชื่อพนักงานผู้ส่งรายงาน</p>
+                <p>ลงชื่อพนักงานผู้รับผิดชอบ</p>
                 <div class="sign-line"></div>
                 <p style="font-weight: bold;">( ${report.employeeName} )</p>
-                <p style="font-size: 11px; color: #64748b;">พนักงานประจำไซต์งาน</p>
+                <p style="font-size: 11px; color: #64748b;">พนักงานฝ่ายปฏิบัติการไซต์</p>
               </td>
               <td>
-                <p>ลงชื่อผู้ตรวจสอบ / ผู้ตรวจรีวิวรายงาน</p>
+                <p>ลงชื่อกรรมการผู้ตรวจทานรีวิว</p>
                 <div class="sign-line"></div>
                 <p style="font-weight: bold;">( ${report.reviewedBy || '................................................'} )</p>
-                <p style="font-size: 11px; color: #64748b;">หัวหน้างาน / ผู้ดูแลระบบคลังสินค้า</p>
+                <p style="font-size: 11px; color: #64748b;">หัวหน้าฝ่าย / ผู้ควบคุมการจัดซื้อคลัง</p>
               </td>
             </tr>
           </table>
 
           <div style="margin-top: 50px; text-align: center;" class="no-print">
             <button onclick="window.print()" style="padding: 10px 24px; font-family: sans-serif; font-weight: bold; background-color: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px;">
-              กดพิมพ์เอกสาร หรือบันทึกเป็นไฟล์ PDF
+              กดพิมพ์เอกสาร หรือเซฟเป็นไฟล์ PDF
             </button>
           </div>
         </body>
@@ -364,55 +370,40 @@ export default function DailyReportView({
   return (
     <div className="space-y-6">
       
-      {/* -------------------- HEADER TITLE & BUTTONS -------------------- */}
+      {/* -------------------- TITLE & INFO ROW -------------------- */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
         <div>
           <h2 className="text-base font-extrabold text-slate-800 font-sans flex items-center gap-2">
             <span className="p-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-600 block shrink-0">
-              <FileText className="h-5 w-5" />
+              <Sparkles className="h-5 w-5 animate-pulse" />
             </span>
-            รายงานความคืบหน้าประจำวันของพนักงาน (Daily Work Reports)
+            รายงานความคืบหน้าอัตโนมัติประจำวัน (Daily Automatic Work Reports)
           </h2>
           <p className="text-xs text-slate-400 font-sans mt-1">
-            บันทึกความคืบหน้า ปัญหา และสรุปผลรายวันของทีมช่าง พร้อมฟังก์ชันดาวน์โหลด PDF และตรวจสอบรีวิวงาน
+            ระบบประมวลผลสรุปความคืบหน้าของพนักงานรายบุคคลอัตโนมัติ โดยสืบค้นจากสถานะใบสั่งงานจริง ณ วันที่เลือก
           </p>
         </div>
-
-        <button
-          onClick={() => {
-            if (employees.length === 0) {
-              alert('กรุณาขึ้นทะเบียนรายชื่อพนักงานก่อนสร้างรายงานประจำวัน');
-              return;
-            }
-            setNewEmployeeName(employees[0]?.name || '');
-            setIsCreateModalOpen(true);
-          }}
-          className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs cursor-pointer"
-        >
-          <Plus className="h-4 w-4" />
-          เขียนรายงานใหม่ประจำวัน
-        </button>
       </div>
 
-      {/* -------------------- BENTO STATS BAR -------------------- */}
+      {/* -------------------- STATS BENTO TILES -------------------- */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-white rounded-xl border border-slate-200/80 p-4 flex items-center gap-3 shadow-2xs">
           <div className="h-9 w-9 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-            <FileText className="h-4.5 w-4.5" />
+            <User className="h-4.5 w-4.5" />
           </div>
           <div>
-            <span className="text-[10px] text-slate-400 font-bold block uppercase">รายงานทั้งหมด</span>
-            <span className="text-lg font-black font-mono text-slate-800">{totalReportsCount} ฉบับ</span>
+            <span className="text-[10px] text-slate-400 font-bold block uppercase">พนักงานไซต์ทั้งหมด</span>
+            <span className="text-lg font-black font-mono text-slate-800">{employees.length} คน</span>
           </div>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200/80 p-4 flex items-center gap-3 shadow-2xs">
-          <div className="h-9 w-9 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+          <div className="h-9 w-9 rounded-lg bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 shrink-0">
             <Clock className="h-4.5 w-4.5" />
           </div>
           <div>
-            <span className="text-[10px] text-slate-400 font-bold block uppercase">รอกรรมการรีวิว</span>
-            <span className="text-lg font-black font-mono text-amber-600">{pendingCount} ฉบับ</span>
+            <span className="text-[10px] text-slate-400 font-bold block uppercase">พนักงานที่ได้รับงานวันนี้</span>
+            <span className="text-lg font-black font-mono text-sky-600">{totalEmployeesWithJobs} คน</span>
           </div>
         </div>
 
@@ -421,25 +412,39 @@ export default function DailyReportView({
             <CheckCircle className="h-4.5 w-4.5" />
           </div>
           <div>
-            <span className="text-[10px] text-slate-400 font-bold block uppercase">รีวิว/ตรวจแล้ว</span>
-            <span className="text-lg font-black font-mono text-emerald-600">{reviewedCount} ฉบับ</span>
+            <span className="text-[10px] text-slate-400 font-bold block uppercase">ตรวจผ่านรีวิวแล้ว</span>
+            <span className="text-lg font-black font-mono text-emerald-600">{reviewedCount} คน</span>
           </div>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200/80 p-4 flex items-center gap-3 shadow-2xs">
-          <div className="h-9 w-9 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-            <User className="h-4.5 w-4.5" />
+          <div className="h-9 w-9 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+            <AlertCircle className="h-4.5 w-4.5" />
           </div>
           <div>
-            <span className="text-[10px] text-slate-400 font-bold block uppercase">เวลาทำงานรวม</span>
-            <span className="text-lg font-black font-mono text-slate-800">{totalHoursWorked} ชม.</span>
+            <span className="text-[10px] text-slate-400 font-bold block uppercase">รอกลั่นกรองตรวจสอบ</span>
+            <span className="text-lg font-black font-mono text-amber-600">{pendingCount} คน</span>
           </div>
         </div>
       </div>
 
-      {/* -------------------- SEARCH & FILTER MODULE -------------------- */}
+      {/* -------------------- DATE FILTER & EMPLOYEE SEARCH -------------------- */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-3xs flex flex-col md:flex-row items-center gap-3">
         
+        {/* Date Selector */}
+        <div className="w-full md:w-1/3 relative">
+          <span className="absolute left-3 top-3 text-[9px] text-indigo-600 font-black uppercase pointer-events-none">
+            เลือกดูวันที่ (Date)
+          </span>
+          <input
+            type="date"
+            value={selectedReportDate}
+            onChange={(e) => setSelectedReportDate(e.target.value)}
+            className="w-full pl-3 pr-2 pt-5 pb-2 text-xs bg-indigo-50/40 hover:bg-indigo-50 focus:bg-white border border-indigo-100 focus:border-indigo-500 rounded-xl focus:outline-hidden transition-all font-mono font-bold text-indigo-950"
+            id="report-date-selector"
+          />
+        </div>
+
         {/* Employee Search */}
         <div className="relative w-full md:w-1/3">
           <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
@@ -449,339 +454,237 @@ export default function DailyReportView({
             type="text"
             value={searchEmployee}
             onChange={(e) => setSearchEmployee(e.target.value)}
-            placeholder="ค้นหาด้วยชื่อพนักงาน..."
-            className="w-full pl-9 pr-4 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans"
+            placeholder="ค้นหาชื่อพนักงาน..."
+            className="w-full pl-9 pr-4 py-3.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans"
           />
         </div>
 
         {/* Status Filter */}
-        <div className="w-full md:w-1/4">
+        <div className="w-full md:w-1/3">
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as any)}
-            className="w-full px-3 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans font-medium"
+            className="w-full px-3 py-3.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans font-medium"
           >
-            <option value="all">กรองสถานะ: ทั้งหมด (All Statuses)</option>
-            <option value="pending_review">รอการรีวิวตรวจสอบ (Pending Review)</option>
-            <option value="reviewed">รีวิวเสร็จสิ้นแล้ว (Reviewed)</option>
+            <option value="all">กรองความเห็นรีวิว: ทั้งหมด (All)</option>
+            <option value="pending_review">เฉพาะยังไม่ได้รับการรีวิว (Pending Review)</option>
+            <option value="reviewed">เฉพาะที่อนุมัติรีวิวแล้ว (Reviewed)</option>
           </select>
         </div>
-
-        {/* Date Filters */}
-        <div className="w-full md:flex-grow flex items-center gap-2">
-          <div className="w-1/2 relative">
-            <span className="absolute left-2.5 top-2.5 text-[9px] text-slate-400 font-bold uppercase pointer-events-none">เริ่ม</span>
-            <input
-              type="date"
-              value={filterStartDate}
-              onChange={(e) => setFilterStartDate(e.target.value)}
-              className="w-full pl-9 pr-2 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono"
-            />
-          </div>
-          
-          <div className="w-1/2 relative">
-            <span className="absolute left-2.5 top-2.5 text-[9px] text-slate-400 font-bold uppercase pointer-events-none">สิ้นสุด</span>
-            <input
-              type="date"
-              value={filterEndDate}
-              onChange={(e) => setFilterEndDate(e.target.value)}
-              className="w-full pl-11 pr-2 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono"
-            />
-          </div>
-        </div>
-
-        {/* Clear filter shortcut button */}
-        {(searchEmployee || filterStatus !== 'all' || filterStartDate || filterEndDate) && (
-          <button
-            onClick={() => {
-              setSearchEmployee('');
-              setFilterStatus('all');
-              setFilterStartDate('');
-              setFilterEndDate('');
-            }}
-            className="text-xs text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-3.5 py-2.5 rounded-xl transition-colors font-sans font-bold cursor-pointer w-full md:w-auto text-center"
-          >
-            ล้างตัวกรอง
-          </button>
-        )}
       </div>
 
-      {/* -------------------- DAILY REPORTS VERTICAL LIST -------------------- */}
+      {/* -------------------- AUTO GENERATED LIST FOR EACH EMPLOYEE -------------------- */}
       {filteredReports.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200/80 p-16 text-center shadow-2xs">
           <FileText className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-          <h4 className="text-sm font-black text-slate-700 font-sans">ไม่พบรายการรายงานประจำวัน</h4>
+          <h4 className="text-sm font-black text-slate-700 font-sans">ไม่พบประวัติพนักงานที่ตรงกับตัวกรอง</h4>
           <p className="text-xs text-slate-400 font-sans mt-1.5 max-w-sm mx-auto">
-            ยังไม่มีช่างปฏิบัติงานส่งรายงานประจำวันตามตัวกรองที่เลือก คุณสามารถคลิกปุ่มเพื่อบันทึกเขียนรายงานใหม่ได้ทันที
+            กรุณาขึ้นทะเบียนพนักงานก่อนตรวจสอบ หรือเปลี่ยนวันที่มีการทำใบสั่งงาน
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-4">
           {filteredReports.map(rep => {
-            const hasProblems = !!rep.problems;
-            const associatedJobs = getAssociatedJobsForDate(rep.employeeName, rep.date);
+            const hasJobs = rep.jobsCount > 0;
 
             return (
               <div 
                 key={rep.id}
-                className="bg-white rounded-xl border border-slate-200 hover:border-indigo-200 p-4 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative pl-5"
+                className="bg-white rounded-2xl border border-slate-200 hover:border-slate-300 p-5 transition-all flex flex-col gap-4 shadow-sm"
               >
-                {/* Visual Status Colored Decor Border Left */}
-                <div className={`absolute top-0 left-0 bottom-0 w-1 rounded-l-xl ${
-                  rep.status === 'reviewed' ? 'bg-emerald-500' : 'bg-amber-500'
-                }`} />
+                {/* Employee Info Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200 font-black text-xs text-indigo-700 uppercase">
+                      {rep.employeeName.substring(0, 2)}
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-slate-800 flex items-center gap-2">
+                        {rep.employeeName}
+                        <span className="text-[10px] px-2 py-0.5 bg-slate-50 border border-slate-200 rounded-md text-slate-500 font-normal">
+                          ช่างหน้างาน
+                        </span>
+                      </h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          รายงานวันที่: {rep.date}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
 
-                {/* Left block information */}
-                <div className="flex-grow min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    {/* Date badge */}
-                    <span className="text-[10px] font-black text-indigo-700 font-mono tracking-wide px-2.5 py-1 bg-indigo-50 border border-indigo-100/80 rounded-lg flex items-center gap-1.5">
-                      <Calendar className="h-3 w-3" />
-                      {rep.date}
-                    </span>
-
-                    {/* Employee Name */}
-                    <span className="text-[10px] font-extrabold text-slate-700 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
-                      <User className="h-3 w-3 text-slate-500" />
-                      ช่าง: {rep.employeeName}
-                    </span>
-
-                    {/* Hours Worked badge */}
-                    <span className="text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-md flex items-center gap-1 font-mono">
-                      <Clock className="h-3 w-3 text-slate-400" />
-                      {rep.hoursWorked || 8} ชม.
-                    </span>
-
-                    {/* Review Status badge */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Status Badge */}
                     <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border flex items-center gap-1 ${
                       rep.status === 'reviewed' 
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                         : 'bg-amber-50 text-amber-700 border-amber-100'
                     }`}>
-                      {rep.status === 'reviewed' ? <CheckCircle className="h-3 w-3" /> : <Clock className="h-3 w-3 animate-pulse" />}
-                      {rep.status === 'reviewed' ? 'ตรวจสอบแล้ว' : 'รอกรรมการรีวิว'}
+                      <span className={`h-1.5 w-1.5 rounded-full ${rep.status === 'reviewed' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
+                      {rep.status === 'reviewed' ? 'ตรวจทานเรียบร้อยแล้ว' : 'รอกรรมการกลั่นกรอง'}
                     </span>
 
-                    {/* Problem Alert Badge */}
-                    {hasProblems && (
-                      <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-md flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3 text-rose-500" />
-                        มีปัญหาหน้าไซต์
-                      </span>
+                    {/* Jobs count badge */}
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${
+                      hasJobs ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-slate-100 text-slate-400 border border-slate-200'
+                    }`}>
+                      {rep.jobsCount} ใบสั่งงานในวันนี้
+                    </span>
+                  </div>
+                </div>
+
+                {/* Compiled Work Summary / Job Listing Detail */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  
+                  {/* Left (8/12): Linked jobs and timeline list */}
+                  <div className="lg:col-span-8 space-y-3.5">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      📋 รายละเอียดใบงานที่ประมวลผลได้ในระบบ (Automatic Tasks)
+                    </span>
+
+                    {!hasJobs ? (
+                      <div className="bg-slate-50 rounded-xl p-4 text-center border border-dashed border-slate-200">
+                        <p className="text-xs text-slate-400 italic">
+                          ไม่มีการมอบหมายงานหรืออัปเดตงานสำหรับพนักงานคนนี้ ณ วันที่ดังกล่าว
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {jobs.filter(j => {
+                          const isSameAssignee = j.assignee.trim().toLowerCase() === rep.employeeName.trim().toLowerCase() ||
+                                                 j.assignee.includes(rep.employeeName) || rep.employeeName.includes(j.assignee);
+                          const isSameDate = j.targetDate === rep.date || (j.updatedAt && j.updatedAt.startsWith(rep.date));
+                          return isSameAssignee && isSameDate;
+                        }).map(job => (
+                          <div 
+                            key={job.id} 
+                            className="bg-slate-50 border border-slate-150 rounded-xl p-3 flex gap-3 hover:border-indigo-100 transition-all"
+                          >
+                            {job.imageUrl ? (
+                              <img 
+                                src={job.imageUrl} 
+                                alt="หลักฐานประกอบ" 
+                                className="h-14 w-14 rounded-lg object-cover bg-black shrink-0 border border-slate-200"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="h-14 w-14 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
+                                <ImageIcon className="h-5 w-5" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-grow">
+                              <span className="text-[9px] font-black text-indigo-700 font-mono block">
+                                {job.jobNo}
+                              </span>
+                              <span className="text-xs font-black text-slate-800 truncate block mt-0.5">
+                                มอดูล: {job.module}
+                              </span>
+                              <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                                {job.description}
+                              </p>
+                              
+                              <div className="flex items-center justify-between mt-2">
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
+                                  job.status === 'completed' 
+                                    ? 'bg-emerald-100 text-emerald-800' 
+                                    : job.status === 'in_progress'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-150 text-slate-600'
+                                }`}>
+                                  {job.status === 'completed' ? 'เสร็จสิ้น' : job.status === 'in_progress' ? 'กำลังทำ' : 'ยังไม่ได้รับ'}
+                                </span>
+                                
+                                <span className={`text-[8px] font-black font-sans uppercase px-1 rounded-sm ${
+                                  job.priority === 'high' ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-400'
+                                }`}>
+                                  {job.priority} Priority
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
 
-                    {/* Associated jobs counter */}
-                    {associatedJobs.length > 0 && (
-                      <span className="text-[10px] font-bold text-slate-500 bg-indigo-50/20 text-indigo-700 border border-indigo-100/30 px-2 py-0.5 rounded-md font-mono">
-                        ผูกพัน {associatedJobs.length} ชิ้นงาน
+                    {/* Display Auto compiled output texts */}
+                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl mt-3 text-xs leading-relaxed text-slate-600 font-mono whitespace-pre-wrap">
+                      <span className="text-[10px] font-black text-indigo-600 uppercase font-sans block mb-1">
+                        📝 ข้อสรุปเนื้อความรวมในรายงาน:
                       </span>
-                    )}
+                      {rep.jobsDetail}
+                    </div>
                   </div>
 
-                  {/* Title and Short details description excerpt */}
-                  <h3 className="text-xs font-black text-slate-800 font-sans truncate mb-1">
-                    {rep.reportTitle}
-                  </h3>
-                  <p className="text-[11px] text-slate-400 font-sans line-clamp-1 max-w-4xl">
-                    {rep.jobsDetail}
-                  </p>
+                  {/* Right (4/12): Supervisor Action and Verification comments */}
+                  <div className="lg:col-span-4 bg-slate-50 border border-slate-200/60 rounded-xl p-4 flex flex-col justify-between gap-4">
+                    <div className="space-y-3">
+                      <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                        <MessageSquare className="h-3.5 w-3.5 text-indigo-500" />
+                        ความคิดเห็น & ตรวจทานรีวิว
+                      </span>
 
-                  {/* Comments indication panel if supervisor left comment */}
-                  {rep.reviewComment && (
-                    <div className="mt-2.5 flex items-center gap-1.5 text-[10px] bg-slate-50/50 text-emerald-700 border border-slate-100 py-1.5 px-2.5 rounded-lg font-sans">
-                      <MessageSquare className="h-3 w-3 text-emerald-500 shrink-0" />
-                      <span className="font-extrabold shrink-0">คอมเมนต์ตรวจทาน:</span>
-                      <span className="truncate text-slate-500 italic">"{rep.reviewComment}"</span>
+                      {rep.reviewComment ? (
+                        <div className="bg-indigo-50/40 border border-indigo-100 p-3 rounded-lg text-xs leading-relaxed">
+                          <p className="font-extrabold text-indigo-800">ความคิดเห็นผู้ควบคุมงาน:</p>
+                          <p className="text-indigo-950 mt-1 italic">"{rep.reviewComment}"</p>
+                          <p className="text-[10px] text-indigo-400 text-right mt-1.5 font-bold">
+                            ลงชื่อ: {rep.reviewedBy || 'แอดมิน'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-slate-400 italic">
+                          ยังไม่มีความคิดเห็นหรือประเมินผลสำหรับรายงานของพนักงานท่านนี้ในวันนี้
+                        </div>
+                      )}
                     </div>
-                  )}
+
+                    <div className="flex flex-col gap-2 pt-3 border-t border-slate-200">
+                      <button
+                        onClick={() => handleOpenReview(rep)}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs cursor-pointer"
+                        id={`btn-review-${rep.id}`}
+                      >
+                        <ThumbsUp className="h-3.5 w-3.5" />
+                        เขียนรีวิว & ประเมินผลงาน
+                      </button>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handlePrintOrDownloadPDF(rep)}
+                          className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-600 transition-colors cursor-pointer"
+                          title="สั่งพิมพ์หรือดาวน์โหลด PDF สรุปใบงานของวันนี้"
+                        >
+                          <Printer className="h-3.5 w-3.5" />
+                          พิมพ์รายงาน PDF
+                        </button>
+
+                        {rep.isReal && (
+                          <button
+                            onClick={() => {
+                              if (confirm('คุณแน่ใจหรือไม่ว่าต้องการรีเซ็ตผลรีวิวของวันดังกล่าวกลับไปเป็นแบบร่างเริ่มต้น?')) {
+                                onDeleteDailyReport(rep.id);
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-100 transition-colors cursor-pointer"
+                            title="รีเซ็ตผลรีวิวรายงานนี้"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
 
-                {/* Right block Actions Controls */}
-                <div className="shrink-0 flex items-center gap-1.5 border-t lg:border-t-0 lg:border-l border-slate-100 pt-2 lg:pt-0 lg:pl-4 justify-end">
-                  
-                  {/* REVIEW DETAILS BUTTON */}
-                  <button
-                    onClick={() => handleOpenReview(rep)}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 hover:border-indigo-100 rounded-lg text-[11px] font-extrabold text-slate-600 transition-colors cursor-pointer"
-                    title="กดดูรีวิวและรายละเอียดการประเมิน"
-                  >
-                    ดูรีวิว & ตรวจทาน
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </button>
-
-                  {/* DOWNLOAD / PRINT PDF BUTTON */}
-                  <button
-                    onClick={() => handlePrintOrDownloadPDF(rep)}
-                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                    title="ดาวน์โหลดหรือพิมพ์รายงาน PDF"
-                  >
-                    <Printer className="h-4 w-4" />
-                  </button>
-
-                  {/* DELETE BUTTON */}
-                  <button
-                    onClick={() => {
-                      if (confirm(`คุณต้องการลบรายงานประจำวันฉบับนี้ของ "${rep.employeeName}" หรือไม่?`)) {
-                        onDeleteDailyReport(rep.id);
-                      }
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                    title="ลบรายงานฉบับนี้ออกจากระบบ"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
               </div>
             );
           })}
         </div>
       )}
 
-      {/* -------------------- MODAL: CREATE NEW REPORT -------------------- */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
-            
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-black text-slate-800 font-sans flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-indigo-600" />
-                  เขียนรายงานปฏิบัติงานประจำวันใหม่
-                </h3>
-                <p className="text-[10px] text-slate-400 font-sans mt-0.5">ระบุผลการปฏิบัติงานความคืบหน้ารายวันของช่างในระบบคลัง</p>
-              </div>
-              <button 
-                onClick={() => setIsCreateModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Modal Body / Scroll Container */}
-            <form onSubmit={handleCreateSubmit} className="flex-grow overflow-y-auto p-6 space-y-4">
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Employee Selector */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase font-sans block">พนักงานผู้รายงาน / Assignee</label>
-                  <select
-                    value={newEmployeeName}
-                    onChange={(e) => setNewEmployeeName(e.target.value)}
-                    required
-                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans font-semibold"
-                  >
-                    {employees.map(emp => (
-                      <option key={emp.id} value={emp.name}>{emp.name} ({emp.role || 'ช่างเทคนิค'})</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Work Date */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase font-sans block">วันที่ปฏิบัติงาน / Work Date</label>
-                  <input
-                    type="date"
-                    value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
-                    required
-                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Title & Hours */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div className="sm:col-span-3 space-y-1">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase font-sans block">หัวข้อสรุปการปฏิบัติงานหลัก / Report Title</label>
-                  <input
-                    type="text"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    placeholder="เช่น ประกอบตู้สายไฟ MDB เสร็จสิ้น หรือ เช็คระบบนิวเมติกส์บวมน้ำ"
-                    required
-                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase font-sans block">ชั่วโมงทำงานจริง</label>
-                  <input
-                    type="number"
-                    value={newHours}
-                    onChange={(e) => setNewHours(Number(e.target.value))}
-                    min="1"
-                    max="24"
-                    required
-                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-mono text-center font-bold"
-                  />
-                </div>
-              </div>
-
-              {/* Work detail */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase font-sans block">รายละเอียดความคืบหน้างานรายวัน / Work Details</label>
-                <textarea
-                  value={newJobsDetail}
-                  onChange={(e) => setNewJobsDetail(e.target.value)}
-                  placeholder="กรอกรายละเอียดชิ้นงานที่ประกอบหรือทดสอบเสร็จสิ้นอย่างเจาะจง..."
-                  required
-                  rows={4}
-                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans leading-relaxed"
-                />
-              </div>
-
-              {/* Problems & Obstacles */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-rose-500 uppercase font-sans block flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" />
-                  ปัญหาและอุปสรรคหน้าไซต์งาน (ถ้ามี) / Problems & Obstacles
-                </label>
-                <textarea
-                  value={newProblems}
-                  onChange={(e) => setNewProblems(e.target.value)}
-                  placeholder="ระบุปัญหา อะไหล่ขาดแคลน หรือชิ้นสต็อกชำรุดเสียหาย..."
-                  rows={2}
-                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans"
-                />
-              </div>
-
-              {/* Remarks */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase font-sans block">หมายเหตุเพิ่มเติมหรือข้อเรียกร้อง / Remarks</label>
-                <input
-                  type="text"
-                  value={newRemark}
-                  onChange={(e) => setNewRemark(e.target.value)}
-                  placeholder="เช่น ต้องการเบิกเครื่องบัดกรีเพิ่ม หรือ ขอนุมัติวัสดุสิ้นเปลือง"
-                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans"
-                />
-              </div>
-
-              {/* Modal footer */}
-              <div className="pt-4 border-t border-slate-100 flex justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs cursor-pointer"
-                >
-                  บันทึกส่งรายงาน
-                </button>
-              </div>
-
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* -------------------- MODAL: REVIEW & EVALUATE REPORT -------------------- */}
+      {/* -------------------- MODAL: DETAILED REVIEW & EVALUATE REPORT -------------------- */}
       {isReviewModalOpen && activeReport && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
@@ -791,13 +694,13 @@ export default function DailyReportView({
               <div>
                 <h3 className="text-xs font-black text-slate-800 font-sans uppercase tracking-wider flex items-center gap-1.5">
                   <ThumbsUp className="h-4.5 w-4.5 text-indigo-600" />
-                  รีวิวและประเมินรายงานการปฏิบัติงาน
+                  ลงประเมินรายงานปฏิบัติงาน (Auto Compile Report)
                 </h3>
                 <span className="text-[10px] text-slate-400 font-mono font-bold block mt-1">DWR-ID: {activeReport.id.toUpperCase()}</span>
               </div>
               <button 
                 onClick={() => { setIsReviewModalOpen(false); setActiveReport(null); }}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -809,56 +712,44 @@ export default function DailyReportView({
               {/* Report Information summary meta */}
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/60 grid grid-cols-2 gap-4 text-xs">
                 <div>
-                  <span className="text-[9px] text-slate-400 font-bold uppercase block">ชื่อผู้รายงาน</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase block">พนักงานปฏิบัติหน้าที่</span>
                   <span className="font-extrabold text-slate-700 font-sans block mt-0.5">{activeReport.employeeName}</span>
                 </div>
                 
                 <div>
-                  <span className="text-[9px] text-slate-400 font-bold uppercase block">วันที่ปฏิบัติหน้าที่</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase block">วันที่ระบุตามใบงาน</span>
                   <span className="font-bold text-slate-700 font-mono block mt-0.5">{activeReport.date}</span>
                 </div>
 
                 <div>
-                  <span className="text-[9px] text-slate-400 font-bold uppercase block">หัวข้อสรุปงาน</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase block">หัวข้อรายงานสรุป</span>
                   <span className="font-semibold text-slate-800 font-sans block mt-0.5">{activeReport.reportTitle}</span>
                 </div>
 
                 <div>
-                  <span className="text-[9px] text-slate-400 font-bold uppercase block">เวลาชั่วโมงทำงาน</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase block">ชั่วโมงการทำงาน (มาตรฐาน)</span>
                   <span className="font-extrabold text-indigo-600 font-mono block mt-0.5">{activeReport.hoursWorked || 8} ชั่วโมง</span>
                 </div>
               </div>
 
               {/* Work progress text body */}
               <div className="space-y-1">
-                <span className="text-[10px] font-extrabold text-slate-500 uppercase font-sans block">1. รายละเอียดชิ้นงานความคืบหน้าที่ระบุ</span>
-                <div className="text-xs text-slate-700 font-sans bg-slate-50 p-3.5 rounded-xl border border-slate-100 whitespace-pre-wrap leading-relaxed">
+                <span className="text-[10px] font-extrabold text-slate-500 uppercase font-sans block">1. รายการสรุปมอดูลความคืบหน้าที่ระบบประมวลงดึงมา</span>
+                <div className="text-xs text-slate-700 font-mono bg-slate-50 p-3.5 rounded-xl border border-slate-100 whitespace-pre-wrap leading-relaxed">
                   {activeReport.jobsDetail}
                 </div>
               </div>
 
               {/* Problems (If exists) */}
-              {activeReport.problems && (
-                <div className="space-y-1">
-                  <span className="text-[10px] font-extrabold text-rose-500 uppercase font-sans block flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    2. ปัญหาและอุปสรรคที่ระบุ
-                  </span>
-                  <div className="text-xs text-rose-800 font-sans bg-rose-50/50 p-3 rounded-xl border border-rose-100 leading-relaxed">
-                    {activeReport.problems}
-                  </div>
+              <div className="space-y-1">
+                <span className="text-[10px] font-extrabold text-rose-500 uppercase font-sans block flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  2. ข้อบกพร่อง / มอดูลค้างหน้าไซต์งาน
+                </span>
+                <div className="text-xs text-rose-800 font-sans bg-rose-50/30 p-3 rounded-xl border border-rose-100 leading-relaxed">
+                  {activeReport.problems || 'ไม่มีข้อขัดข้องประกอบ'}
                 </div>
-              )}
-
-              {/* Remarks (If exists) */}
-              {activeReport.remark && (
-                <div className="space-y-1">
-                  <span className="text-[10px] font-extrabold text-indigo-500 uppercase font-sans block">3. หมายเหตุ/คำร้องขอบันทึกเพิ่มเติม</span>
-                  <div className="text-xs text-slate-600 font-sans bg-slate-50 p-3 rounded-xl border border-indigo-50/30">
-                    {activeReport.remark}
-                  </div>
-                </div>
-              )}
+              </div>
 
               {/* Smart reference jobs completion proofs */}
               {(() => {
@@ -868,7 +759,7 @@ export default function DailyReportView({
                 return (
                   <div className="space-y-2 pt-3 border-t border-slate-100">
                     <span className="text-[10px] font-extrabold text-indigo-700 uppercase font-sans block">
-                      📌 อ้างอิงชิ้นงานย่อยและหลักฐานภาพประกอบที่ส่งเข้าระบบในวันนี้
+                      📷 ภาพถ่ายความคืบหน้าและหลักฐานผลงานที่ส่งเข้ามาในระบบวันนี้
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {associatedJobs.map(job => (
@@ -882,12 +773,12 @@ export default function DailyReportView({
                             />
                           ) : (
                             <div className="h-14 w-14 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
-                              <FileText className="h-5 w-5 text-slate-400" />
+                              <ImageIcon className="h-5 w-5 text-slate-400" />
                             </div>
                           )}
                           <div className="min-w-0">
                             <span className="text-[9px] font-black text-indigo-700 font-mono block">{job.jobNo}</span>
-                            <span className="text-xs font-bold text-slate-700 truncate block mt-0.5">{job.module}</span>
+                            <span className="text-xs font-bold text-slate-700 truncate block mt-0.5">มอดูล: {job.module}</span>
                             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md inline-block mt-1 ${
                               job.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
                             }`}>
@@ -904,36 +795,36 @@ export default function DailyReportView({
               {/* -------------------- SUPERVISOR REVIEW SECTION -------------------- */}
               <div className="pt-4 border-t border-slate-100 space-y-3.5">
                 <span className="text-[10px] font-black text-indigo-600 uppercase font-sans block">
-                  ⚙️ ตรวจสอบ & ลงบันทึกประเมิน (Supervisor Verification)
+                  ⚙️ เขียนประเมินคอมเมนต์และเซ็นผ่านงาน (Supervisor Verification)
                 </span>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-bold text-slate-500 uppercase font-sans block">ผู้ตรวจสอบรีวิว / Evaluator Name</label>
+                    <label className="text-[9px] font-bold text-slate-500 uppercase font-sans block">ชื่อผู้ออกใบรับรองรีวิว / Reviewer Name</label>
                     <input
                       type="text"
                       value={reviewerNameInput}
                       onChange={(e) => setReviewerNameInput(e.target.value)}
-                      placeholder="เช่น สมชาย หรือ แอดมินคลัง"
+                      placeholder="ป้อนชื่อผู้ตรวจสอบ..."
                       className="w-full px-3 py-2 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                     />
                   </div>
                   
                   <div className="space-y-1">
-                    <label className="text-[9px] font-bold text-slate-500 uppercase font-sans block">สถานะปัจจุบัน / Action Status</label>
+                    <label className="text-[9px] font-bold text-slate-500 uppercase font-sans block">สถานะการกลั่นกรอง / Current Audit Status</label>
                     <div className="text-xs font-black py-2.5 px-3 rounded-xl flex items-center gap-1.5 border border-dashed border-slate-200 bg-slate-50/50">
                       <span className={`h-2.5 w-2.5 rounded-full ${activeReport.status === 'reviewed' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                      {activeReport.status === 'reviewed' ? 'ประเมิน/ตรวจผ่านแล้ว' : 'อยู่ระหว่างรอกรรมการตรวจสอบ'}
+                      {activeReport.status === 'reviewed' ? 'ผ่านการประเมินแล้ว' : 'รอกรรมการกลั่นกรอง/แบบร่าง'}
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold text-slate-500 uppercase font-sans block">ความคิดเห็น ความเห็นประเมิน หรือคอมเมนต์ผู้ควบคุมงาน</label>
+                  <label className="text-[9px] font-bold text-slate-500 uppercase font-sans block">ความคิดเห็น ความประสงค์สั่งการ หรือคอมเมนต์ผู้ควบคุมงานไซต์</label>
                   <textarea
                     value={reviewCommentInput}
                     onChange={(e) => setReviewCommentInput(e.target.value)}
-                    placeholder="ป้อนคำสั่ง สั่งการ อนุมัติ หรือคอมเมนต์แนะนำพนักงาน..."
+                    placeholder="เขียนข้อสังเกต อนุมัติวัสดุเพิ่มเติม หรือแนะนำพนักงาน..."
                     rows={2}
                     className="w-full px-3.5 py-2.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans"
                   />
@@ -951,19 +842,22 @@ export default function DailyReportView({
                 className="flex items-center gap-1 px-4 py-2 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-extrabold rounded-xl transition-all cursor-pointer"
               >
                 <Printer className="h-4 w-4" />
-                ดาวน์โหลด / พิมพ์รายงาน
+                พิมพ์เอกสารนี้
               </button>
 
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={() => handleSaveReview('pending_review')}
                   className="px-3.5 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
                 >
-                  คงสถานะรอตรวจ
+                  คงสถานะแบบร่าง
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleSaveReview('reviewed')}
                   className="flex items-center gap-1.5 px-4.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xs rounded-xl transition-all shadow-xs cursor-pointer"
+                  id="btn-approve-review"
                 >
                   <Check className="h-4 w-4" />
                   อนุมัติผ่านรีวิว
