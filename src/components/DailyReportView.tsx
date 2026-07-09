@@ -483,199 +483,222 @@ export default function DailyReportView({
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3.5">
           {filteredReports.map(rep => {
             const hasJobs = rep.jobsCount > 0;
 
             return (
               <div 
                 key={rep.id}
-                className="bg-white rounded-2xl border border-slate-200 hover:border-slate-300 p-5 transition-all flex flex-col gap-4 shadow-sm"
+                className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-xs p-3.5 transition-all flex flex-col xl:flex-row xl:items-stretch gap-4 shadow-sm"
               >
-                {/* Employee Info Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200 font-black text-xs text-indigo-700 uppercase">
+                {/* 1. Employee Info / Stack Column */}
+                <div className="xl:w-60 xl:border-r border-slate-100 xl:pr-4 flex flex-col justify-between gap-3 shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-9 w-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 font-black text-xs text-indigo-700 uppercase shadow-2xs">
                       {rep.employeeName.substring(0, 2)}
                     </div>
-                    <div>
-                      <h4 className="text-xs font-black text-slate-800 flex items-center gap-2">
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-black text-slate-800 truncate flex items-center gap-1.5">
                         {rep.employeeName}
-                        <span className="text-[10px] px-2 py-0.5 bg-slate-50 border border-slate-200 rounded-md text-slate-500 font-normal">
-                          ช่างหน้างาน
+                        <span className="text-[9px] px-1.5 py-0.2 bg-slate-50 border border-slate-200 rounded text-slate-500 font-normal shrink-0">
+                          ช่างไซต์
                         </span>
                       </h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          รายงานวันที่: {rep.date}
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[10px] font-mono font-bold text-slate-400 flex items-center gap-1">
+                          <Calendar className="h-3 w-3 text-slate-400 shrink-0" />
+                          {rep.date}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap xl:flex-col gap-2 items-start xl:items-stretch mt-1 xl:mt-0">
                     {/* Status Badge */}
-                    <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border flex items-center gap-1 ${
+                    <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border flex items-center gap-1 w-fit xl:w-full justify-center ${
                       rep.status === 'reviewed' 
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                         : 'bg-amber-50 text-amber-700 border-amber-100'
                     }`}>
                       <span className={`h-1.5 w-1.5 rounded-full ${rep.status === 'reviewed' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
-                      {rep.status === 'reviewed' ? 'ตรวจทานเรียบร้อยแล้ว' : 'รอกรรมการกลั่นกรอง'}
+                      <span>{rep.status === 'reviewed' ? 'ตรวจทานเรียบร้อย' : 'รอกรรมการตรวจสอบ'}</span>
                     </span>
 
                     {/* Jobs count badge */}
-                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${
-                      hasJobs ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-slate-100 text-slate-400 border border-slate-200'
+                    <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border text-center w-fit xl:w-full ${
+                      hasJobs ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-slate-50 text-slate-400 border-slate-200/80'
                     }`}>
                       {rep.jobsCount} ใบสั่งงานในวันนี้
                     </span>
                   </div>
                 </div>
 
-                {/* Compiled Work Summary / Job Listing Detail */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                  
-                  {/* Left (8/12): Linked jobs and timeline list */}
-                  <div className="lg:col-span-8 space-y-3.5">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      📋 รายละเอียดใบงานที่ประมวลผลได้ในระบบ (Automatic Tasks)
-                    </span>
+                {/* 2. Middle Column: Associated Jobs with Horizontal Step Progress (ขั้นตอน 1 2 3) */}
+                <div className="flex-grow min-w-0 py-1 flex flex-col justify-center gap-2">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                    📋 ความคืบหน้าขั้นตอนงาน (ขั้นตอน 1-2-3)
+                  </span>
 
-                    {!hasJobs ? (
-                      <div className="bg-slate-50 rounded-xl p-4 text-center border border-dashed border-slate-200">
-                        <p className="text-xs text-slate-400 italic">
-                          ไม่มีการมอบหมายงานหรืออัปเดตงานสำหรับพนักงานคนนี้ ณ วันที่ดังกล่าว
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {jobs.filter(j => {
-                          const isSameAssignee = j.assignee.trim().toLowerCase() === rep.employeeName.trim().toLowerCase() ||
-                                                 j.assignee.includes(rep.employeeName) || rep.employeeName.includes(j.assignee);
-                          const isSameDate = j.targetDate === rep.date || (j.updatedAt && j.updatedAt.startsWith(rep.date));
-                          return isSameAssignee && isSameDate;
-                        }).map(job => (
+                  {!hasJobs ? (
+                    <div className="bg-slate-50/60 rounded-xl py-3.5 px-4 text-center border border-dashed border-slate-200 flex-grow flex items-center justify-center">
+                      <p className="text-xs text-slate-400 italic font-medium">
+                        ไม่มีการมอบหมายงานหรืออัปเดตงานสำหรับพนักงานท่านนี้ ณ วันที่ดังกล่าว
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {jobs.filter(j => {
+                        const isSameAssignee = j.assignee.trim().toLowerCase() === rep.employeeName.trim().toLowerCase() ||
+                                               j.assignee.includes(rep.employeeName) || rep.employeeName.includes(j.assignee);
+                        const isSameDate = j.targetDate === rep.date || (j.updatedAt && j.updatedAt.startsWith(rep.date));
+                        return isSameAssignee && isSameDate;
+                      }).map(job => {
+                        // Steps representation
+                        const isStep1 = true; // Job assigned is Step 1 (always completed)
+                        const isStep2 = job.status === 'in_progress' || job.status === 'completed'; // Step 2 (in progress or completed)
+                        const isStep3 = job.status === 'completed'; // Step 3 (completed)
+
+                        return (
                           <div 
                             key={job.id} 
-                            className="bg-slate-50 border border-slate-150 rounded-xl p-3 flex gap-3 hover:border-indigo-100 transition-all"
+                            className="bg-slate-50/70 hover:bg-indigo-50/10 border border-slate-200/60 rounded-xl p-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors"
                           >
-                            {job.imageUrl ? (
-                              <img 
-                                src={job.imageUrl} 
-                                alt="หลักฐานประกอบ" 
-                                className="h-14 w-14 rounded-lg object-cover bg-black shrink-0 border border-slate-200"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : (
-                              <div className="h-14 w-14 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
-                                <ImageIcon className="h-5 w-5" />
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-grow">
-                              <span className="text-[9px] font-black text-indigo-700 font-mono block">
-                                {job.jobNo}
-                              </span>
-                              <span className="text-xs font-black text-slate-800 truncate block mt-0.5">
-                                มอดูล: {job.module}
-                              </span>
-                              <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
-                                {job.description}
-                              </p>
-                              
-                              <div className="flex items-center justify-between mt-2">
-                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
-                                  job.status === 'completed' 
-                                    ? 'bg-emerald-100 text-emerald-800' 
-                                    : job.status === 'in_progress'
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-slate-150 text-slate-600'
-                                }`}>
-                                  {job.status === 'completed' ? 'เสร็จสิ้น' : job.status === 'in_progress' ? 'กำลังทำ' : 'ยังไม่ได้รับ'}
-                                </span>
-                                
-                                <span className={`text-[8px] font-black font-sans uppercase px-1 rounded-sm ${
-                                  job.priority === 'high' ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-400'
-                                }`}>
-                                  {job.priority} Priority
-                                </span>
+                            <div className="flex items-center gap-2.5 min-w-0 flex-grow">
+                              {job.imageUrl ? (
+                                <img 
+                                  src={job.imageUrl} 
+                                  alt="หลักฐาน" 
+                                  className="h-9 w-9 rounded-lg object-cover bg-black shrink-0 border border-slate-200/80 cursor-pointer shadow-3xs hover:scale-105 transition-transform"
+                                  onClick={() => window.open(job.imageUrl, '_blank')}
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <div className="h-9 w-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
+                                  <ImageIcon className="h-4.5 w-4.5" />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-grow">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-[9px] font-black text-indigo-700 font-mono tracking-tight bg-indigo-50 border border-indigo-100 px-1.5 py-0.2 rounded">
+                                    {job.jobNo}
+                                  </span>
+                                  <span className="text-xs font-black text-slate-800 truncate">
+                                    มอดูล: {job.module}
+                                  </span>
+                                  <span className={`text-[8px] font-black font-sans uppercase px-1 rounded-sm ${
+                                    job.priority === 'high' ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-400'
+                                  }`}>
+                                    {job.priority} Priority
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-400 truncate mt-0.5 max-w-sm md:max-w-md">
+                                  {job.description}
+                                </p>
                               </div>
                             </div>
+
+                            {/* Horizontal 3-Step Flow */}
+                            <div className="shrink-0 flex items-center gap-2 bg-white border border-slate-150 rounded-lg px-2.5 py-1.5 shadow-3xs w-fit">
+                              <span className="text-[9px] font-bold text-slate-400 mr-1.5">ขั้นตอนงาน:</span>
+                              
+                              {/* Step 1: Assign */}
+                              <div className="flex items-center gap-1">
+                                <div className={`h-4.5 w-4.5 rounded-full flex items-center justify-center text-[9px] font-black transition-colors ${
+                                  isStep1 ? 'bg-indigo-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-400'
+                                }`} title="ขั้นตอนที่ 1: ได้รับมอบหมาย">
+                                  <Check className="h-2.5 w-2.5 stroke-[3.5]" />
+                                </div>
+                                <span className={`text-[9px] font-black ${isStep1 ? 'text-indigo-700' : 'text-slate-400'}`}>1.มอบงาน</span>
+                              </div>
+
+                              <div className={`w-3.5 h-[2px] transition-colors ${isStep2 ? 'bg-amber-500' : 'bg-slate-200'}`} />
+
+                              {/* Step 2: In progress */}
+                              <div className="flex items-center gap-1">
+                                <div className={`h-4.5 w-4.5 rounded-full flex items-center justify-center text-[9px] font-black transition-colors ${
+                                  isStep2 ? 'bg-amber-500 text-white shadow-2xs' : 'bg-slate-100 text-slate-400'
+                                }`} title="ขั้นตอนที่ 2: กำลังทำ">
+                                  {isStep2 ? <Check className="h-2.5 w-2.5 stroke-[3.5]" /> : '2'}
+                                </div>
+                                <span className={`text-[9px] font-black ${isStep2 ? 'text-amber-600' : 'text-slate-400'}`}>2.กำลังทำ</span>
+                              </div>
+
+                              <div className={`w-3.5 h-[2px] transition-colors ${isStep3 ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+
+                              {/* Step 3: Complete */}
+                              <div className="flex items-center gap-1">
+                                <div className={`h-4.5 w-4.5 rounded-full flex items-center justify-center text-[9px] font-black transition-colors ${
+                                  isStep3 ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-400'
+                                }`} title="ขั้นตอนที่ 3: เสร็จสมบูรณ์">
+                                  {isStep3 ? <Check className="h-2.5 w-2.5 stroke-[3.5]" /> : '3'}
+                                </div>
+                                <span className={`text-[9px] font-black ${isStep3 ? 'text-emerald-700' : 'text-slate-400'}`}>3.สำเร็จ</span>
+                              </div>
+                            </div>
+
                           </div>
-                        ))}
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Right Column: Summary text, Supervisor comments, Actions */}
+                <div className="xl:w-76 xl:border-l border-slate-100 xl:pl-4 flex flex-col justify-between gap-3 shrink-0">
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                      📝 บันทึกสรุปความคืบหน้าประจำวัน
+                    </span>
+                    <p 
+                      className="text-[11px] font-mono leading-relaxed text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-150 p-2 rounded-lg cursor-help line-clamp-2 hover:line-clamp-none transition-all duration-300"
+                      title="ชี้/คลิกเพื่อขยายข้อความทั้งหมด"
+                    >
+                      {rep.jobsDetail}
+                    </p>
+
+                    {rep.reviewComment && (
+                      <div className="bg-indigo-50/40 border border-indigo-100/70 p-2 rounded-lg text-[11px] leading-normal space-y-0.5">
+                        <span className="font-extrabold text-indigo-800 block">คอมเมนต์ผู้ควบคุม:</span>
+                        <p className="text-indigo-950 italic line-clamp-2">"{rep.reviewComment}"</p>
                       </div>
                     )}
-
-                    {/* Display Auto compiled output texts */}
-                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl mt-3 text-xs leading-relaxed text-slate-600 font-mono whitespace-pre-wrap">
-                      <span className="text-[10px] font-black text-indigo-600 uppercase font-sans block mb-1">
-                        📝 ข้อสรุปเนื้อความรวมในรายงาน:
-                      </span>
-                      {rep.jobsDetail}
-                    </div>
                   </div>
 
-                  {/* Right (4/12): Supervisor Action and Verification comments */}
-                  <div className="lg:col-span-4 bg-slate-50 border border-slate-200/60 rounded-xl p-4 flex flex-col justify-between gap-4">
-                    <div className="space-y-3">
-                      <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
-                        <MessageSquare className="h-3.5 w-3.5 text-indigo-500" />
-                        ความคิดเห็น & ตรวจทานรีวิว
-                      </span>
-
-                      {rep.reviewComment ? (
-                        <div className="bg-indigo-50/40 border border-indigo-100 p-3 rounded-lg text-xs leading-relaxed">
-                          <p className="font-extrabold text-indigo-800">ความคิดเห็นผู้ควบคุมงาน:</p>
-                          <p className="text-indigo-950 mt-1 italic">"{rep.reviewComment}"</p>
-                          <p className="text-[10px] text-indigo-400 text-right mt-1.5 font-bold">
-                            ลงชื่อ: {rep.reviewedBy || 'แอดมิน'}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="text-[11px] text-slate-400 italic">
-                          ยังไม่มีความคิดเห็นหรือประเมินผลสำหรับรายงานของพนักงานท่านนี้ในวันนี้
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col gap-2 pt-3 border-t border-slate-200">
+                  <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
+                    <div className="flex gap-2">
                       <button
                         onClick={() => handleOpenReview(rep)}
-                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-xs cursor-pointer"
+                        className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl transition-all shadow-2xs cursor-pointer active:scale-95"
                         id={`btn-review-${rep.id}`}
                       >
                         <ThumbsUp className="h-3.5 w-3.5" />
-                        เขียนรีวิว & ประเมินผลงาน
+                        <span>รีวิว & ประเมิน</span>
                       </button>
 
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handlePrintOrDownloadPDF(rep)}
-                          className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-600 transition-colors cursor-pointer"
-                          title="สั่งพิมพ์หรือดาวน์โหลด PDF สรุปใบงานของวันนี้"
-                        >
-                          <Printer className="h-3.5 w-3.5" />
-                          พิมพ์รายงาน PDF
-                        </button>
+                      <button
+                        onClick={() => handlePrintOrDownloadPDF(rep)}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 transition-colors cursor-pointer"
+                        title="สั่งพิมพ์รายงาน PDF"
+                      >
+                        <Printer className="h-3.5 w-3.5" />
+                      </button>
 
-                        {rep.isReal && (
-                          <button
-                            onClick={() => {
-                              if (confirm('คุณแน่ใจหรือไม่ว่าต้องการรีเซ็ตผลรีวิวของวันดังกล่าวกลับไปเป็นแบบร่างเริ่มต้น?')) {
-                                onDeleteDailyReport(rep.id);
-                              }
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-100 transition-colors cursor-pointer"
-                            title="รีเซ็ตผลรีวิวรายงานนี้"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
+                      {rep.isReal && (
+                        <button
+                          onClick={() => {
+                            if (confirm('คุณแน่ใจหรือไม่ว่าต้องการรีเซ็ตผลรีวิวของวันดังกล่าวกลับไปเป็นแบบร่างเริ่มต้น?')) {
+                              onDeleteDailyReport(rep.id);
+                            }
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-slate-150 hover:border-rose-100 transition-colors cursor-pointer"
+                          title="รีเซ็ตรายงาน"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
-
                 </div>
 
               </div>

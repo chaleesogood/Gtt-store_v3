@@ -29,7 +29,7 @@ import {
   Truck
 } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, cleanUndefined } from '../firebase';
 
 interface ProjectBomViewProps {
   products: Product[];
@@ -386,7 +386,7 @@ export default function ProjectBomView({ products, boms, categories, addToast }:
 
     try {
       // 1. Create Purchase Request Document
-      await setDoc(doc(db, 'orders', orderId), newOrder);
+      await setDoc(doc(db, 'orders', orderId), cleanUndefined(newOrder));
       
       // 2. Automatically Link newly created PR No to BOM item
       const updatedItems = [...activeBom.items];
@@ -485,7 +485,7 @@ export default function ProjectBomView({ products, boms, categories, addToast }:
 
             const actId = `act-${Math.random().toString(36).substring(2, 9)}`;
             const actRef = doc(db, 'activities', actId);
-            await setDoc(actRef, {
+            await setDoc(actRef, cleanUndefined({
               id: actId,
               productId: viewingOrder.productId,
               productName: currentProd.name,
@@ -496,7 +496,7 @@ export default function ProjectBomView({ products, boms, categories, addToast }:
               reason: `นำเข้าพัสดุจากระบบติดตาม (ใบสั่งซื้อ: ${viewingOrder.id})`,
               createdAt: nowStr,
               creatorEmail: localStorage.getItem('admin_email') || 'system'
-            });
+            }));
           }
         }
       }
@@ -610,7 +610,7 @@ export default function ProjectBomView({ products, boms, categories, addToast }:
     };
 
     try {
-      await setDoc(doc(db, 'boms', newId), newBom);
+      await setDoc(doc(db, 'boms', newId), cleanUndefined(newBom));
       addToast('success', 'สร้างใบงาน BOM สำเร็จ', `สร้างใบงาน "${newBom.name}" เรียบร้อยแล้ว`);
       
       setNewBomName('');
@@ -699,7 +699,7 @@ export default function ProjectBomView({ products, boms, categories, addToast }:
         updatedAt: nowStr
       };
 
-      await setDoc(doc(db, 'boms', newId), duplicatedBom);
+      await setDoc(doc(db, 'boms', newId), cleanUndefined(duplicatedBom));
       addToast('success', 'ทำสำเนา BOM สำเร็จ', `สร้างสำเนาใบงานใหม่ในชื่อ "${duplicatedBom.name}" สำเร็จเรียบร้อย`);
       setSelectedBom(duplicatedBom);
     } catch (err: any) {

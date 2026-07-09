@@ -5,7 +5,7 @@ import Toast, { ToastMessage } from './components/Toast';
 import DashboardView from './components/DashboardView';
 import ProductListView from './components/ProductListView';
 import ActivityLogView from './components/ActivityLogView';
-import BomProcurementView from './components/BomProcurementView';
+import ProjectBomView from './components/ProjectBomView';
 import ReportsView from './components/ReportsView';
 import JobAssignmentView from './components/JobAssignmentView';
 import DailyReportView from './components/DailyReportView';
@@ -13,7 +13,7 @@ import Logo from './components/Logo';
 
 import { LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, cleanUndefined } from './firebase';
 
 export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -48,9 +48,9 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as Product);
       });
       if (list.length === 0) {
-        // Seeding initial products
+                // Seeding initial products
         INITIAL_PRODUCTS.forEach((prod) => {
-          setDoc(doc(db, 'products', prod.id), prod).catch((err) => console.error("Seeding error:", err));
+          setDoc(doc(db, 'products', prod.id), cleanUndefined(prod)).catch((err) => console.error("Seeding error:", err));
         });
         setProducts(INITIAL_PRODUCTS);
         localStorage.setItem('stock_manager_products', JSON.stringify(INITIAL_PRODUCTS));
@@ -78,9 +78,9 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as Category);
       });
       if (list.length === 0) {
-        // Seeding initial categories
+                // Seeding initial categories
         INITIAL_CATEGORIES.forEach((cat) => {
-          setDoc(doc(db, 'categories', cat.id), cat).catch((err) => console.error("Seeding error:", err));
+          setDoc(doc(db, 'categories', cat.id), cleanUndefined(cat)).catch((err) => console.error("Seeding error:", err));
         });
         setCategories(INITIAL_CATEGORIES);
         localStorage.setItem('stock_manager_categories', JSON.stringify(INITIAL_CATEGORIES));
@@ -126,8 +126,8 @@ export default function App() {
           color: defaultCat?.color || fallbackColor,
         };
         
-        try {
-          await setDoc(doc(db, 'categories', catId), newCat);
+                try {
+          await setDoc(doc(db, 'categories', catId), cleanUndefined(newCat));
           console.log(`Auto-created missing category document in Firestore: ${catId}`);
         } catch (err) {
           console.error("Auto-create category error:", err);
@@ -145,9 +145,9 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as StockActivity);
       });
       if (list.length === 0) {
-        // Seeding initial activities
+                // Seeding initial activities
         INITIAL_ACTIVITIES.forEach((act) => {
-          setDoc(doc(db, 'activities', act.id), act).catch((err) => console.error("Seeding error:", err));
+          setDoc(doc(db, 'activities', act.id), cleanUndefined(act)).catch((err) => console.error("Seeding error:", err));
         });
         setActivities(INITIAL_ACTIVITIES);
         localStorage.setItem('stock_manager_activities', JSON.stringify(INITIAL_ACTIVITIES));
@@ -320,8 +320,8 @@ export default function App() {
     };
 
     try {
-      await setDoc(doc(db, 'products', product.id), product);
-      await setDoc(doc(db, 'activities', activity.id), activity);
+      await setDoc(doc(db, 'products', product.id), cleanUndefined(product));
+      await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
       addToast('success', 'ลงทะเบียนสินค้าเรียบร้อย', `สินค้า "${product.name}" ได้รับการเพิ่มในสต็อกแล้ว`);
     } catch (error: any) {
       console.error(error);
@@ -356,7 +356,7 @@ export default function App() {
           reason: `แก้ไขราคาทุนจาก ฿${p.costPrice} เป็น ฿${updatedFields.costPrice}`,
           timestamp: new Date().toISOString(),
         };
-        await setDoc(doc(db, 'activities', activity.id), activity);
+        await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
       }
 
       addToast('success', 'บันทึกความเปลี่ยนแปลงแล้ว', 'แก้ไขข้อมูลรายละเอียดสินค้าเรียบร้อย');
@@ -386,7 +386,7 @@ export default function App() {
           reason: 'ลบรายการสินค้าถาวรออกจากระบบคลังสินค้า',
           timestamp: new Date().toISOString(),
         };
-        await setDoc(doc(db, 'activities', activity.id), activity);
+        await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
 
         addToast('info', 'นำสินค้าออกจากระบบ', `ลบ "${productToDelete.name}" เรียบร้อยแล้ว`);
       } catch (error: any) {
@@ -423,7 +423,7 @@ export default function App() {
         reason: reason,
         timestamp: new Date().toISOString(),
       };
-      await setDoc(doc(db, 'activities', activity.id), activity);
+      await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
 
       // Trigger automated real-time notifications on threshold breaches!
       if (newQty === 0) {
@@ -475,7 +475,7 @@ export default function App() {
     localStorage.setItem('stock_manager_categories', JSON.stringify(updatedCategories));
 
     try {
-      await setDoc(doc(db, 'categories', category.id), category);
+      await setDoc(doc(db, 'categories', category.id), cleanUndefined(category));
       addToast('success', 'เพิ่มหมวดหมู่ใหม่สำเร็จ', `เพิ่มกลุ่มสินค้า "${category.name}" แล้ว`);
     } catch (error: any) {
       console.error(error);
@@ -572,7 +572,7 @@ export default function App() {
     localStorage.setItem('stock_manager_jobs_list', JSON.stringify(updatedJobs));
 
     try {
-      await setDoc(doc(db, 'jobs', job.id), job);
+      await setDoc(doc(db, 'jobs', job.id), cleanUndefined(job));
       addToast('success', 'บันทึกสั่งงานสำเร็จ', `งานหมายเลข ${job.jobNo} มอดูล "${job.module}" ได้รับการบันทึกแล้ว`);
     } catch (error: any) {
       console.error(error);
@@ -641,7 +641,7 @@ export default function App() {
     localStorage.setItem('stock_manager_employees_list', JSON.stringify(updatedEmployees));
 
     try {
-      await setDoc(doc(db, 'employees', emp.id), emp);
+      await setDoc(doc(db, 'employees', emp.id), cleanUndefined(emp));
       addToast('success', 'เพิ่มพนักงานสำเร็จ', `พนักงาน "${emp.name}" ถูกเพิ่มเข้าสู่ระบบแล้ว`);
     } catch (error: any) {
       console.error(error);
@@ -706,7 +706,7 @@ export default function App() {
     localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(updatedProjs));
 
     try {
-      await setDoc(doc(db, 'jobProjects', proj.id), proj);
+      await setDoc(doc(db, 'jobProjects', proj.id), cleanUndefined(proj));
       addToast('success', 'เพิ่มโปรเจกต์สำเร็จ', `หมายเลขงาน ${proj.jobNo} ของลูกค้า "${proj.customer}" ถูกบันทึกแล้ว`);
     } catch (error: any) {
       console.error(error);
@@ -772,7 +772,7 @@ export default function App() {
     localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(updatedReports));
 
     try {
-      await setDoc(doc(db, 'dailyReports', report.id), report);
+      await setDoc(doc(db, 'dailyReports', report.id), cleanUndefined(report));
       addToast('success', 'บันทึกรายงานประจำวันแล้ว', `รายงานวันที่ ${report.date} ของ "${report.employeeName}" ถูกบันทึกเรียบร้อย`);
     } catch (error: any) {
       console.error(error);
@@ -880,13 +880,12 @@ export default function App() {
         return <ActivityLogView activities={activities} onClearLogs={handleClearLogs} />;
       case 'projects_bom':
         return (
-          <BomProcurementView
+          <ProjectBomView
             products={products}
             boms={boms}
             projects={projects}
             categories={categories}
             addToast={addToast}
-            onAdjustStock={handleAdjustStock}
           />
         );
       case 'reports':

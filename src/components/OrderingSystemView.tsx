@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product, ProductOrder, StockActivity } from '../types';
 import { collection, onSnapshot, query, doc, setDoc, updateDoc, deleteDoc, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, cleanUndefined } from '../firebase';
 import { 
   ShoppingCart, 
   Truck, 
@@ -246,7 +246,7 @@ export default function OrderingSystemView({
 
     const path = `orders/${orderId}`;
     try {
-      await setDoc(doc(db, 'orders', orderId), newOrder);
+      await setDoc(doc(db, 'orders', orderId), cleanUndefined(newOrder));
       addToast('success', 'สร้างใบขอสั่งซื้อสำเร็จ', `บันทึกคำสั่งซื้อ "${orderTitle}" เรียบร้อยแล้ว`);
       
       // Reset form

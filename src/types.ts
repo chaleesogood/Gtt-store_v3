@@ -140,6 +140,7 @@ export interface JobProject {
   customer: string; // ลูกค้า (Customer)
   projectName: string; // ชื่อโครงการ
   createdAt: string;
+  modules?: string[]; // โมดูลงานประจำโปรเจกต์
 }
 
 export interface DailyReport {
