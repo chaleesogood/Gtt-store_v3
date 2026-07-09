@@ -120,6 +120,7 @@ export interface Job {
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'; // สถานะงาน
   priority: 'low' | 'medium' | 'high'; // ระดับความสำคัญ
   targetDate?: string; // กำหนดเสร็จ (YYYY-MM-DD)
+  imageUrl?: string; // รูปงานเสร็จสิ้น/ความคืบหน้า
   createdAt: string;
   updatedAt: string;
 }

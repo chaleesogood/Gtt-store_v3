@@ -25,7 +25,10 @@ import {
   ChevronRight,
   UserCheck,
   UserPlus,
-  Compass
+  Compass,
+  Camera,
+  Image as ImageIcon,
+  Eye
 } from 'lucide-react';
 
 interface JobAssignmentViewProps {
@@ -84,6 +87,8 @@ export default function JobAssignmentView({
   const [taskStatus, setTaskStatus] = useState<Job['status']>('pending');
   const [taskPriority, setTaskPriority] = useState<Job['priority']>('medium');
   const [taskTargetDate, setTaskTargetDate] = useState('');
+  const [taskImageUrl, setTaskImageUrl] = useState('');
+  const [activeImagePreview, setActiveImagePreview] = useState<string | null>(null);
 
   // -------------------- STATE FOR EMPLOYEES TAB --------------------
   const [empSearch, setEmpSearch] = useState('');
@@ -133,7 +138,8 @@ export default function JobAssignmentView({
       description: taskDescription.trim(),
       status: taskStatus,
       priority: taskPriority,
-      targetDate: taskTargetDate || undefined
+      targetDate: taskTargetDate || undefined,
+      imageUrl: taskImageUrl || undefined
     });
 
     setIsTaskAddModalOpen(false);
@@ -151,7 +157,8 @@ export default function JobAssignmentView({
       description: taskDescription.trim(),
       status: taskStatus,
       priority: taskPriority,
-      targetDate: taskTargetDate || undefined
+      targetDate: taskTargetDate || undefined,
+      imageUrl: taskImageUrl || undefined
     });
 
     setIsTaskEditModalOpen(false);
@@ -166,6 +173,7 @@ export default function JobAssignmentView({
     setTaskDescription('');
     setTaskStatus('pending');
     setTaskPriority('medium');
+    setTaskImageUrl('');
     
     const oneWeekFromNow = new Date();
     oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 7);
@@ -274,6 +282,7 @@ export default function JobAssignmentView({
     setTaskStatus(task.status);
     setTaskPriority(task.priority);
     setTaskTargetDate(task.targetDate || '');
+    setTaskImageUrl(task.imageUrl || '');
     setIsTaskEditModalOpen(true);
   };
 
@@ -462,7 +471,7 @@ export default function JobAssignmentView({
                 <Play className="h-5 w-5 animate-pulse" />
               </div>
               <div>
-                <span className="text-[10px] font-bold text-slate-400 block font-sans">กำลังทำอยู่</span>
+                <span className="text-[10px] font-bold text-slate-400 block font-sans">กำลังทำ</span>
                 <span className="text-lg font-black text-amber-600 font-mono block leading-none mt-1">{jobs.filter(j => j.status === 'in_progress').length} <span className="text-[10px] text-slate-400 font-sans">งาน</span></span>
               </div>
             </div>
@@ -472,7 +481,7 @@ export default function JobAssignmentView({
                 <CheckCircle2 className="h-5 w-5" />
               </div>
               <div>
-                <span className="text-[10px] font-bold text-slate-400 block font-sans">เสร็จสิ้นสมบูรณ์</span>
+                <span className="text-[10px] font-bold text-slate-400 block font-sans">จบงาน (สำเร็จ)</span>
                 <span className="text-lg font-black text-emerald-600 font-mono block leading-none mt-1">{completedTasksCount} <span className="text-[10px] text-slate-400 font-sans">งาน</span></span>
               </div>
             </div>
@@ -482,7 +491,7 @@ export default function JobAssignmentView({
                 <Clock className="h-5 w-5" />
               </div>
               <div>
-                <span className="text-[10px] font-bold text-slate-400 block font-sans">รอดำเนินการ</span>
+                <span className="text-[10px] font-bold text-slate-400 block font-sans">รับงาน (รอดำเนินการ)</span>
                 <span className="text-lg font-black text-slate-700 font-mono block leading-none mt-1">{jobs.filter(j => j.status === 'pending').length} <span className="text-[10px] text-slate-400 font-sans">งาน</span></span>
               </div>
             </div>
@@ -515,10 +524,10 @@ export default function JobAssignmentView({
                   className="bg-transparent border-0 text-[10px] font-extrabold text-slate-700 focus:ring-0 focus:outline-hidden cursor-pointer"
                 >
                   <option value="all">ทั้งหมด (All)</option>
-                  <option value="pending">รอดำเนินการ</option>
-                  <option value="in_progress">กำลังดำเนินการ</option>
-                  <option value="completed">เสร็จสิ้น</option>
-                  <option value="cancelled">ยกเลิก</option>
+                  <option value="pending">รับงาน (Pending)</option>
+                  <option value="in_progress">กำลังทำ (In Progress)</option>
+                  <option value="completed">จบงาน (Completed)</option>
+                  <option value="cancelled">ยกเลิก (Cancelled)</option>
                 </select>
               </div>
 
@@ -595,7 +604,7 @@ export default function JobAssignmentView({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2.5">
               {filteredTasks.map(task => {
                 const isOverdue = 
                   task.status !== 'completed' && 
@@ -609,159 +618,216 @@ export default function JobAssignmentView({
                 return (
                   <div 
                     key={task.id}
-                    className={`bg-white rounded-2xl border shadow-xs p-5 transition-all flex flex-col justify-between group relative overflow-hidden ${
-                      isOverdue ? 'border-rose-300 bg-rose-50/5' : 'border-slate-200/80 hover:border-slate-300 hover:shadow-md'
+                    className={`bg-white rounded-xl border p-3 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-3 relative overflow-hidden group hover:shadow-xs ${
+                      isOverdue ? 'border-rose-300 bg-rose-50/5' : 'border-slate-200/80 hover:border-slate-300'
                     }`}
                   >
                     {/* Urgency side indicator */}
-                    <div className={`absolute top-0 left-0 bottom-0 w-1.5 ${
+                    <div className={`absolute top-0 left-0 bottom-0 w-1 ${
                       task.priority === 'high' ? 'bg-rose-500' : task.priority === 'medium' ? 'bg-indigo-400' : 'bg-slate-300'
                     }`} />
 
-                    <div>
-                      {/* Job Header */}
-                      <div className="flex items-start justify-between gap-3 mb-3 pl-2">
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-[11px] font-black text-indigo-700 font-mono tracking-wide px-2 py-0.5 bg-indigo-50 border border-indigo-100 rounded-lg">
-                              {task.jobNo}
-                            </span>
-                            
-                            {/* Smart Display of Customer & Year looked up from Master List */}
-                            {projMeta ? (
-                              <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200/60 max-w-[160px] truncate" title={`ลูกค้า: ${projMeta.customer} | โครงการ: ${projMeta.projectName}`}>
-                                {projMeta.customer} ({projMeta.year})
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-semibold text-amber-500 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-100 italic">
-                                ไม่มีในฐานข้อมูล
-                              </span>
-                            )}
-
-                            {/* Priority */}
-                            {task.priority === 'high' ? (
-                              <span className="text-[10px] font-extrabold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100 flex items-center gap-0.5 font-sans">
-                                <AlertTriangle className="h-3 w-3 inline" /> ด่วน (High)
-                              </span>
-                            ) : task.priority === 'medium' ? (
-                              <span className="text-[10px] font-semibold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-100 font-sans">
-                                กลาง (Med)
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60 font-sans">
-                                ต่ำ (Low)
-                              </span>
-                            )}
-                          </div>
-
-                          <h3 className="text-sm font-black text-slate-800 font-sans group-hover:text-indigo-600 transition-colors mt-2">
-                            {task.module}
-                          </h3>
-                        </div>
-
-                        {/* Status Badge */}
-                        <div className="shrink-0">
-                          {task.status === 'pending' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                              <Clock className="h-3 w-3" /> รอดำเนินการ
-                            </span>
-                          )}
-                          {task.status === 'in_progress' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                              <Play className="h-3 w-3 animate-pulse text-amber-500" /> กำลังทำ
-                            </span>
-                          )}
-                          {task.status === 'completed' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <CheckCircle2 className="h-3 w-3 text-emerald-500" /> เสร็จสิ้น
-                            </span>
-                          )}
-                          {task.status === 'cancelled' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
-                              <X className="h-3 w-3 text-rose-500" /> ยกเลิก
-                            </span>
-                          )}
-                        </div>
+                    {/* Row Content sections */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 min-w-0 pl-1.5">
+                      
+                      {/* Job No & Project Info */}
+                      <div className="flex flex-row sm:flex-col items-center sm:items-start gap-1.5 shrink-0 w-full sm:w-28">
+                        <span className="text-[11px] font-black text-indigo-700 font-mono tracking-wide px-2 py-0.5 bg-indigo-50 border border-indigo-100 rounded-lg shrink-0">
+                          {task.jobNo}
+                        </span>
+                        {projMeta ? (
+                          <span className="text-[10px] font-bold text-slate-500 truncate max-w-[100px] leading-none block" title={`ลูกค้า: ${projMeta.customer} | โครงการ: ${projMeta.projectName}`}>
+                            {projMeta.customer}
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-semibold text-amber-500 italic shrink-0 block leading-none">
+                            ไม่มีในฐานข้อมูล
+                          </span>
+                        )}
                       </div>
 
-                      {/* Description */}
-                      <p className="text-xs text-slate-500 font-sans line-clamp-3 leading-relaxed mb-4 pl-2">
-                        {task.description || 'ไม่มีคำอธิบายงานเฉพาะเจาะจง'}
-                      </p>
-
-                      <div className="border-t border-slate-100 pt-3.5 pl-2 space-y-2 text-[11px]">
-                        
-                        {/* Assignee details */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 text-slate-400 font-sans">
-                            <User className="h-3.5 w-3.5" />
-                            <span>ผู้รับผิดชอบ:</span>
-                          </div>
-                          <div className="text-right">
-                            <span className="font-extrabold text-slate-700 font-sans bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100 block">
-                              {task.assignee}
+                      {/* Module title & short description */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="text-xs font-black text-slate-800 font-sans group-hover:text-indigo-600 transition-colors truncate">
+                            {task.module}
+                          </h4>
+                          {task.priority === 'high' && (
+                            <span className="text-[8px] font-extrabold text-rose-600 bg-rose-50 px-1 py-0.2 rounded-md border border-rose-100 shrink-0">
+                              ด่วน (High)
                             </span>
-                            {empMeta?.role && (
-                              <span className="text-[9px] text-slate-400 font-medium block mt-0.5">
-                                {empMeta.role}
-                              </span>
-                            )}
-                          </div>
+                          )}
                         </div>
+                        <p className="text-[10px] text-slate-400 font-sans truncate mt-0.5" title={task.description}>
+                          {task.description || 'ไม่มีคำอธิบายเพิ่มเติม'}
+                        </p>
+                      </div>
 
-                        {/* Target Date */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 text-slate-400 font-sans">
-                            <Calendar className="h-3.5 w-3.5" />
-                            <span>กำหนดเสร็จ:</span>
-                          </div>
-                          <span className={`font-bold font-mono px-2 py-0.5 rounded-md ${
-                            isOverdue 
-                              ? 'bg-rose-100 text-rose-700 border border-rose-200 font-black animate-pulse' 
-                              : 'bg-slate-50 text-slate-600 border border-slate-100'
-                          }`}>
-                            {task.targetDate ? new Date(task.targetDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : 'ไม่ระบุ'}
-                            {isOverdue && ' (เลยกำหนดแล้ว!)'}
+                      {/* Assignee Information */}
+                      <div className="flex items-center gap-2 shrink-0 w-32">
+                        <div className="h-6 w-6 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[10px] font-black font-mono text-indigo-700 shrink-0">
+                          {task.assignee.slice(0, 2)}
+                        </div>
+                        <div className="truncate text-left">
+                          <span className="text-[11px] font-bold text-slate-700 block truncate leading-none">
+                            {task.assignee}
+                          </span>
+                          <span className="text-[9px] text-slate-400 block mt-0.5 truncate leading-none">
+                            {empMeta?.role || 'ช่างเทคนิค'}
                           </span>
                         </div>
-
                       </div>
+
+                      {/* Target Date */}
+                      <div className="flex items-center gap-1.5 shrink-0 w-28 text-[11px] font-sans">
+                        <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <div className="flex flex-col">
+                          <span className="text-[8px] text-slate-400 font-bold uppercase leading-none">กำหนดเสร็จ</span>
+                          <span className={`font-mono text-[10px] font-bold mt-0.5 leading-none ${
+                            isOverdue ? 'text-rose-600 font-black' : 'text-slate-600'
+                          }`}>
+                            {task.targetDate ? new Date(task.targetDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : 'ไม่ระบุ'}
+                          </span>
+                        </div>
+                      </div>
+
                     </div>
 
-                    {/* Quick controls inside cards */}
-                    <div className="border-t border-slate-100/80 pt-4 mt-4 pl-2 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1">
+                    {/* Status Display, Image thumbnail & Controls */}
+                    <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 pl-1.5 lg:pl-0 border-t sm:border-t-0 border-slate-100 pt-2 sm:pt-0 shrink-0">
+                      
+                      {/* Status badge */}
+                      <div className="shrink-0 w-20">
+                        {task.status === 'pending' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                            รับงาน
+                          </span>
+                        )}
+                        {task.status === 'in_progress' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            กำลังทำ
+                          </span>
+                        )}
+                        {task.status === 'completed' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            จบงาน
+                          </span>
+                        )}
+                        {task.status === 'cancelled' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                            ยกเลิก
+                          </span>
+                        )}
+                      </div>
+
+                      {/* --- Image Section: "รูปงาน เสร็จงาน" --- */}
+                      <div className="flex items-center gap-2 shrink-0 min-w-[120px]">
+                        {task.imageUrl ? (
+                          <div className="flex items-center gap-1.5">
+                            <div 
+                              className="relative group/img h-8 w-11 rounded-lg overflow-hidden border border-slate-200/80 cursor-pointer bg-slate-50 flex items-center justify-center shadow-2xs" 
+                              onClick={() => setActiveImagePreview(task.imageUrl || null)}
+                              title="คลิกเพื่อดูรูปภาพขยายใหญ่"
+                            >
+                              <img src={task.imageUrl} alt="รูปงานเสร็จ" className="h-full w-full object-cover group-hover/img:scale-110 transition-all" referrerPolicy="no-referrer" />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                                <Eye className="h-3 w-3 text-white" />
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (confirm('ต้องการลบรูปงานออกหรือไม่?')) {
+                                  onEditJob(task.id, { imageUrl: '' });
+                                }
+                              }}
+                              className="text-[9px] text-rose-500 hover:text-rose-600 font-bold hover:underline"
+                            >
+                              ลบ
+                            </button>
+                          </div>
+                        ) : (
+                          // No photo: Provide custom upload or sample quick click presets
+                          <div className="flex flex-col gap-1">
+                            <label className="flex items-center justify-center gap-1 cursor-pointer bg-slate-50 hover:bg-slate-100 hover:border-indigo-300 border border-dashed border-slate-200 h-8 px-2 rounded-lg text-[9px] text-slate-400 font-sans transition-all text-center">
+                              <Camera className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                              <span>แนบรูปงาน</span>
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                className="hidden" 
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    onEditJob(task.id, { imageUrl: reader.result as string });
+                                  };
+                                  reader.readAsDataURL(file);
+                                }} 
+                              />
+                            </label>
+                            
+                            {/* Preset Buttons for easy demo in frame */}
+                            <div className="flex gap-1">
+                              <button 
+                                onClick={() => onEditJob(task.id, { imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80' })}
+                                className="text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 rounded border border-slate-200/50"
+                                title="ใช้รูปจำลองตู้คอนโทรล"
+                              >
+                                +ตู้ไฟ
+                              </button>
+                              <button 
+                                onClick={() => onEditJob(task.id, { imageUrl: 'https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80' })}
+                                className="text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 rounded border border-slate-200/50"
+                                title="ใช้รูปจำลองเครื่องจักร"
+                              >
+                                +บิลด์
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Progression actions: รับงาน -> กำลังทำ -> จบงาน */}
+                      <div className="flex items-center gap-1.5 shrink-0">
                         {task.status === 'pending' && (
                           <button
                             onClick={() => onEditJob(task.id, { status: 'in_progress' })}
-                            className="px-2.5 py-1 text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg cursor-pointer transition-all"
+                            className="px-2.5 py-1 text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg cursor-pointer transition-all shrink-0 font-sans"
                           >
-                            เริ่มทำงานนี้
+                            เริ่มทำงาน
                           </button>
                         )}
                         {task.status === 'in_progress' && (
                           <button
-                            onClick={() => onEditJob(task.id, { status: 'completed' })}
-                            className="px-2.5 py-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg cursor-pointer transition-all flex items-center gap-1"
+                            onClick={() => {
+                              onEditJob(task.id, { status: 'completed' });
+                            }}
+                            className="px-2.5 py-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg cursor-pointer transition-all flex items-center gap-1 shrink-0 font-sans"
                           >
-                            <CheckCircle2 className="h-3 w-3" />
-                            ปิดงาน (Complete)
+                            <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
+                            จบงาน
                           </button>
                         )}
-                        {(task.status === 'completed' || task.status === 'cancelled') && (
+                        {task.status === 'completed' && (
                           <button
                             onClick={() => onEditJob(task.id, { status: 'in_progress' })}
-                            className="px-2 py-0.5 text-[9px] font-semibold text-slate-500 hover:text-slate-700 bg-slate-100 rounded-md cursor-pointer transition-all"
+                            className="px-2 py-1 text-[9px] font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer transition-all shrink-0 font-sans"
                           >
-                            ทำซ้ำ / เปิดงานใหม่ (Re-open)
+                            ทำต่อ
                           </button>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1">
+                      {/* Controls */}
+                      <div className="flex items-center gap-0.5 border-l border-slate-100 pl-1.5">
                         <button
                           onClick={() => openTaskEdit(task)}
-                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                          className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                           title="แก้ไขรายละเอียดงาน"
                         >
                           <Edit3 className="h-3.5 w-3.5" />
@@ -772,14 +838,14 @@ export default function JobAssignmentView({
                               onDeleteJob(task.id);
                             }
                           }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           title="ลบงานนี้ออก"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                    </div>
 
+                    </div>
                   </div>
                 );
               })}
@@ -1187,9 +1253,9 @@ export default function JobAssignmentView({
                       onChange={(e) => setTaskStatus(e.target.value as Job['status'])}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden cursor-pointer"
                     >
-                      <option value="pending">รอดำเนินการ (Pending)</option>
-                      <option value="in_progress">กำลังดำเนินการ (In Progress)</option>
-                      <option value="completed">เสร็จสิ้น (Completed)</option>
+                      <option value="pending">รับงาน (Pending)</option>
+                      <option value="in_progress">กำลังทำ (In Progress)</option>
+                      <option value="completed">จบงาน (Completed)</option>
                     </select>
                   </div>
                 </div>
@@ -1261,6 +1327,56 @@ export default function JobAssignmentView({
                     placeholder="ใส่คำอธิบายเพิ่มเติม เช่น พิกัดตู้, อ้างอิงพาร์ทนัมเบอร์แบบวาด, ดึงสายไฟยี่ห้อเฉพาะ..."
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden"
                   />
+                </div>
+
+                {/* Image Section in Add Modal */}
+                <div className="space-y-1.5 p-3.5 bg-slate-50 rounded-xl border border-slate-200/60">
+                  <span className="text-[10px] font-extrabold text-slate-500 font-sans block">แนบรูปภาพผลงาน / หลักฐานเสร็จงาน</span>
+                  
+                  <div className="flex gap-3 items-center mt-1">
+                    {taskImageUrl ? (
+                      <div className="relative h-14 w-20 rounded-lg overflow-hidden border border-slate-300 shadow-xs bg-white flex items-center justify-center group/addimg shrink-0">
+                        <img src={taskImageUrl} alt="Preview" className="h-full w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setTaskImageUrl('')}
+                          className="absolute inset-0 bg-black/60 opacity-0 group-hover/addimg:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold font-sans"
+                        >
+                          ลบออก
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center h-14 w-20 bg-white hover:bg-slate-100 border border-dashed border-slate-300 rounded-lg cursor-pointer shrink-0 transition-colors">
+                        <Camera className="h-4 w-4 text-indigo-500" />
+                        <span className="text-[8px] text-slate-400 mt-1 font-sans">อัปโหลดรูป</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setTaskImageUrl(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                    )}
+
+                    <div className="flex-1 space-y-1">
+                      <input
+                        type="text"
+                        value={taskImageUrl}
+                        onChange={(e) => setTaskImageUrl(e.target.value)}
+                        placeholder="วาง URL รูปภาพผลงานตรงนี้..."
+                        className="w-full px-2 py-1 bg-white border border-slate-200 rounded-md text-[10px] font-mono text-slate-700 focus:outline-hidden"
+                      />
+                      <span className="text-[8px] text-slate-400 block font-sans">อัปโหลดภาพถ่ายจริง หรือ วางลิงก์รูปภาพสกรีนช็อต/งานประกอบ</span>
+                    </div>
+                  </div>
                 </div>
 
               </div>
@@ -1357,9 +1473,9 @@ export default function JobAssignmentView({
                       onChange={(e) => setTaskStatus(e.target.value as Job['status'])}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden cursor-pointer"
                     >
-                      <option value="pending">รอดำเนินการ (Pending)</option>
-                      <option value="in_progress">กำลังดำเนินการ (In Progress)</option>
-                      <option value="completed">เสร็จสิ้น (Completed)</option>
+                      <option value="pending">รับงาน (Pending)</option>
+                      <option value="in_progress">กำลังทำ (In Progress)</option>
+                      <option value="completed">จบงาน (Completed)</option>
                       <option value="cancelled">ยกเลิก (Cancelled)</option>
                     </select>
                   </div>
@@ -1403,6 +1519,56 @@ export default function JobAssignmentView({
                     onChange={(e) => setTaskDescription(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden"
                   />
+                </div>
+
+                {/* Image Section in Edit Modal */}
+                <div className="space-y-1.5 p-3.5 bg-slate-50 rounded-xl border border-slate-200/60">
+                  <span className="text-[10px] font-extrabold text-slate-500 font-sans block">แนบรูปภาพผลงาน / หลักฐานเสร็จงาน</span>
+                  
+                  <div className="flex gap-3 items-center mt-1">
+                    {taskImageUrl ? (
+                      <div className="relative h-14 w-20 rounded-lg overflow-hidden border border-slate-300 shadow-xs bg-white flex items-center justify-center group/editimg shrink-0">
+                        <img src={taskImageUrl} alt="Preview" className="h-full w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setTaskImageUrl('')}
+                          className="absolute inset-0 bg-black/60 opacity-0 group-hover/editimg:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold font-sans"
+                        >
+                          ลบออก
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center h-14 w-20 bg-white hover:bg-slate-100 border border-dashed border-slate-300 rounded-lg cursor-pointer shrink-0 transition-colors">
+                        <Camera className="h-4 w-4 text-indigo-500" />
+                        <span className="text-[8px] text-slate-400 mt-1 font-sans">อัปโหลดรูป</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setTaskImageUrl(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                    )}
+
+                    <div className="flex-1 space-y-1">
+                      <input
+                        type="text"
+                        value={taskImageUrl}
+                        onChange={(e) => setTaskImageUrl(e.target.value)}
+                        placeholder="วาง URL รูปภาพผลงานตรงนี้..."
+                        className="w-full px-2 py-1 bg-white border border-slate-200 rounded-md text-[10px] font-mono text-slate-700 focus:outline-hidden"
+                      />
+                      <span className="text-[8px] text-slate-400 block font-sans">อัปโหลดภาพถ่ายจริง หรือ วางลิงก์รูปภาพสกรีนช็อต/งานประกอบ</span>
+                    </div>
+                  </div>
                 </div>
 
               </div>
@@ -1771,6 +1937,37 @@ export default function JobAssignmentView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- IMAGE LIGHTBOX MODAL -------------------- */}
+      {activeImagePreview && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-md animate-in fade-in duration-250 cursor-zoom-out"
+          onClick={() => setActiveImagePreview(null)}
+        >
+          <button 
+            onClick={() => setActiveImagePreview(null)}
+            className="absolute top-4 right-4 p-2 bg-black/60 hover:bg-black/80 rounded-full text-white cursor-pointer transition-colors"
+            title="ปิดหน้าต่างรูปภาพ"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          
+          <div 
+            className="relative max-w-4xl max-h-[85vh] overflow-hidden rounded-xl bg-black border border-slate-700/50 shadow-2xl animate-in zoom-in-95 duration-200 cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img 
+              src={activeImagePreview} 
+              alt="งานประกอบเสร็จสิ้นขยายใหญ่" 
+              className="max-w-full max-h-[80vh] object-contain block mx-auto"
+              referrerPolicy="no-referrer"
+            />
+            <div className="bg-slate-900/90 border-t border-slate-800 text-center px-4 py-3">
+              <p className="text-xs text-slate-300 font-sans font-semibold">ภาพถ่ายผลงานเสร็จสมบูรณ์ / หลักฐานตรวจสอบหน้าไซต์งาน</p>
+            </div>
           </div>
         </div>
       )}
