@@ -922,7 +922,7 @@ export default function JobAssignmentView({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="flex flex-col gap-2">
               {filteredProjects.map(proj => {
                 // Find how many tasks are tied to this master Job No
                 const associatedTasks = jobs.filter(j => j.jobNo === proj.jobNo);
@@ -931,49 +931,69 @@ export default function JobAssignmentView({
                 return (
                   <div 
                     key={proj.id}
-                    className="bg-white rounded-2xl border border-slate-200/80 hover:border-slate-300 shadow-xs hover:shadow-md p-5 transition-all flex flex-col justify-between"
+                    className="bg-white rounded-xl border border-slate-200/80 hover:border-indigo-200 hover:shadow-xs p-3 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-3 relative pl-5"
                   >
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-black text-indigo-700 font-mono tracking-wide px-2.5 py-1 bg-indigo-50 border border-indigo-100 rounded-xl">
+                    {/* Left colored border decor */}
+                    <div className="absolute top-0 left-0 bottom-0 w-1 bg-indigo-500 rounded-l-xl" />
+
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-grow min-w-0">
+                      
+                      {/* Job Number / ID */}
+                      <div className="shrink-0 w-32">
+                        <span className="text-[11px] font-black text-indigo-700 font-mono tracking-wide px-2.5 py-1 bg-indigo-50 border border-indigo-100 rounded-lg block text-center">
                           {proj.jobNo}
                         </span>
-                        
-                        <span className="text-[10px] font-extrabold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200/60 font-mono">
+                      </div>
+
+                      {/* Year */}
+                      <div className="shrink-0 w-20 sm:text-center">
+                        <span className="text-[10px] font-extrabold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60 font-mono">
                           ปี {proj.year}
                         </span>
                       </div>
 
-                      <h4 className="text-xs font-bold text-slate-400 uppercase font-sans tracking-wider flex items-center gap-1">
-                        <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        ลูกค้า: <span className="text-slate-700 font-black">{proj.customer}</span>
-                      </h4>
-
-                      <p className="text-xs font-extrabold text-slate-800 font-sans mt-2 line-clamp-2 min-h-[2rem]">
-                        {proj.projectName}
-                      </p>
-
-                      {/* Micro Task Stats */}
-                      <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                        <span>จำนวนมอดูลย่อย:</span>
-                        <span className="font-extrabold text-slate-700 font-mono">
-                          {associatedTasks.length > 0 ? (
-                            <span>{completedAssociated}/{associatedTasks.length} สำเร็จ ({Math.round((completedAssociated / associatedTasks.length) * 100)}%)</span>
-                          ) : (
-                            <span className="text-slate-400 italic font-sans font-normal">ไม่มีมอดูลย่อย</span>
-                          )}
+                      {/* Customer Info */}
+                      <div className="shrink-0 w-44 min-w-0">
+                        <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">ลูกค้า / Customer</span>
+                        <span className="text-xs font-black text-slate-700 truncate block mt-0.5">
+                          {proj.customer}
                         </span>
                       </div>
+
+                      {/* Project Name / Description */}
+                      <div className="flex-grow min-w-0">
+                        <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">ชื่อโครงการ / โครงสร้างงาน</span>
+                        <p className="text-xs font-extrabold text-slate-800 font-sans truncate mt-0.5" title={proj.projectName}>
+                          {proj.projectName}
+                        </p>
+                      </div>
+
+                      {/* Module micro stats */}
+                      <div className="shrink-0 w-48 text-left sm:text-right sm:pr-4">
+                        <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">งานย่อยที่มอบหมาย</span>
+                        <div className="mt-0.5">
+                          {associatedTasks.length > 0 ? (
+                            <span className="text-xs font-bold text-slate-700 font-mono">
+                              สำเร็จ {completedAssociated}/{associatedTasks.length} ({Math.round((completedAssociated / associatedTasks.length) * 100)}%)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic font-sans font-normal block mt-0.5">
+                              ไม่มีมอดูลย่อย
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
                     </div>
 
-                    {/* Edit/Delete control panel */}
-                    <div className="mt-4 pt-3 border-t border-slate-100/60 flex justify-end gap-1">
+                    {/* Edit/Delete Controls */}
+                    <div className="shrink-0 flex items-center gap-1 border-t lg:border-t-0 lg:border-l border-slate-100 pt-2 lg:pt-0 lg:pl-3">
                       <button
                         onClick={() => openProjEdit(proj)}
-                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                         title="แก้ไขรายละเอียดโปรเจกต์"
                       >
-                        <Edit3 className="h-3.5 w-3.5" />
+                        <Edit3 className="h-4 w-4" />
                       </button>
                       
                       <button
@@ -986,10 +1006,10 @@ export default function JobAssignmentView({
                             onDeleteJobProject(proj.id);
                           }
                         }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                         title="ลบโปรเจกต์นี้"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
 
@@ -1068,7 +1088,7 @@ export default function JobAssignmentView({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="flex flex-col gap-2">
               {filteredEmployees.map(emp => {
                 // Find jobs currently assigned to this employee
                 const assignedCount = jobs.filter(j => j.assignee === emp.name && (j.status === 'in_progress' || j.status === 'pending')).length;
@@ -1076,53 +1096,71 @@ export default function JobAssignmentView({
                 return (
                   <div 
                     key={emp.id}
-                    className="bg-white rounded-2xl border border-slate-200/80 hover:border-slate-300 shadow-xs hover:shadow-md p-5 transition-all flex flex-col justify-between"
+                    className="bg-white rounded-xl border border-slate-200/80 hover:border-emerald-200 hover:shadow-xs p-2.5 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-3 relative pl-5"
                   >
-                    <div>
-                      {/* Avatar design */}
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="h-10 w-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 text-sm font-black font-mono">
+                    {/* Left colored border decor */}
+                    <div className="absolute top-0 left-0 bottom-0 w-1 bg-emerald-500 rounded-l-xl" />
+
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-grow min-w-0">
+                      
+                      {/* Avatar & Name */}
+                      <div className="flex items-center gap-3 shrink-0 w-56">
+                        <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-black font-mono">
                           {emp.name.slice(3, 5).trim() || emp.name.slice(0, 2)}
                         </div>
-                        <div>
-                          <h4 className="text-xs font-black text-slate-800 font-sans">
+                        <div className="truncate text-left">
+                          <h4 className="text-xs font-black text-slate-800 font-sans truncate leading-none">
                             {emp.name}
                           </h4>
-                          <span className="text-[10px] text-indigo-600 bg-indigo-50/50 px-1.5 py-0.5 rounded-md font-bold mt-0.5 inline-block">
-                            {emp.role || 'ช่างเทคนิคทั่วไป'}
+                          <span className="text-[9px] text-slate-400 block mt-1.5 truncate leading-none">
+                            พนักงาน ID: {emp.id}
                           </span>
                         </div>
                       </div>
 
-                      <div className="space-y-1.5 text-[11px] pt-3 border-t border-slate-100">
-                        {emp.phone && (
-                          <div className="flex items-center gap-2 text-slate-500">
-                            <Phone className="h-3.5 w-3.5 text-slate-400" />
-                            <a href={`tel:${emp.phone}`} className="hover:underline hover:text-indigo-600 font-mono font-bold">
+                      {/* Role / Position */}
+                      <div className="shrink-0 w-48 min-w-0">
+                        <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">ตำแหน่งหน้าที่</span>
+                        <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-100 font-bold px-2 py-0.5 rounded-md inline-block mt-1 truncate max-w-full">
+                          {emp.role || 'ช่างเทคนิคทั่วไป'}
+                        </span>
+                      </div>
+
+                      {/* Contact phone */}
+                      <div className="shrink-0 w-44 min-w-0">
+                        <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">เบอร์โทรศัพท์</span>
+                        {emp.phone ? (
+                          <div className="flex items-center gap-1.5 text-slate-600 mt-1">
+                            <Phone className="h-3 w-3 text-slate-400" />
+                            <a href={`tel:${emp.phone}`} className="text-xs hover:underline hover:text-indigo-600 font-mono font-bold">
                               {emp.phone}
                             </a>
                           </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic block mt-1">ไม่ได้ระบุเบอร์โทร</span>
                         )}
-                        <div className="flex items-center justify-between text-slate-500">
-                          <span className="flex items-center gap-2">
-                            <Activity className="h-3.5 w-3.5 text-slate-400" />
-                            <span>งานค้างที่รับผิดชอบ:</span>
-                          </span>
-                          <span className={`font-black font-mono ${assignedCount > 0 ? 'text-amber-600 bg-amber-50 px-1.5 rounded-md border border-amber-100' : 'text-slate-400'}`}>
+                      </div>
+
+                      {/* Unresolved assigned tasks */}
+                      <div className="flex-grow text-left sm:text-right sm:pr-4">
+                        <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">งานค้างที่รับผิดชอบ</span>
+                        <div className="mt-1">
+                          <span className={`text-xs font-black font-mono px-2 py-0.5 rounded-md ${assignedCount > 0 ? 'text-amber-700 bg-amber-50 border border-amber-150' : 'text-slate-400 bg-slate-50'}`}>
                             {assignedCount} งาน
                           </span>
                         </div>
                       </div>
+
                     </div>
 
-                    {/* Controls */}
-                    <div className="mt-4 pt-3 border-t border-slate-100/60 flex justify-end gap-1">
+                    {/* Edit/Delete control panel */}
+                    <div className="shrink-0 flex items-center gap-1 border-t lg:border-t-0 lg:border-l border-slate-100 pt-2 lg:pt-0 lg:pl-3">
                       <button
                         onClick={() => openEmpEdit(emp)}
-                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                         title="แก้ไขข้อมูลพนักงาน"
                       >
-                        <Edit3 className="h-3.5 w-3.5" />
+                        <Edit3 className="h-4 w-4" />
                       </button>
 
                       <button
@@ -1135,10 +1173,10 @@ export default function JobAssignmentView({
                             onDeleteEmployee(emp.id);
                           }
                         }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                         title="ลบพนักงานออกจากระบบ"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
 
