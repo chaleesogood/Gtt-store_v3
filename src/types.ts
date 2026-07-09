@@ -142,4 +142,20 @@ export interface JobProject {
   createdAt: string;
 }
 
+export interface DailyReport {
+  id: string;
+  employeeName: string;
+  date: string; // YYYY-MM-DD
+  reportTitle: string; // หัวข้อรายงานประจำวัน
+  jobsDetail: string; // รายละเอียดความคืบหน้างาน/ชิ้นงานที่ปฏิบัติ
+  problems?: string; // ปัญหา / อุปสรรคที่พบ
+  remark?: string; // หมายเหตุ/คำร้องขอเพิ่มเติม
+  hoursWorked?: number; // จำนวนชั่วโมงปฏิบัติงาน
+  status: 'pending_review' | 'reviewed'; // สถานะตรวจทานการรีวิว
+  reviewedBy?: string; // ผู้อนุมัติ/ผู้ตรวจสอบรีวิว
+  reviewComment?: string; // ความคิดเห็นเพิ่มเติมหลังตรวจสอบ
+  createdAt: string;
+  updatedAt: string;
+}
+
 

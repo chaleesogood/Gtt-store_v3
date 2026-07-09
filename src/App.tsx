@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject } from './types';
+import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_ACTIVITIES } from './initialData';
 import Toast, { ToastMessage } from './components/Toast';
 import DashboardView from './components/DashboardView';
@@ -8,9 +8,10 @@ import ActivityLogView from './components/ActivityLogView';
 import BomProcurementView from './components/BomProcurementView';
 import ReportsView from './components/ReportsView';
 import JobAssignmentView from './components/JobAssignmentView';
+import DailyReportView from './components/DailyReportView';
 import Logo from './components/Logo';
 
-import { LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase } from 'lucide-react';
+import { LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -24,6 +25,7 @@ export default function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [jobProjects, setJobProjects] = useState<JobProject[]>([]);
+  const [dailyReports, setDailyReports] = useState<DailyReport[]>([]);
 
 
   // Auth / Admin state
@@ -253,6 +255,25 @@ export default function App() {
       console.error("Firestore jobProjects sync error:", error);
       const saved = localStorage.getItem('stock_manager_job_projects_list');
       setJobProjects(saved ? JSON.parse(saved) : []);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync daily reports from Firestore
+  useEffect(() => {
+    const q = query(collection(db, 'dailyReports'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: DailyReport[] = [];
+      snapshot.forEach((document) => {
+        list.push({ id: document.id, ...document.data() } as DailyReport);
+      });
+      list.sort((a, b) => b.date.localeCompare(a.date)); // Sort by date descending
+      setDailyReports(list);
+      localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(list));
+    }, (error) => {
+      console.error("Firestore dailyReports sync error:", error);
+      const saved = localStorage.getItem('stock_manager_daily_reports_list');
+      setDailyReports(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
   }, []);
@@ -735,6 +756,73 @@ export default function App() {
     }
   };
 
+  // -------------------- DAILY REPORTS WORKFLOWS --------------------
+
+  const handleAddDailyReport = async (newReportData: Omit<DailyReport, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const reportId = `report-${Math.random().toString(36).substring(2, 9)}`;
+    const report: DailyReport = {
+      ...newReportData,
+      id: reportId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const updatedReports = [report, ...dailyReports];
+    setDailyReports(updatedReports);
+    localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(updatedReports));
+
+    try {
+      await setDoc(doc(db, 'dailyReports', report.id), report);
+      addToast('success', 'บันทึกรายงานประจำวันแล้ว', `รายงานวันที่ ${report.date} ของ "${report.employeeName}" ถูกบันทึกเรียบร้อย`);
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถส่งรายงานประจำวันได้: ${error.message}`);
+    }
+  };
+
+  const handleEditDailyReport = async (id: string, updatedFields: Partial<DailyReport>) => {
+    const updatedReports = dailyReports.map((rep) =>
+      rep.id === id ? { ...rep, ...updatedFields, updatedAt: new Date().toISOString() } : rep
+    );
+    setDailyReports(updatedReports);
+    localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(updatedReports));
+
+    try {
+      const reportRef = doc(db, 'dailyReports', id);
+      const cleanFields: Record<string, any> = {};
+      Object.entries(updatedFields).forEach(([key, val]) => {
+        if (val !== undefined) {
+          cleanFields[key] = val;
+        }
+      });
+      cleanFields.updatedAt = new Date().toISOString();
+      await updateDoc(reportRef, cleanFields);
+      addToast('success', 'ปรับปรุงรายงานเรียบร้อย', 'ข้อมูลรีวิวและรายละเอียดรายงานประจำวันได้รับการบันทึกแล้ว');
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถแก้ไขรายงานประจำวันได้: ${error.message}`);
+    }
+  };
+
+  const handleDeleteDailyReport = async (id: string) => {
+    const reportToDelete = dailyReports.find((r) => r.id === id);
+    if (!reportToDelete) return;
+
+    const updatedReports = dailyReports.filter((rep) => rep.id !== id);
+    setDailyReports(updatedReports);
+    localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(updatedReports));
+
+    try {
+      await deleteDoc(doc(db, 'dailyReports', id));
+      addToast('info', 'ลบรายงานประจำวันสำเร็จ', `ลบรายงานของ "${reportToDelete.employeeName}" เรียบร้อยแล้ว`);
+    } catch (error: any) {
+      console.error(error);
+      setDailyReports(dailyReports);
+      localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(dailyReports));
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถลบรายงานประจำวันได้: ${error.message}`);
+    }
+  };
+
   const handleClearLogs = async () => {
     if (confirm('คุณแน่ใจหรือไม่ที่ต้องการจะเคลียร์ประวัติการทำรายการในอดีตทั้งหมด? (ประวัติจะหายไปถาวร)')) {
       try {
@@ -823,6 +911,17 @@ export default function App() {
             onAddJobProject={handleAddJobProject}
             onEditJobProject={handleEditJobProject}
             onDeleteJobProject={handleDeleteJobProject}
+          />
+        );
+      case 'daily_reports':
+        return (
+          <DailyReportView
+            dailyReports={dailyReports}
+            onAddDailyReport={handleAddDailyReport}
+            onEditDailyReport={handleEditDailyReport}
+            onDeleteDailyReport={handleDeleteDailyReport}
+            employees={employees}
+            jobs={jobs}
           />
         );
 
@@ -988,6 +1087,18 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => setCurrentTab('daily_reports')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+              currentTab === 'daily_reports'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
+                : 'hover:bg-slate-800/60 hover:text-slate-100 text-slate-400'
+            }`}
+          >
+            <ClipboardList className="h-4.5 w-4.5 flex-shrink-0" />
+            รายงานประจำวัน (Daily Report)
+          </button>
+
+          <button
             onClick={() => setCurrentTab('logs')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
               currentTab === 'logs'
@@ -1094,6 +1205,15 @@ export default function App() {
             >
               <Briefcase className="h-4.5 w-4.5" />
               ระบบสั่งงาน & มอบหมาย
+            </button>
+            <button
+              onClick={() => { setCurrentTab('daily_reports'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
+                currentTab === 'daily_reports' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
+              }`}
+            >
+              <ClipboardList className="h-4.5 w-4.5" />
+              รายงานประจำวัน (Daily Report)
             </button>
             <button
               onClick={() => { setCurrentTab('logs'); setIsMobileMenuOpen(false); }}
