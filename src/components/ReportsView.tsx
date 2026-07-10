@@ -141,7 +141,8 @@ export default function ReportsView({ products, categories, activities }: Report
   // REPORT 1: Stock Report Grouped by Category & Warehouse
   // ==========================================
   const stockByCategory = useMemo(() => {
-    return categories.map(cat => {
+    const sorted = [...categories].sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true, sensitivity: 'base' }));
+    return sorted.map(cat => {
       const catProducts = filteredProducts.filter(p => p.category === cat.id);
       const totalQty = catProducts.reduce((sum, p) => sum + p.quantity, 0);
       const totalValue = catProducts.reduce((sum, p) => sum + p.quantity * p.costPrice, 0);
@@ -469,9 +470,11 @@ export default function ReportsView({ products, categories, activities }: Report
                 id="select-report-category"
               >
                 <option value="all">ทุกกลุ่มสินค้า ({categories.length} กลุ่ม)</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name.split(' (')[0]}</option>
-                ))}
+                {[...categories]
+                  .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true, sensitivity: 'base' }))
+                  .map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name.split(' (')[0]}</option>
+                  ))}
               </select>
             </div>
           </div>

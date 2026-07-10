@@ -125,6 +125,8 @@ export default function ProductListView({
         });
       }
     });
+    // Sort alphabetically and numerically ascending (natural sorting)
+    list.sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true, sensitivity: 'base' }));
     return list;
   }, [categories, products]);
 

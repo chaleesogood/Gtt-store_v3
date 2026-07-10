@@ -35,7 +35,9 @@ export default function DashboardView({
   const totalCount = products.length || 1; // avoid divide by zero
 
   // Category distribution
-  const categoryStats = categories.map((cat) => {
+  const categoryStats = [...categories]
+    .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true, sensitivity: 'base' }))
+    .map((cat) => {
     const catProducts = products.filter((p) => p.category === cat.id);
     const count = catProducts.length;
     const value = catProducts.reduce((sum, p) => sum + p.quantity * p.costPrice, 0);

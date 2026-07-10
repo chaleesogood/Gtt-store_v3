@@ -1025,18 +1025,6 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setCurrentTab('reports')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
-              currentTab === 'reports'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
-                : 'hover:bg-slate-800/60 hover:text-slate-100 text-slate-400'
-            }`}
-          >
-            <BarChart3 className="h-4.5 w-4.5 flex-shrink-0" />
-            รายงาน & วิเคราะห์
-          </button>
-
-          <button
             onClick={() => { setCurrentTab('products'); setStatusFilter('all'); }}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
               currentTab === 'products'
@@ -1143,15 +1131,6 @@ export default function App() {
             >
               <LayoutDashboard className="h-4.5 w-4.5" />
               ภาพรวมระบบ (Dashboard)
-            </button>
-            <button
-              onClick={() => { setCurrentTab('reports'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
-                currentTab === 'reports' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
-              }`}
-            >
-              <BarChart3 className="h-4.5 w-4.5" />
-              รายงาน & วิเคราะห์ (Reports)
             </button>
             <button
               onClick={() => { setCurrentTab('products'); setStatusFilter('all'); setIsMobileMenuOpen(false); }}
