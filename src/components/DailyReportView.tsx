@@ -3,7 +3,7 @@ import { DailyReport, Employee, Job } from '../types';
 import { 
   FileText, Search, CheckCircle, Clock, User, Calendar, 
   AlertCircle, ThumbsUp, Check, Printer, X, ChevronRight, 
-  MessageSquare, Sparkles, ImageIcon
+  MessageSquare, Sparkles, ImageIcon, Filter
 } from 'lucide-react';
 
 interface DailyReportViewProps {
@@ -368,107 +368,101 @@ export default function DailyReportView({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       
       {/* -------------------- TITLE & INFO ROW -------------------- */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
-        <div>
-          <h2 className="text-base font-extrabold text-slate-800 font-sans flex items-center gap-2">
-            <span className="p-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-600 block shrink-0">
-              <Sparkles className="h-5 w-5 animate-pulse" />
-            </span>
-            รายงานความคืบหน้าอัตโนมัติประจำวัน (Daily Automatic Work Reports)
-          </h2>
-          <p className="text-xs text-slate-400 font-sans mt-1">
-            ระบบประมวลผลสรุปความคืบหน้าของพนักงานรายบุคคลอัตโนมัติ โดยสืบค้นจากสถานะใบสั่งงานจริง ณ วันที่เลือก
-          </p>
-        </div>
+      <div className="py-2.5">
+        <h2 className="text-base font-extrabold text-slate-800 font-sans flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-indigo-500 animate-pulse" />
+          รายงานความคืบหน้าอัตโนมัติประจำวัน (Daily Automatic Work Reports)
+        </h2>
+        <p className="text-xs text-slate-400 font-sans mt-0.5">
+          ระบบประมวลผลสรุปความคืบหน้าของพนักงานรายบุคคลอัตโนมัติ โดยสืบค้นจากสถานะใบสั่งงานจริง ณ วันที่เลือก
+        </p>
       </div>
 
       {/* -------------------- STATS BENTO TILES -------------------- */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-slate-200/80 p-4 flex items-center gap-3 shadow-2xs">
-          <div className="h-9 w-9 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-            <User className="h-4.5 w-4.5" />
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 py-1.5 border-b border-slate-100/60">
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 rounded bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+            <User className="h-3 w-3" />
           </div>
-          <div>
-            <span className="text-[10px] text-slate-400 font-bold block uppercase">พนักงานไซต์ทั้งหมด</span>
-            <span className="text-lg font-black font-mono text-slate-800">{employees.length} คน</span>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200/80 p-4 flex items-center gap-3 shadow-2xs">
-          <div className="h-9 w-9 rounded-lg bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 shrink-0">
-            <Clock className="h-4.5 w-4.5" />
-          </div>
-          <div>
-            <span className="text-[10px] text-slate-400 font-bold block uppercase">พนักงานที่ได้รับงานวันนี้</span>
-            <span className="text-lg font-black font-mono text-sky-600">{totalEmployeesWithJobs} คน</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[10px] text-slate-400 font-bold uppercase">พนักงานไซต์ทั้งหมด:</span>
+            <span className="text-xs font-black font-mono text-slate-800">{employees.length} คน</span>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200/80 p-4 flex items-center gap-3 shadow-2xs">
-          <div className="h-9 w-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
-            <CheckCircle className="h-4.5 w-4.5" />
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 rounded bg-sky-50 flex items-center justify-center text-sky-600 shrink-0">
+            <Clock className="h-3 w-3" />
           </div>
-          <div>
-            <span className="text-[10px] text-slate-400 font-bold block uppercase">ตรวจผ่านรีวิวแล้ว</span>
-            <span className="text-lg font-black font-mono text-emerald-600">{reviewedCount} คน</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[10px] text-slate-400 font-bold uppercase">พนักงานที่ได้รับงานวันนี้:</span>
+            <span className="text-xs font-black font-mono text-sky-600">{totalEmployeesWithJobs} คน</span>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200/80 p-4 flex items-center gap-3 shadow-2xs">
-          <div className="h-9 w-9 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 shrink-0">
-            <AlertCircle className="h-4.5 w-4.5" />
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 rounded bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
+            <CheckCircle className="h-3 w-3" />
           </div>
-          <div>
-            <span className="text-[10px] text-slate-400 font-bold block uppercase">รอกลั่นกรองตรวจสอบ</span>
-            <span className="text-lg font-black font-mono text-amber-600">{pendingCount} คน</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[10px] text-slate-400 font-bold uppercase">ตรวจผ่านรีวิวแล้ว:</span>
+            <span className="text-xs font-black font-mono text-emerald-600">{reviewedCount} คน</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 rounded bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+            <AlertCircle className="h-3 w-3" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[10px] text-slate-400 font-bold uppercase">รอกลั่นกรองตรวจสอบ:</span>
+            <span className="text-xs font-black font-mono text-amber-600">{pendingCount} คน</span>
           </div>
         </div>
       </div>
 
       {/* -------------------- DATE FILTER & EMPLOYEE SEARCH -------------------- */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-3xs flex flex-col md:flex-row items-center gap-3">
-        
+      <div className="bg-slate-50/40 p-2 py-1.5 rounded-xl border border-slate-100 shadow-3xs flex flex-wrap items-center gap-3">
         {/* Date Selector */}
-        <div className="w-full md:w-1/3 relative">
-          <span className="absolute left-3 top-3 text-[9px] text-indigo-600 font-black uppercase pointer-events-none">
-            เลือกดูวันที่ (Date)
-          </span>
+        <div className="flex items-center gap-1.5 shrink-0 px-1">
+          <Calendar className="h-3.5 w-3.5 text-slate-400" />
+          <span className="text-[10px] font-bold text-slate-500 font-sans">ดูวันที่:</span>
           <input
             type="date"
             value={selectedReportDate}
             onChange={(e) => setSelectedReportDate(e.target.value)}
-            className="w-full pl-3 pr-2 pt-5 pb-2 text-xs bg-indigo-50/40 hover:bg-indigo-50 focus:bg-white border border-indigo-100 focus:border-indigo-500 rounded-xl focus:outline-hidden transition-all font-mono font-bold text-indigo-950"
+            className="bg-transparent border-0 text-[10px] font-black text-indigo-700 font-mono focus:ring-0 focus:outline-hidden cursor-pointer"
             id="report-date-selector"
           />
         </div>
 
         {/* Employee Search */}
-        <div className="relative w-full md:w-1/3">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
-            <Search className="h-4 w-4" />
-          </span>
+        <div className="relative flex-grow min-w-[150px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
           <input
             type="text"
             value={searchEmployee}
             onChange={(e) => setSearchEmployee(e.target.value)}
             placeholder="ค้นหาชื่อพนักงาน..."
-            className="w-full pl-9 pr-4 py-3.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans"
+            className="w-full pl-8 pr-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-sans text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
           />
         </div>
 
         {/* Status Filter */}
-        <div className="w-full md:w-1/3">
+        <div className="flex items-center gap-1.5 shrink-0 px-1 border-l border-slate-200/60 pl-3">
+          <Filter className="h-3 w-3 text-slate-400" />
+          <span className="text-[10px] font-bold text-slate-500 font-sans">คัดกรอง:</span>
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as any)}
-            className="w-full px-3 py-3.5 text-xs bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-sans font-medium"
+            className="bg-transparent border-0 text-[10px] font-extrabold text-slate-700 focus:ring-0 focus:outline-hidden cursor-pointer"
           >
-            <option value="all">กรองความเห็นรีวิว: ทั้งหมด (All)</option>
-            <option value="pending_review">เฉพาะยังไม่ได้รับการรีวิว (Pending Review)</option>
-            <option value="reviewed">เฉพาะที่อนุมัติรีวิวแล้ว (Reviewed)</option>
+            <option value="all">ทั้งหมด (All)</option>
+            <option value="pending_review">ยังไม่ได้รับการรีวิว (Pending Review)</option>
+            <option value="reviewed">อนุมัติรีวิวแล้ว (Reviewed)</option>
           </select>
         </div>
       </div>
@@ -490,7 +484,7 @@ export default function DailyReportView({
             return (
               <div 
                 key={rep.id}
-                className="bg-white rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-xs p-3.5 transition-all flex flex-col xl:flex-row xl:items-stretch gap-4 shadow-sm"
+                className="hover:bg-slate-50/40 p-2 py-1.5 transition-all border-b border-slate-100 last:border-0 flex flex-col xl:flex-row xl:items-stretch gap-3"
               >
                 {/* 1. Employee Info / Stack Column */}
                 <div className="xl:w-60 xl:border-r border-slate-100 xl:pr-4 flex flex-col justify-between gap-3 shrink-0">
@@ -562,7 +556,7 @@ export default function DailyReportView({
                         return (
                           <div 
                             key={job.id} 
-                            className="bg-slate-50/70 hover:bg-indigo-50/10 border border-slate-200/60 rounded-xl p-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors"
+                            className="hover:bg-slate-50/40 p-1.5 flex flex-col md:flex-row md:items-center justify-between gap-2.5 transition-colors border-b border-slate-100 last:border-0"
                           >
                             <div className="flex items-center gap-2.5 min-w-0 flex-grow">
                               {job.imageUrl ? (
@@ -599,7 +593,7 @@ export default function DailyReportView({
                             </div>
 
                             {/* Horizontal 3-Step Flow */}
-                            <div className="shrink-0 flex items-center gap-2 bg-white border border-slate-150 rounded-lg px-2.5 py-1.5 shadow-3xs w-fit">
+                            <div className="shrink-0 flex items-center gap-2.5 w-fit">
                               <span className="text-[9px] font-bold text-slate-400 mr-1.5">ขั้นตอนงาน:</span>
                               
                               {/* Step 1: Assign */}
@@ -651,16 +645,16 @@ export default function DailyReportView({
                       📝 บันทึกสรุปความคืบหน้าประจำวัน
                     </span>
                     <p 
-                      className="text-[11px] font-mono leading-relaxed text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-150 p-2 rounded-lg cursor-help line-clamp-2 hover:line-clamp-none transition-all duration-300"
+                      className="text-[11px] font-mono leading-normal text-slate-600 p-0.5 cursor-help line-clamp-2 hover:line-clamp-none transition-all duration-300"
                       title="ชี้/คลิกเพื่อขยายข้อความทั้งหมด"
                     >
                       {rep.jobsDetail}
                     </p>
 
                     {rep.reviewComment && (
-                      <div className="bg-indigo-50/40 border border-indigo-100/70 p-2 rounded-lg text-[11px] leading-normal space-y-0.5">
+                      <div className="text-[11px] leading-normal space-y-0.5 border-l-2 border-indigo-500 pl-2">
                         <span className="font-extrabold text-indigo-800 block">คอมเมนต์ผู้ควบคุม:</span>
-                        <p className="text-indigo-950 italic line-clamp-2">"{rep.reviewComment}"</p>
+                        <p className="text-slate-600 italic line-clamp-2">"{rep.reviewComment}"</p>
                       </div>
                     )}
                   </div>

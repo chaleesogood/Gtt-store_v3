@@ -133,6 +133,12 @@ export interface Employee {
   createdAt: string;
 }
 
+export interface ProjectModule {
+  code: string;       // เลขโมดูล (e.g. "01")
+  name: string;       // ชื่อโมดูล (e.g. "ตู้คอนโทรล")
+  imageUrl?: string;  // รูปภาพโมดูล
+}
+
 export interface JobProject {
   id: string;
   jobNo: string; // JOB No.
@@ -140,7 +146,34 @@ export interface JobProject {
   customer: string; // ลูกค้า (Customer)
   projectName: string; // ชื่อโครงการ
   createdAt: string;
-  modules?: string[]; // โมดูลงานประจำโปรเจกต์
+  modules?: ProjectModule[]; // โมดูลงานประจำโปรเจกต์
+  projectImageUrl?: string; // รูปภาพโครงการ
+}
+
+export function normalizeModules(modules: any[] | undefined): ProjectModule[] {
+  if (!modules) return [];
+  return modules.map((m, index) => {
+    if (typeof m === 'string') {
+      const match = m.match(/^(\d+)\s*[-:]?\s*(.*)$/);
+      if (match) {
+        return {
+          code: match[1],
+          name: match[2].trim() || m,
+          imageUrl: ''
+        };
+      }
+      return {
+        code: String(index + 1).padStart(2, '0'),
+        name: m,
+        imageUrl: ''
+      };
+    }
+    return {
+      code: m.code || '',
+      name: m.name || '',
+      imageUrl: m.imageUrl || ''
+    };
+  });
 }
 
 export interface DailyReport {

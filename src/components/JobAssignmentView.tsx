@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Job, Employee, JobProject, DailyReport } from '../types';
+import { Job, Employee, JobProject, DailyReport, ProjectModule, normalizeModules } from '../types';
 import { 
   Briefcase, 
   User, 
@@ -31,7 +31,8 @@ import {
   Eye,
   ClipboardList,
   Layers,
-  Check
+  Check,
+  Upload
 } from 'lucide-react';
 import DailyReportView from './DailyReportView';
 
@@ -71,47 +72,88 @@ function ProjectModulesManager({
   jobs: Job[];
   onEditJob: (id: string, updatedFields: Partial<Job>) => Promise<void>;
 }) {
-  const [newModule, setNewModule] = useState('');
+  const [newCode, setNewCode] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newImgUrl, setNewImgUrl] = useState('');
+  
+  // For editing
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingValue, setEditingValue] = useState('');
-  const modules = proj.modules || [];
+  const [editingCode, setEditingCode] = useState('');
+  const [editingName, setEditingName] = useState('');
+
+  // Normalize existing modules
+  const rawModules = proj.modules || [];
+  const modules = normalizeModules(rawModules);
+
+  // Sort modules by module code number (least on top, greatest on bottom)
+  const sortedModules = useMemo(() => {
+    return [...modules].sort((a, b) => {
+      const cleanA = a.code.replace(/^\D+/g, '');
+      const cleanB = b.code.replace(/^\D+/g, '');
+      const numA = parseInt(cleanA, 10);
+      const numB = parseInt(cleanB, 10);
+      
+      if (!isNaN(numA) && !isNaN(numB)) {
+        if (numA !== numB) return numA - numB;
+      }
+      return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [modules]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    const val = newModule.trim();
-    if (!val) return;
-    if (modules.includes(val)) {
-      alert('มีโมดูลชื่อนี้ในโครงการอยู่แล้ว');
+    const codeVal = newCode.trim();
+    const nameVal = newName.trim();
+    if (!codeVal || !nameVal) return;
+    
+    // Check if code is already registered
+    if (modules.some(m => m.code === codeVal)) {
+      alert('มีรหัสโมดูลนี้ในโครงการอยู่แล้ว');
       return;
     }
-    const updated = [...modules, val];
+
+    const updated = [...modules, { code: codeVal, name: nameVal, imageUrl: newImgUrl || '' }];
     await onEditJobProject(proj.id, { modules: updated });
-    setNewModule('');
+    
+    setNewCode('');
+    setNewName('');
+    setNewImgUrl('');
   };
 
-  const handleRename = async (index: number, newName: string) => {
-    const oldName = modules[index];
-    const val = newName.trim();
-    if (!val) return;
-    if (oldName === val) {
-      setEditingIndex(null);
-      return;
-    }
-    if (modules.includes(val) && modules.indexOf(val) !== index) {
-      alert('มีโมดูลชื่อนี้ในโครงการอยู่แล้ว');
+  const handleSaveEdit = async (idx: number) => {
+    const codeVal = editingCode.trim();
+    const nameVal = editingName.trim();
+    if (!codeVal || !nameVal) return;
+
+    const oldModule = sortedModules[idx];
+    
+    // Check duplicates except itself
+    if (modules.some(m => m.code === codeVal && m.code !== oldModule.code)) {
+      alert('มีรหัสโมดูลนี้ในโครงการอยู่แล้ว');
       return;
     }
 
-    const updated = [...modules];
-    updated[index] = val;
+    const updated = modules.map(m => {
+      if (m.code === oldModule.code) {
+        return { ...m, code: codeVal, name: nameVal };
+      }
+      return m;
+    });
+    
     await onEditJobProject(proj.id, { modules: updated });
 
-    // Also update all tasks that are bound to this old name & jobNo
-    const relatedJobs = jobs.filter(j => j.jobNo === proj.jobNo && j.module === oldName);
+    // Also update all tasks that are bound to this old name/code & jobNo
+    const oldStringFormat = `${oldModule.code} - ${oldModule.name}`;
+    const oldPlainName = oldModule.name;
+    const newStringFormat = `${codeVal} - ${nameVal}`;
+
+    const relatedJobs = jobs.filter(
+      j => j.jobNo === proj.jobNo && (j.module === oldStringFormat || j.module === oldPlainName || j.module === oldModule.code)
+    );
     if (relatedJobs.length > 0) {
-      if (confirm(`พบใบสั่งงานในระบบ ${relatedJobs.length} รายการที่อ้างอิงโมดูลเดิม "${oldName}"\nต้องการเปลี่ยนชื่อโมดูลสำหรับใบสั่งงานเหล่านี้เป็น "${val}" ด้วยหรือไม่?`)) {
+      if (confirm(`พบใบสั่งงานในระบบ ${relatedJobs.length} รายการที่อ้างอิงโมดูลเดิม\nต้องการเปลี่ยนชื่อโมดูลสำหรับใบสั่งงานเหล่านี้เป็น "${newStringFormat}" ด้วยหรือไม่?`)) {
         for (const rJob of relatedJobs) {
-          await onEditJob(rJob.id, { module: val });
+          await onEditJob(rJob.id, { module: newStringFormat });
         }
       }
     }
@@ -119,120 +161,295 @@ function ProjectModulesManager({
     setEditingIndex(null);
   };
 
-  const handleDelete = async (moduleName: string) => {
-    if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบโมดูล "${moduleName}" ออกจากโครงการ?`)) {
-      const updated = modules.filter(m => m !== moduleName);
+  const handleDelete = async (moduleCode: string, moduleName: string) => {
+    if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบโมดูล "${moduleCode} - ${moduleName}" ออกจากโครงการ?`)) {
+      const updated = modules.filter(m => m.code !== moduleCode);
+      await onEditJobProject(proj.id, { modules: updated });
+    }
+  };
+
+  const handleUploadImage = async (moduleCode: string, base64Data: string) => {
+    const updated = modules.map(m => {
+      if (m.code === moduleCode) {
+        return { ...m, imageUrl: base64Data };
+      }
+      return m;
+    });
+    await onEditJobProject(proj.id, { modules: updated });
+  };
+
+  const handleDeleteImage = async (moduleCode: string) => {
+    if (confirm('ต้องการลบรูปภาพโมดูลนี้ใช่หรือไม่?')) {
+      const updated = modules.map(m => {
+        if (m.code === moduleCode) {
+          return { ...m, imageUrl: '' };
+        }
+        return m;
+      });
       await onEditJobProject(proj.id, { modules: updated });
     }
   };
 
   return (
-    <div className="bg-slate-50/70 rounded-xl p-3 border border-slate-100 space-y-2 mt-2">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs font-black text-slate-600">
-          <Layers className="h-4 w-4 text-indigo-500 shrink-0" />
-          <span>โมดูล ({modules.length})</span>
+    <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-100 space-y-4 mt-2">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-150">
+        <div className="flex items-center gap-1.5 text-xs font-black text-slate-700">
+          <Layers className="h-4.5 w-4.5 text-indigo-500 shrink-0" />
+          <span>โมดูลและระบบย่อย ({sortedModules.length})</span>
+          <span className="text-[10px] text-slate-400 font-normal ml-1">เรียงตามรหัสโมดูลจากน้อยไปมาก</span>
         </div>
-        
-        {/* Simple inline add form */}
-        <form onSubmit={handleAdd} className="flex gap-2 items-center w-full sm:w-auto">
-          <input
-            type="text"
-            placeholder="เพิ่มชื่อโมดูลใหม่..."
-            value={newModule}
-            onChange={(e) => setNewModule(e.target.value)}
-            className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-sans text-slate-700 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 w-full sm:w-48 transition-all"
-          />
-          <button
-            type="submit"
-            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black rounded-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1 shrink-0 h-[28px]"
-          >
-            <Plus className="h-3 w-3" />
-            <span>เพิ่มโมดูล</span>
-          </button>
-        </form>
       </div>
 
-      {/* Modules List */}
-      {modules.length === 0 ? (
+      {/* Multi-field Add Form */}
+      <form onSubmit={handleAdd} className="bg-white p-3 rounded-lg border border-slate-200/60 shadow-2xs space-y-3">
+        <div className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">ลงทะเบียนโมดูลใหม่</div>
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+          {/* Code field */}
+          <div className="sm:col-span-3">
+            <input
+              type="text"
+              required
+              placeholder="รหัสโมดูล (เช่น 01)"
+              value={newCode}
+              onChange={(e) => setNewCode(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
+            />
+          </div>
+          {/* Name field */}
+          <div className="sm:col-span-6">
+            <input
+              type="text"
+              required
+              placeholder="ชื่อโมดูล (เช่น ตู้คอนโทรลหลัก)"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
+            />
+          </div>
+          {/* Action button */}
+          <div className="sm:col-span-3 flex gap-2">
+            <button
+              type="submit"
+              className="w-full px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white text-[11px] font-black rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 shadow-xs h-[32px]"
+            >
+              <Plus className="h-3.5 w-3.5 stroke-[3]" />
+              <span>ลงทะเบียน</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Optional Base64 Image Preview / Selector inside Form */}
+        <div className="flex items-center gap-3 pt-1 border-t border-slate-100">
+          <label className="text-[10px] text-slate-500 font-bold flex items-center gap-1 cursor-pointer hover:text-indigo-600 transition-colors">
+            <Camera className="h-3.5 w-3.5 text-slate-400" />
+            <span>{newImgUrl ? 'เปลี่ยนรูปแนบโมดูล' : 'แนบรูปภาพโมดูล'}</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  setNewImgUrl(reader.result as string);
+                };
+                reader.readAsDataURL(file);
+              }}
+            />
+          </label>
+
+          {newImgUrl && (
+            <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+              <img src={newImgUrl} alt="Preview" className="h-5 w-5 rounded object-cover" />
+              <button
+                type="button"
+                onClick={() => setNewImgUrl('')}
+                className="text-[9px] text-rose-500 hover:text-rose-600 cursor-pointer font-bold"
+              >
+                ลบรูป
+              </button>
+            </div>
+          )}
+
+          {/* Prompt Unsplash presets */}
+          <div className="flex items-center gap-1 ml-auto">
+            <span className="text-[9px] text-slate-400 font-sans">รูปตัวอย่าง:</span>
+            <button
+              type="button"
+              onClick={() => setNewImgUrl('https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80')}
+              className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors"
+            >
+              +ตู้ไฟ
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewImgUrl('https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80')}
+              className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors"
+            >
+              +แผงวงจร
+            </button>
+          </div>
+        </div>
+      </form>
+
+      {/* Modules List/Grid sorted by module code */}
+      {sortedModules.length === 0 ? (
         <span className="text-[11px] text-slate-400 italic font-sans font-normal block pl-1">
-          ยังไม่มีการลงทะเบียนโมดูล/ระบบงานย่อยสำหรับโปรเจกต์นี้ คุณสามารถเพิ่มโมดูลเพื่อใช้อ้างอิงมอบหมายงานได้
+          ยังไม่มีการลงทะเบียนโมดูลในระบบ คุณสามารถเพิ่มโมดูลเพื่อใช้อ้างอิงมอบหมายงานได้
         </span>
       ) : (
-        <div className="flex flex-wrap gap-1.5 pt-0.5">
-          {modules.map((m, idx) => (
+        <div className="flex flex-col gap-1">
+          {sortedModules.map((m, idx) => (
             <div 
-              key={idx}
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-white border border-slate-200 text-xs font-bold text-slate-700 rounded-lg hover:border-slate-300 transition-colors shadow-2xs group/mod"
+              key={m.code}
+              className="flex items-center justify-between p-1 py-1 px-1.5 hover:bg-slate-50/50 border-b border-slate-100 last:border-0 transition-colors group/mod relative"
             >
               {editingIndex === idx ? (
-                <div className="flex items-center gap-1">
-                  <input
-                    type="text"
-                    value={editingValue}
-                    onChange={(e) => setEditingValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleRename(idx, editingValue);
-                      } else if (e.key === 'Escape') {
-                        setEditingIndex(null);
-                      }
-                    }}
-                    className="px-1.5 py-0.5 bg-white border border-indigo-300 rounded text-xs font-bold text-slate-800 w-32 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleRename(idx, editingValue)}
-                    className="text-emerald-600 hover:text-emerald-700 p-0.5 rounded hover:bg-emerald-50 transition-colors cursor-pointer"
-                    title="บันทึก"
-                  >
-                    <Check className="h-3.5 w-3.5 stroke-[3]" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingIndex(null)}
-                    className="text-slate-400 hover:text-slate-600 p-0.5 rounded hover:bg-slate-100 transition-colors cursor-pointer"
-                    title="ยกเลิก"
-                  >
-                    <X className="h-3.5 w-3.5 stroke-[3]" />
-                  </button>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
+                  <div className="grid grid-cols-12 gap-1.5 flex-grow">
+                    <input
+                      type="text"
+                      placeholder="รหัสโมดูล"
+                      value={editingCode}
+                      onChange={(e) => setEditingCode(e.target.value)}
+                      className="col-span-4 px-2 py-1 bg-white border border-indigo-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                      autoFocus
+                    />
+                    <input
+                      type="text"
+                      placeholder="ชื่อโมดูล"
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      className="col-span-8 px-2 py-1 bg-white border border-indigo-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 justify-end shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEdit(idx)}
+                      className="text-white bg-emerald-600 hover:bg-emerald-500 px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-0.5 transition-colors cursor-pointer"
+                      title="บันทึก"
+                    >
+                      <Check className="h-3.5 w-3.5 stroke-[3]" />
+                      <span>บันทึก</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingIndex(null)}
+                      className="text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-0.5 transition-colors cursor-pointer"
+                      title="ยกเลิก"
+                    >
+                      <X className="h-3.5 w-3.5 stroke-[3]" />
+                      <span>ยกเลิก</span>
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <>
-                  <span 
-                    className="cursor-pointer select-none hover:text-indigo-600" 
-                    title="ดับเบิ้ลคลิกเพื่อแก้ไขชื่อโมดูล" 
-                    onDoubleClick={() => {
-                      setEditingIndex(idx);
-                      setEditingValue(m);
-                    }}
-                  >
-                    {m}
-                  </span>
-                  
-                  {/* Edit Button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingIndex(idx);
-                      setEditingValue(m);
-                    }}
-                    className="text-slate-400 hover:text-indigo-600 p-0.5 rounded-md hover:bg-slate-50 transition-colors cursor-pointer md:opacity-0 group-hover/mod:opacity-100"
-                    title="แก้ไขชื่อโมดูล"
-                  >
-                    <Edit3 className="h-3 w-3" />
-                  </button>
+                <div className="flex items-center gap-3 w-full">
+                  {/* Module Image section */}
+                  <div className="relative shrink-0 group/img">
+                    {m.imageUrl ? (
+                      <div className="relative h-12 w-12 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 shadow-2xs">
+                        <img 
+                          src={m.imageUrl} 
+                          alt={m.name} 
+                          className="h-full w-full object-cover"
+                        />
+                        {/* Remove Image overlay */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteImage(m.code)}
+                          className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-white cursor-pointer"
+                          title="ลบรูปภาพโมดูล"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-200 hover:text-rose-400 stroke-[2.5]" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center h-12 w-12 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-indigo-50/50 hover:border-indigo-300 transition-all cursor-pointer relative">
+                        <Upload className="h-4 w-4 text-slate-400" />
+                        <span className="text-[8px] text-slate-400 font-bold mt-0.5">เพิ่มรูป</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              handleUploadImage(m.code, reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(m)}
-                    className="text-slate-400 hover:text-rose-600 transition-colors cursor-pointer p-0.5 rounded-md hover:bg-slate-50"
-                    title={`ลบโมดูล ${m}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </>
+                  {/* Text details */}
+                  <div className="flex-grow min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-[10px] font-black text-indigo-700 font-mono rounded">
+                        {m.code}
+                      </span>
+                      <h5 className="text-xs font-black text-slate-800 truncate">
+                        {m.name}
+                      </h5>
+                    </div>
+                  </div>
+
+                  {/* Actions column */}
+                  <div className="flex items-center gap-1">
+                    {/* Add/Replace Image via Preset (if no image) */}
+                    {!m.imageUrl && (
+                      <div className="hidden sm:flex items-center gap-1 mr-1">
+                        <button
+                          type="button"
+                          onClick={() => handleUploadImage(m.code, 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80')}
+                          className="text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 py-0.5 rounded cursor-pointer"
+                          title="จำลองรูปภาพตู้ไฟ"
+                        >
+                          +ตู้ไฟ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUploadImage(m.code, 'https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80')}
+                          className="text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 py-0.5 rounded cursor-pointer"
+                          title="จำลองรูปภาพแผงวงจร"
+                        >
+                          +บอร์ด
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Edit button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingIndex(idx);
+                        setEditingCode(m.code);
+                        setEditingName(m.name);
+                      }}
+                      className="text-slate-400 hover:text-indigo-600 hover:bg-slate-100 p-1 rounded-lg transition-colors cursor-pointer"
+                      title="แก้ไขข้อมูลโมดูล"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+
+                    {/* Delete button */}
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(m.code, m.name)}
+                      className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1 rounded-lg transition-colors cursor-pointer"
+                      title="ลบโมดูล"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           ))}
@@ -706,69 +923,69 @@ export default function JobAssignmentView({
             </button>
           </div>
 
-          {/* Statistics Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
-              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
-                <Briefcase className="h-5 w-5" />
+          {/* Statistics Summary Bar */}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 py-1.5 border-b border-slate-100/60">
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                <Briefcase className="h-3.5 w-3.5" />
               </div>
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 block font-sans">งานจ่ายทั้งหมด</span>
-                <span className="text-lg font-black text-slate-800 font-mono block leading-none mt-1">{jobs.length} <span className="text-[10px] text-slate-400 font-sans">งาน</span></span>
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
-              <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
-                <Play className="h-5 w-5 animate-pulse" />
-              </div>
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 block font-sans">กำลังทำ</span>
-                <span className="text-lg font-black text-amber-600 font-mono block leading-none mt-1">{jobs.filter(j => j.status === 'in_progress').length} <span className="text-[10px] text-slate-400 font-sans">งาน</span></span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">งานจ่ายทั้งหมด:</span>
+                <span className="text-xs font-black font-mono text-slate-800">{jobs.length} งาน</span>
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
-              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-                <CheckCircle2 className="h-5 w-5" />
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+                <Play className="h-3.5 w-3.5 animate-pulse" />
               </div>
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 block font-sans">จบงาน (สำเร็จ)</span>
-                <span className="text-lg font-black text-emerald-600 font-mono block leading-none mt-1">{completedTasksCount} <span className="text-[10px] text-slate-400 font-sans">งาน</span></span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">กำลังทำ:</span>
+                <span className="text-xs font-black font-mono text-amber-600">{jobs.filter(j => j.status === 'in_progress').length} งาน</span>
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
-              <div className="p-3 bg-slate-50 text-slate-500 rounded-xl">
-                <Clock className="h-5 w-5" />
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
+                <CheckCircle2 className="h-3.5 w-3.5" />
               </div>
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 block font-sans">รับงาน (รอดำเนินการ)</span>
-                <span className="text-lg font-black text-slate-700 font-mono block leading-none mt-1">{jobs.filter(j => j.status === 'pending').length} <span className="text-[10px] text-slate-400 font-sans">งาน</span></span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">จบงาน:</span>
+                <span className="text-xs font-black font-mono text-emerald-600">{completedTasksCount} งาน</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
+                <Clock className="h-3.5 w-3.5" />
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">รอดำเนินการ:</span>
+                <span className="text-xs font-black font-mono text-slate-700">{jobs.filter(j => j.status === 'pending').length} งาน</span>
               </div>
             </div>
           </div>
 
           {/* Filters and Search Panel */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
+          <div className="bg-slate-50/40 p-2 py-1.5 rounded-xl border border-slate-100 shadow-3xs space-y-1.5">
             
             {/* Search row */}
             <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
               <input
                 type="text"
                 placeholder="ค้นหาชื่องาน, มอดูล, ผู้รับผิดชอบ หรือรายละเอียด..."
                 value={taskSearch}
                 onChange={(e) => setTaskSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
+                className="w-full pl-8 pr-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-sans text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
               />
             </div>
 
             {/* Filter select elements */}
-            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100/60">
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100/50">
               
-              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shrink-0">
-                <Filter className="h-3.5 w-3.5 text-slate-400" />
+              <div className="flex items-center gap-1 px-1 shrink-0">
+                <Filter className="h-3 w-3 text-slate-400" />
                 <span className="text-[10px] font-bold text-slate-500 font-sans">สถานะ:</span>
                 <select
                   value={statusFilter}
@@ -783,8 +1000,8 @@ export default function JobAssignmentView({
                 </select>
               </div>
 
-              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shrink-0">
-                <Tag className="h-3.5 w-3.5 text-slate-400" />
+              <div className="flex items-center gap-1 px-1 shrink-0">
+                <Tag className="h-3 w-3 text-slate-400" />
                 <span className="text-[10px] font-bold text-slate-500 font-sans">สำคัญ:</span>
                 <select
                   value={priorityFilter}
@@ -798,8 +1015,8 @@ export default function JobAssignmentView({
                 </select>
               </div>
 
-              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shrink-0">
-                <User className="h-3.5 w-3.5 text-slate-400" />
+              <div className="flex items-center gap-1 px-1 shrink-0">
+                <User className="h-3 w-3 text-slate-400" />
                 <span className="text-[10px] font-bold text-slate-500 font-sans">ผู้รับผิดชอบ:</span>
                 <select
                   value={assigneeFilter}
@@ -813,8 +1030,8 @@ export default function JobAssignmentView({
                 </select>
               </div>
 
-              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shrink-0">
-                <FolderGit2 className="h-3.5 w-3.5 text-slate-400" />
+              <div className="flex items-center gap-1 px-1 shrink-0">
+                <FolderGit2 className="h-3 w-3 text-slate-400" />
                 <span className="text-[10px] font-bold text-slate-500 font-sans">คัดกรองตามโปรเจกต์:</span>
                 <select
                   value={projectFilter}
@@ -890,10 +1107,10 @@ export default function JobAssignmentView({
                         return (
                           <div 
                             key={group.key}
-                            className="bg-white rounded-xl border border-slate-200/80 shadow-3xs overflow-hidden transition-all hover:border-slate-300"
+                            className="border-b border-slate-100 last:border-0 pb-1.5 pt-0.5"
                           >
                             {/* Group Header - Extremely Compact */}
-                            <div className="bg-slate-50/70 px-3 py-1 border-b border-slate-100 flex items-center justify-between gap-2">
+                            <div className="px-1.5 py-0.5 border-b border-slate-50/50 flex items-center justify-between gap-2">
                               
                               <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
                                 {/* Job No */}
@@ -937,9 +1154,9 @@ export default function JobAssignmentView({
                             </div>
 
                     {/* Group Content / Task Items - Aligned Table-like Layout */}
-                    <div className="divide-y divide-slate-100">
+                    <div className="divide-y divide-slate-100/60">
                       {/* Column Headers for Desktop - Aligns perfectly with the grid below */}
-                      <div className="hidden lg:grid lg:grid-cols-[1fr_310px_110px_150px_55px] lg:gap-3 px-3 py-1 bg-slate-50/50 border-b border-slate-100/80 select-none">
+                      <div className="hidden lg:grid lg:grid-cols-[1fr_310px_110px_150px_55px] lg:gap-2 px-1.5 py-0.5 bg-slate-50/30 border-b border-slate-100/40 select-none">
                         <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans">รายละเอียดงาน</span>
                         <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans text-center">ขั้นตอน / สถานะ</span>
                         <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans text-center">กำหนดส่ง</span>
@@ -957,8 +1174,8 @@ export default function JobAssignmentView({
                         return (
                           <div 
                             key={task.id}
-                            className={`p-1.5 px-3 transition-all flex flex-col gap-2.5 sm:gap-3 lg:grid lg:grid-cols-[1fr_310px_110px_150px_55px] lg:gap-3 lg:items-center relative overflow-hidden group/item ${
-                              isOverdue ? 'bg-rose-50/10' : 'hover:bg-slate-50/30'
+                            className={`p-1 px-1.5 transition-all flex flex-col gap-1 sm:gap-1.5 lg:grid lg:grid-cols-[1fr_310px_110px_150px_55px] lg:gap-2 lg:items-center relative overflow-hidden group/item ${
+                              isOverdue ? 'bg-rose-50/10' : 'hover:bg-slate-50/20'
                             }`}
                           >
                             {/* Left visual margin indicator for nested list (if overdue) */}
@@ -1214,23 +1431,25 @@ export default function JobAssignmentView({
             </button>
           </div>
 
-          {/* Search Master Project */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-grow">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          {/* Search Master Project - Compact, Flat */}
+          <div className="bg-slate-50/40 p-2 py-1.5 rounded-xl border border-slate-100 shadow-3xs flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 shrink-0 px-1">
+              <Search className="h-3.5 w-3.5 text-slate-400" />
+              <span className="text-[10px] font-bold text-slate-500 font-sans">ค้นหาโปรเจกต์:</span>
+            </div>
+            <div className="relative flex-grow min-w-[200px]">
               <input
                 type="text"
-                placeholder="ค้นหาด้วย Job No., ปี, ลูกค้า, หรือชื่อโปรเจกต์..."
+                placeholder="ป้อนรหัส Job No., ปี, ชื่อลูกค้า หรือ ชื่อโปรเจกต์..."
                 value={projSearch}
                 onChange={(e) => setProjSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
+                className="w-full pl-3 pr-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-sans text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
               />
             </div>
-            
             {projSearch && (
               <button
                 onClick={() => setProjSearch('')}
-                className="px-3 py-2 text-[10px] font-bold text-rose-500 hover:text-rose-600 bg-rose-50 rounded-xl cursor-pointer"
+                className="px-3 py-1 text-[10px] font-bold text-rose-500 hover:text-rose-600 bg-rose-50 rounded-xl cursor-pointer shrink-0 ml-auto"
               >
                 ล้างคำค้น
               </button>
@@ -1256,19 +1475,73 @@ export default function JobAssignmentView({
                 return (
                   <div 
                     key={proj.id}
-                    className="bg-white rounded-xl border border-slate-200/80 hover:border-indigo-200 hover:shadow-xs p-4 transition-all relative pl-5 space-y-3"
+                    className="hover:bg-slate-50/40 p-2 py-1.5 transition-all border-b border-slate-100 last:border-0 flex flex-col gap-1.5"
                   >
-                    {/* Left colored border decor */}
-                    <div className="absolute top-0 left-0 bottom-0 w-1 bg-indigo-500 rounded-l-xl" />
-
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-grow min-w-0">
                         
-                        {/* Job Number / ID */}
-                        <div className="shrink-0 w-32">
-                          <span className="text-[11px] font-black text-indigo-700 font-mono tracking-wide px-2.5 py-1 bg-indigo-50 border border-indigo-100 rounded-lg block text-center">
-                            {proj.jobNo}
-                          </span>
+                        {/* Project Image & Job Number */}
+                        <div className="shrink-0 flex items-center gap-2 w-48">
+                          {/* Project Image */}
+                          <div className="relative group/projimg w-9 h-9 rounded bg-slate-50 border border-slate-200/60 flex items-center justify-center overflow-hidden shrink-0 shadow-4xs">
+                            {proj.projectImageUrl ? (
+                              <>
+                                <img src={proj.projectImageUrl} alt={proj.projectName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/projimg:opacity-100 flex items-center justify-center transition-opacity">
+                                  <Camera className="h-3 w-3 text-white" />
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center text-slate-400">
+                                <Camera className="h-3.5 w-3.5 text-slate-300" />
+                                <span className="text-[7px] font-bold">แนบรูป</span>
+                              </div>
+                            )}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  onEditJobProject(proj.id, { projectImageUrl: reader.result as string });
+                                };
+                                reader.readAsDataURL(file);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                // trigger preceding input file click
+                                const sibling = e.currentTarget.previousSibling as HTMLInputElement;
+                                sibling?.click();
+                              }}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                          </div>
+
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-indigo-700 font-mono tracking-wide px-1.5 py-0.5 bg-indigo-50 border border-indigo-100/65 rounded block text-center leading-none">
+                              {proj.jobNo}
+                            </span>
+                            {proj.projectImageUrl && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm('ลบรูปภาพโครงการนี้ใช่หรือไม่?')) {
+                                    onEditJobProject(proj.id, { projectImageUrl: '' });
+                                  }
+                                }}
+                                className="text-[8px] text-rose-500 hover:text-rose-600 font-bold block text-center mt-0.5 hover:underline"
+                              >
+                                ลบรูป
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {/* Year */}
@@ -1392,23 +1665,25 @@ export default function JobAssignmentView({
             </button>
           </div>
 
-          {/* Search bar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-grow">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          {/* Search bar - Compact, Flat */}
+          <div className="bg-slate-50/40 p-2 py-1.5 rounded-xl border border-slate-100 shadow-3xs flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 shrink-0 px-1">
+              <Search className="h-3.5 w-3.5 text-slate-400" />
+              <span className="text-[10px] font-bold text-slate-500 font-sans">ค้นหาพนักงาน:</span>
+            </div>
+            <div className="relative flex-grow min-w-[200px]">
               <input
                 type="text"
-                placeholder="ค้นหารายชื่อพนักงาน, ตำแหน่ง หรือเบอร์โทรศัพท์..."
+                placeholder="ป้อนชื่อพนักงาน, ตำแหน่งหน้าที่ หรือเบอร์โทรศัพท์..."
                 value={empSearch}
                 onChange={(e) => setEmpSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
+                className="w-full pl-3 pr-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-sans text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
               />
             </div>
-            
             {empSearch && (
               <button
                 onClick={() => setEmpSearch('')}
-                className="px-3 py-2 text-[10px] font-bold text-rose-500 hover:text-rose-600 bg-rose-50 rounded-xl cursor-pointer"
+                className="px-3 py-1 text-[10px] font-bold text-rose-500 hover:text-rose-600 bg-rose-50 rounded-xl cursor-pointer shrink-0 ml-auto"
               >
                 ล้างคำค้น
               </button>
@@ -1433,11 +1708,8 @@ export default function JobAssignmentView({
                 return (
                   <div 
                     key={emp.id}
-                    className="bg-white rounded-xl border border-slate-200/80 hover:border-emerald-200 hover:shadow-xs p-2.5 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-3 relative pl-5"
+                    className="hover:bg-slate-50/40 p-2 py-1.5 transition-all border-b border-slate-100 last:border-0 flex flex-col lg:flex-row lg:items-center justify-between gap-3"
                   >
-                    {/* Left colored border decor */}
-                    <div className="absolute top-0 left-0 bottom-0 w-1 bg-emerald-500 rounded-l-xl" />
-
                     <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-grow min-w-0">
                       
                       {/* Avatar & Name */}
@@ -1620,26 +1892,42 @@ export default function JobAssignmentView({
                     {/* Helper to select registered modules */}
                     {(() => {
                       const currentProj = jobProjects.find(p => p.jobNo === taskJobNo);
-                      const currentProjModules = currentProj?.modules || [];
-                      if (currentProjModules.length > 0) {
+                      const currentProjModules = normalizeModules(currentProj?.modules || []);
+                      
+                      // Sort by module number code (least to greatest)
+                      const sortedProjModules = [...currentProjModules].sort((a, b) => {
+                        const cleanA = a.code.replace(/^\D+/g, '');
+                        const cleanB = b.code.replace(/^\D+/g, '');
+                        const numA = parseInt(cleanA, 10);
+                        const numB = parseInt(cleanB, 10);
+                        if (!isNaN(numA) && !isNaN(numB)) {
+                          if (numA !== numB) return numA - numB;
+                        }
+                        return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+                      });
+
+                      if (sortedProjModules.length > 0) {
                         return (
                           <div className="mt-1.5 p-2 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-1">
                             <span className="text-[9px] text-indigo-700 font-extrabold block">เลือกจากโมดูลที่ลงทะเบียนไว้:</span>
                             <div className="flex flex-wrap gap-1">
-                              {currentProjModules.map((m, idx) => (
-                                <button
-                                  key={idx}
-                                  type="button"
-                                  onClick={() => setTaskModule(m)}
-                                  className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
-                                    taskModule === m 
-                                      ? 'bg-indigo-600 text-white border border-indigo-600' 
-                                      : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-                                  }`}
-                                >
-                                  {m}
-                                </button>
-                              ))}
+                              {sortedProjModules.map((m, idx) => {
+                                const moduleStr = `${m.code} - ${m.name}`;
+                                return (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setTaskModule(moduleStr)}
+                                    className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
+                                      taskModule === moduleStr || taskModule === m.name
+                                        ? 'bg-indigo-600 text-white border border-indigo-600' 
+                                        : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+                                    }`}
+                                  >
+                                    {m.code} - {m.name}
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
                         );
@@ -1871,26 +2159,42 @@ export default function JobAssignmentView({
                   {/* Helper to select registered modules */}
                   {(() => {
                     const currentProj = jobProjects.find(p => p.jobNo === taskJobNo);
-                    const currentProjModules = currentProj?.modules || [];
-                    if (currentProjModules.length > 0) {
+                    const currentProjModules = normalizeModules(currentProj?.modules || []);
+                    
+                    // Sort by module number code (least to greatest)
+                    const sortedProjModules = [...currentProjModules].sort((a, b) => {
+                      const cleanA = a.code.replace(/^\D+/g, '');
+                      const cleanB = b.code.replace(/^\D+/g, '');
+                      const numA = parseInt(cleanA, 10);
+                      const numB = parseInt(cleanB, 10);
+                      if (!isNaN(numA) && !isNaN(numB)) {
+                        if (numA !== numB) return numA - numB;
+                      }
+                      return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+                    });
+
+                    if (sortedProjModules.length > 0) {
                       return (
                         <div className="mt-1.5 p-2 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-1">
                           <span className="text-[9px] text-indigo-700 font-extrabold block">เลือกจากโมดูลที่ลงทะเบียนไว้:</span>
                           <div className="flex flex-wrap gap-1">
-                            {currentProjModules.map((m, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => setTaskModule(m)}
-                                className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
-                                  taskModule === m 
-                                    ? 'bg-indigo-600 text-white border border-indigo-600' 
-                                    : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-                                }`}
-                              >
-                                {m}
-                              </button>
-                            ))}
+                            {sortedProjModules.map((m, idx) => {
+                              const moduleStr = `${m.code} - ${m.name}`;
+                              return (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => setTaskModule(moduleStr)}
+                                  className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
+                                    taskModule === moduleStr || taskModule === m.name
+                                      ? 'bg-indigo-600 text-white border border-indigo-600' 
+                                      : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+                                  }`}
+                                >
+                                  {m.code} - {m.name}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       );

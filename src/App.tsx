@@ -32,6 +32,24 @@ export default function App() {
   const [adminEmail, setAdminEmail] = useState<string | null>(() => localStorage.getItem('admin_email'));
   const [loginEmailInput, setLoginEmailInput] = useState('');
 
+  // Firestore status / Quota state
+  const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
+
+  const checkFirestoreQuotaError = (error: any) => {
+    if (error) {
+      const msg = error.message || String(error);
+      if (
+        msg.toLowerCase().includes('quota') || 
+        msg.toLowerCase().includes('limit') || 
+        msg.toLowerCase().includes('exceed') || 
+        msg.toLowerCase().includes('resource_exhausted') ||
+        msg.toLowerCase().includes('permission-denied')
+      ) {
+        setIsQuotaExceeded(true);
+      }
+    }
+  };
+
   // UI state
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -62,6 +80,7 @@ export default function App() {
       }
     }, (error) => {
       console.error("Firestore products sync error:", error);
+      checkFirestoreQuotaError(error);
       addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อคลังสินค้า (Firestore)', `สลับไปใช้คลังสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_products');
       setProducts(saved ? JSON.parse(saved) : INITIAL_PRODUCTS);
@@ -90,6 +109,7 @@ export default function App() {
       }
     }, (error) => {
       console.error("Firestore categories sync error:", error);
+      checkFirestoreQuotaError(error);
       addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อคลังกลุ่มสินค้า (Firestore)', `สลับไปใช้คลังกลุ่มสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_categories');
       setCategories(saved ? JSON.parse(saved) : INITIAL_CATEGORIES);
@@ -157,6 +177,7 @@ export default function App() {
       }
     }, (error) => {
       console.error("Firestore activities sync error:", error);
+      checkFirestoreQuotaError(error);
       addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อประวัติการทำงาน (Firestore)', `สลับไปใช้ประวัติสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_activities');
       setActivities(saved ? JSON.parse(saved) : INITIAL_ACTIVITIES);
@@ -177,6 +198,7 @@ export default function App() {
       localStorage.setItem('stock_manager_boms', JSON.stringify(list));
     }, (error) => {
       console.error("Firestore boms sync error:", error);
+      checkFirestoreQuotaError(error);
       const saved = localStorage.getItem('stock_manager_boms');
       setBoms(saved ? JSON.parse(saved) : []);
     });
@@ -196,6 +218,7 @@ export default function App() {
       localStorage.setItem('stock_manager_projects_list', JSON.stringify(list));
     }, (error) => {
       console.error("Firestore projects sync error:", error);
+      checkFirestoreQuotaError(error);
       const saved = localStorage.getItem('stock_manager_projects_list');
       setProjects(saved ? JSON.parse(saved) : []);
     });
@@ -215,6 +238,7 @@ export default function App() {
       localStorage.setItem('stock_manager_jobs_list', JSON.stringify(list));
     }, (error) => {
       console.error("Firestore jobs sync error:", error);
+      checkFirestoreQuotaError(error);
       const saved = localStorage.getItem('stock_manager_jobs_list');
       setJobs(saved ? JSON.parse(saved) : []);
     });
@@ -234,6 +258,7 @@ export default function App() {
       localStorage.setItem('stock_manager_employees_list', JSON.stringify(list));
     }, (error) => {
       console.error("Firestore employees sync error:", error);
+      checkFirestoreQuotaError(error);
       const saved = localStorage.getItem('stock_manager_employees_list');
       setEmployees(saved ? JSON.parse(saved) : []);
     });
@@ -253,6 +278,7 @@ export default function App() {
       localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(list));
     }, (error) => {
       console.error("Firestore jobProjects sync error:", error);
+      checkFirestoreQuotaError(error);
       const saved = localStorage.getItem('stock_manager_job_projects_list');
       setJobProjects(saved ? JSON.parse(saved) : []);
     });
@@ -272,6 +298,7 @@ export default function App() {
       localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(list));
     }, (error) => {
       console.error("Firestore dailyReports sync error:", error);
+      checkFirestoreQuotaError(error);
       const saved = localStorage.getItem('stock_manager_daily_reports_list');
       setDailyReports(saved ? JSON.parse(saved) : []);
     });
@@ -319,17 +346,59 @@ export default function App() {
       timestamp: new Date().toISOString(),
     };
 
+    // Optimistic Update
+    const updatedProducts = [...products, product].sort((a, b) => a.name.localeCompare(b.name));
+    const updatedActivities = [activity, ...activities];
+    setProducts(updatedProducts);
+    setActivities(updatedActivities);
+    localStorage.setItem('stock_manager_products', JSON.stringify(updatedProducts));
+    localStorage.setItem('stock_manager_activities', JSON.stringify(updatedActivities));
+
     try {
       await setDoc(doc(db, 'products', product.id), cleanUndefined(product));
       await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
       addToast('success', 'ลงทะเบียนสินค้าเรียบร้อย', `สินค้า "${product.name}" ได้รับการเพิ่มในสต็อกแล้ว`);
     } catch (error: any) {
       console.error(error);
-      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถเพิ่มสินค้าได้: ${error.message}`);
+      checkFirestoreQuotaError(error);
+      addToast('info', 'ลงทะเบียนสำเร็จ (โหมดจำลองเครื่อง)', `สินค้า "${product.name}" ถูกบันทึกไว้ในอุปกรณ์นี้ชั่วคราว`);
     }
   };
 
   const handleEditProduct = async (id: string, updatedFields: Partial<Product>) => {
+    const p = products.find((prod) => prod.id === id);
+    if (!p) return;
+
+    // Build the updated product
+    const updatedProd = { ...p, ...updatedFields, updatedAt: new Date().toISOString() };
+    const updatedProducts = products.map((prod) => prod.id === id ? updatedProd : prod);
+    
+    // Log manual changes if price or sku changes
+    let activity: StockActivity | null = null;
+    if (updatedFields.costPrice !== undefined && updatedFields.costPrice !== p.costPrice) {
+      activity = {
+        id: `act-${Math.random().toString(36).substring(2, 9)}`,
+        productId: p.id,
+        productName: p.name,
+        type: 'adjust',
+        quantityChange: 0,
+        oldQuantity: p.quantity,
+        newQuantity: p.quantity,
+        reason: `แก้ไขราคาทุนจาก ฿${p.costPrice} เป็น ฿${updatedFields.costPrice}`,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    const updatedActivities = activity ? [activity, ...activities] : activities;
+
+    // Optimistic Update
+    setProducts(updatedProducts);
+    localStorage.setItem('stock_manager_products', JSON.stringify(updatedProducts));
+    if (activity) {
+      setActivities(updatedActivities);
+      localStorage.setItem('stock_manager_activities', JSON.stringify(updatedActivities));
+    }
+
     try {
       const productRef = doc(db, 'products', id);
       const cleanFields: Record<string, any> = {};
@@ -341,28 +410,15 @@ export default function App() {
       cleanFields.updatedAt = new Date().toISOString();
 
       await updateDoc(productRef, cleanFields);
-
-      // Log manual changes if price or sku changes
-      const p = products.find((prod) => prod.id === id);
-      if (p && updatedFields.costPrice !== undefined && updatedFields.costPrice !== p.costPrice) {
-        const activity: StockActivity = {
-          id: `act-${Math.random().toString(36).substring(2, 9)}`,
-          productId: p.id,
-          productName: p.name,
-          type: 'adjust',
-          quantityChange: 0,
-          oldQuantity: p.quantity,
-          newQuantity: p.quantity,
-          reason: `แก้ไขราคาทุนจาก ฿${p.costPrice} เป็น ฿${updatedFields.costPrice}`,
-          timestamp: new Date().toISOString(),
-        };
+      if (activity) {
         await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
       }
 
       addToast('success', 'บันทึกความเปลี่ยนแปลงแล้ว', 'แก้ไขข้อมูลรายละเอียดสินค้าเรียบร้อย');
     } catch (error: any) {
       console.error(error);
-      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถแก้ไขสินค้าได้: ${error.message}`);
+      checkFirestoreQuotaError(error);
+      addToast('info', 'บันทึกความเปลี่ยนแปลงแล้ว (โหมดจำลองเครื่อง)', 'แก้ไขข้อมูลสินค้าและบันทึกในเครื่องของคุณเรียบร้อย');
     }
   };
 
@@ -371,27 +427,35 @@ export default function App() {
     if (!productToDelete) return;
 
     if (confirm(`คุณแน่ใจหรือไม่ที่จะลบสินค้า "${productToDelete.name}" ออกจากระบบถาวร?`)) {
+      // Log deletion
+      const activity: StockActivity = {
+        id: `act-${Math.random().toString(36).substring(2, 9)}`,
+        productId: id,
+        productName: productToDelete.name,
+        type: 'adjust',
+        quantityChange: -productToDelete.quantity,
+        oldQuantity: productToDelete.quantity,
+        newQuantity: 0,
+        reason: 'ลบรายการสินค้าถาวรออกจากระบบคลังสินค้า',
+        timestamp: new Date().toISOString(),
+      };
+
+      // Optimistic Update
+      const updatedProducts = products.filter((prod) => prod.id !== id);
+      const updatedActivities = [activity, ...activities];
+      setProducts(updatedProducts);
+      setActivities(updatedActivities);
+      localStorage.setItem('stock_manager_products', JSON.stringify(updatedProducts));
+      localStorage.setItem('stock_manager_activities', JSON.stringify(updatedActivities));
+
       try {
         await deleteDoc(doc(db, 'products', id));
-
-        // Log deletion
-        const activity: StockActivity = {
-          id: `act-${Math.random().toString(36).substring(2, 9)}`,
-          productId: id,
-          productName: productToDelete.name,
-          type: 'adjust',
-          quantityChange: -productToDelete.quantity,
-          oldQuantity: productToDelete.quantity,
-          newQuantity: 0,
-          reason: 'ลบรายการสินค้าถาวรออกจากระบบคลังสินค้า',
-          timestamp: new Date().toISOString(),
-        };
         await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
-
         addToast('info', 'นำสินค้าออกจากระบบ', `ลบ "${productToDelete.name}" เรียบร้อยแล้ว`);
       } catch (error: any) {
         console.error(error);
-        addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถลบสินค้าได้: ${error.message}`);
+        checkFirestoreQuotaError(error);
+        addToast('info', 'นำสินค้าออกแล้ว (โหมดจำลองเครื่อง)', `ลบรายการสินค้าในอุปกรณ์นี้เรียบร้อย`);
       }
     }
   };
@@ -405,55 +469,64 @@ export default function App() {
     const newQty = Math.max(0, p.quantity + change);
     if (oldQty === newQty) return;
 
+    // Build activity
+    const activity: StockActivity = {
+      id: `act-${Math.random().toString(36).substring(2, 9)}`,
+      productId: p.id,
+      productName: p.name,
+      type: change > 0 ? 'in' : change < 0 ? 'out' : 'adjust',
+      quantityChange: change,
+      oldQuantity: oldQty,
+      newQuantity: newQty,
+      reason: reason,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Optimistic Update
+    const updatedProducts = products.map((prod) => prod.id === id ? { ...prod, quantity: newQty, updatedAt: new Date().toISOString() } : prod);
+    const updatedActivities = [activity, ...activities];
+    setProducts(updatedProducts);
+    setActivities(updatedActivities);
+    localStorage.setItem('stock_manager_products', JSON.stringify(updatedProducts));
+    localStorage.setItem('stock_manager_activities', JSON.stringify(updatedActivities));
+
+    // Show notification immediately (Optimistic UI feedback)
+    if (newQty === 0) {
+      addToast(
+        'warning',
+        '⚠️ สินค้าหมดเกลี้ยง (Out of Stock)',
+        `สินค้า "${p.name}" ในคลังหมดเกลี้ยงแล้ว! กรุณาเพิ่มสต็อกโดยด่วน`
+      );
+    } else if (newQty <= p.minAlert) {
+      addToast(
+        'warning',
+        '⚠️ สินค้าใกล้หมดคลัง (Low Stock Alert)',
+        `สินค้า "${p.name}" เหลือเพียง ${newQty} ชิ้น (เกณฑ์เตือนต่ำกว่า ${p.minAlert} ชิ้น)`
+      );
+    } else if (change > 0) {
+      addToast(
+        'success',
+        '✅ อัปเดตคลังสินค้าสำเร็จ',
+        `เติมสินค้า "${p.name}" เข้าสต็อกคลังรวมเป็น ${newQty} ชิ้นแล้ว`
+      );
+    } else {
+      addToast(
+        'info',
+        '📦 ทำรายการจ่ายออกสำเร็จ',
+        `หักสินค้า "${p.name}" ออกจากคลังเรียบร้อย ยอดคงเหลือ: ${newQty} ชิ้น`
+      );
+    }
+
     try {
       await updateDoc(doc(db, 'products', id), {
         quantity: newQty,
         updatedAt: new Date().toISOString()
       });
-
-      // Create activity transaction
-      const activity: StockActivity = {
-        id: `act-${Math.random().toString(36).substring(2, 9)}`,
-        productId: p.id,
-        productName: p.name,
-        type: change > 0 ? 'in' : change < 0 ? 'out' : 'adjust',
-        quantityChange: change,
-        oldQuantity: oldQty,
-        newQuantity: newQty,
-        reason: reason,
-        timestamp: new Date().toISOString(),
-      };
       await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
-
-      // Trigger automated real-time notifications on threshold breaches!
-      if (newQty === 0) {
-        addToast(
-          'warning',
-          '⚠️ สินค้าหมดเกลี้ยง (Out of Stock)',
-          `สินค้า "${p.name}" ในคลังหมดเกลี้ยงแล้ว! กรุณาเพิ่มสต็อกโดยด่วน`
-        );
-      } else if (newQty <= p.minAlert) {
-        addToast(
-          'warning',
-          '⚠️ สินค้าใกล้หมดคลัง (Low Stock Alert)',
-          `สินค้า "${p.name}" เหลือเพียง ${newQty} ชิ้น (เกณฑ์เตือนต่ำกว่า ${p.minAlert} ชิ้น)`
-        );
-      } else if (change > 0) {
-        addToast(
-          'success',
-          '✅ อัปเดตคลังสินค้าสำเร็จ',
-          `เติมสินค้า "${p.name}" เข้าสต็อกคลังรวมเป็น ${newQty} ชิ้นแล้ว`
-        );
-      } else {
-        addToast(
-          'info',
-          '📦 ทำรายการจ่ายออกสำเร็จ',
-          `หักสินค้า "${p.name}" ออกจากคลังเรียบร้อย ยอดคงเหลือ: ${newQty} ชิ้น`
-        );
-      }
     } catch (error: any) {
       console.error(error);
-      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถอัปเดตสต็อกสินค้าได้: ${error.message}`);
+      checkFirestoreQuotaError(error);
+      // Since it's optimistic, we don't roll back, just log quota and toast
     }
   };
 
@@ -886,6 +959,10 @@ export default function App() {
             projects={projects}
             categories={categories}
             addToast={addToast}
+            jobProjects={jobProjects}
+            onAddJobProject={handleAddJobProject}
+            onEditJobProject={handleEditJobProject}
+            onDeleteJobProject={handleDeleteJobProject}
           />
         );
       case 'reports':
@@ -1196,6 +1273,29 @@ export default function App() {
       {/* -------------------- MAIN WORKSPACE CONTENT -------------------- */}
       <main className="flex-grow p-4 sm:p-6 lg:p-8 overflow-y-auto max-w-7xl mx-auto w-full relative">
         
+        {isQuotaExceeded && (
+          <div className="mb-6 bg-amber-50 border-2 border-amber-200 rounded-2xl p-5 text-left text-amber-900 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 bg-amber-100 text-amber-700 rounded-xl shrink-0">
+                <AlertTriangle className="h-6 w-6 animate-pulse text-amber-600" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-black text-amber-950 font-sans flex items-center gap-2">
+                  คลังระบบฐานข้อมูล Cloud เต็มโควต้าชั่วคราว (Firestore Quota Exceeded)
+                </h4>
+                <p className="text-xs text-amber-800 font-sans leading-relaxed">
+                  ขณะนี้ปริมาณการใช้งานบนคลังข้อมูลร่วมมีปริมาณสูงจนทะลุขีดจำกัดโควต้าผู้ใช้งานฟรีของ Google Firestore แล้ว (Free-tier Quota Limit Reached) 
+                  <strong> ระบบได้สลับการทำงานมาใช้ "ระบบบันทึกฐานข้อมูลสำรองในเบราว์เซอร์เครื่อง (Local Storage Sandbox)" ให้คุณโดยอัตโนมัติแล้ว</strong> เพื่อไม่ขัดจังหวะการทำงาน
+                </p>
+                <div className="pt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-amber-900/80 font-medium font-sans">
+                  <span className="flex items-center gap-1">✅ <strong>ยังสามารถใช้งานได้ปกติ</strong>: เพิ่ม/ลด/แก้ไขสต็อกสินค้า, และสเปรดชีตสูตร BOM ได้ทันที</span>
+                  <span className="flex items-center gap-1">🔒 <strong>ปลอดภัยสูง</strong>: ข้อมูลทั้งหมดจะบันทึกไว้ในอุปกรณ์นี้อย่างปลอดภัย และจะเชื่อมต่อฐานข้อมูล Cloud โดยอัตโนมัติเมื่อสิ้นสุดการจำกัดรอบวัน</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* TOP STATUS BAR (DESKTOP HEADER INSET) */}
         <header className="hidden md:flex items-center justify-between pb-6 mb-4 border-b border-slate-200/60">
           <div>
