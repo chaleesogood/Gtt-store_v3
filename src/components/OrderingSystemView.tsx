@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Product, ProductOrder } from '../types';
+import { Product, ProductOrder, Employee, JobProject } from '../types';
 import { collection, onSnapshot, query, doc, setDoc, updateDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import { db, cleanUndefined } from '../firebase';
 import { 
@@ -22,7 +22,9 @@ import {
   Edit3,
   ArrowUpDown,
   CheckSquare,
-  Briefcase
+  Briefcase,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
 interface OrderingSystemViewProps {
@@ -31,6 +33,8 @@ interface OrderingSystemViewProps {
   onAdjustStock: (productId: string, change: number, reason: string) => Promise<void>;
   preselectedProductId?: string;
   onClearPreselectedProductId?: () => void;
+  employees: Employee[];
+  jobProjects: JobProject[];
 }
 
 enum OperationType {
@@ -57,7 +61,9 @@ export default function OrderingSystemView({
   addToast, 
   onAdjustStock,
   preselectedProductId,
-  onClearPreselectedProductId
+  onClearPreselectedProductId,
+  employees = [],
+  jobProjects = []
 }: OrderingSystemViewProps) {
   const [orders, setOrders] = useState<ProductOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -875,38 +881,62 @@ export default function OrderingSystemView({
             {/* Requester name */}
             <div className="space-y-0.5">
               <label className="font-bold text-slate-500">ผู้ขอซื้อ / แผนกงาน *</label>
-              <input
-                type="text"
+              <select
                 required
-                placeholder="เช่น วิศวกรรม, สมชาย"
-                className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
+                className="w-full px-2 py-0.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
                 value={requesterName}
                 onChange={(e) => setRequesterName(e.target.value)}
-              />
+              >
+                <option value="">-- เลือกผู้ขอซื้อ --</option>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.name}>
+                    {emp.name} ({emp.role})
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Purchaser name */}
             <div className="space-y-0.5">
               <label className="font-bold text-slate-500">คนจัดซื้อ / ผู้ดำเนินการ</label>
-              <input
-                type="text"
-                placeholder="เช่น สมศักดิ์ (จัดซื้อ)"
-                className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
+              <select
+                className="w-full px-2 py-0.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
                 value={purchaserName}
                 onChange={(e) => setPurchaserName(e.target.value)}
-              />
+              >
+                <option value="">-- เลือกคนจัดซื้อ --</option>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.name}>
+                    {emp.name} ({emp.role})
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Job Number */}
             <div className="space-y-0.5">
               <label className="font-bold text-slate-500">Job.No (หมายเลขงาน)</label>
-              <input
-                type="text"
-                placeholder="เช่น Job-2026-001"
-                className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
+              <select
+                className="w-full px-2 py-0.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
                 value={jobNo}
-                onChange={(e) => setJobNo(e.target.value)}
-              />
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setJobNo(val);
+                  const matchedProj = jobProjects.find(p => p.jobNo === val);
+                  if (matchedProj) {
+                    setJobName(matchedProj.projectName);
+                  } else {
+                    setJobName('');
+                  }
+                }}
+              >
+                <option value="">-- เลือกหมายเลขงาน --</option>
+                {jobProjects.map((p) => (
+                  <option key={p.id} value={p.jobNo}>
+                    {p.jobNo} {p.projectName ? `- ${p.projectName}` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Job Name */}
@@ -914,8 +944,9 @@ export default function OrderingSystemView({
               <label className="font-bold text-slate-500">Job.Name (ชื่องาน)</label>
               <input
                 type="text"
-                placeholder="เช่น ตู้ควบคุม MDB"
-                className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
+                disabled
+                placeholder="จะเลือกตามหมายเลขงานอัตโนมัติ"
+                className="w-full px-2 py-0.5 bg-slate-100 border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] text-slate-600 font-medium"
                 value={jobName}
                 onChange={(e) => setJobName(e.target.value)}
               />
@@ -1113,9 +1144,14 @@ export default function OrderingSystemView({
           </select>
           <button
             onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            className="p-1 bg-white border border-slate-200 rounded hover:bg-slate-50 text-slate-600"
+            className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-indigo-600 transition-colors flex items-center justify-center cursor-pointer"
+            title={sortOrder === 'asc' ? 'เรียงจากน้อยไปมาก' : 'เรียงจากมากไปน้อย'}
           >
-            {sortOrder === 'asc' ? '▲' : '▼'}
+            {sortOrder === 'asc' ? (
+              <ChevronUp className="h-3.5 w-3.5 stroke-[3]" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 stroke-[3]" />
+            )}
           </button>
         </div>
       </div>
@@ -1136,10 +1172,10 @@ export default function OrderingSystemView({
               <tr className="bg-slate-100/30 border-b border-slate-150 text-[9px] font-bold text-slate-400 uppercase tracking-wider font-sans">
                 <th className="py-1 px-1.5 w-[110px]">เลขที่เอกสาร PR</th>
                 <th className="py-1 px-1.5 min-w-[200px]">พัสดุที่จัดซื้อ / โครงการ</th>
+                <th className="py-1 px-1.5 text-center w-[300px]">สถานะ / อัปเดตคืบหน้าด่วน</th>
                 <th className="py-1 px-1.5 w-[120px]">ผู้ขอเสนอ / ดำเนินการ</th>
                 <th className="py-1 px-1.5 text-center w-[90px]">จำนวนสั่ง</th>
                 <th className="py-1 px-1.5 text-right w-[110px]">ราคารวม</th>
-                <th className="py-1 px-1.5 text-center w-[300px]">สถานะ / อัปเดตคืบหน้าด่วน</th>
                 <th className="py-1 px-1.5 text-right w-[120px]">จัดการ</th>
               </tr>
             </thead>
@@ -1164,7 +1200,12 @@ export default function OrderingSystemView({
                         <td colSpan={7} className="py-0.5 px-2">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-indigo-700 font-black">
+                              <span className="text-indigo-700 font-black flex items-center gap-1">
+                                {isCollapsed ? (
+                                  <ChevronDown className="h-3 w-3 text-slate-400" />
+                                ) : (
+                                  <ChevronUp className="h-3 w-3 text-indigo-650" />
+                                )}
                                 {group.jobNo ? `⚙️ JOB: ${group.jobNo}` : '📂 ทั่วไป / ไม่ระบุ Job No.'}
                               </span>
                               {group.jobName && (
@@ -1176,11 +1217,18 @@ export default function OrderingSystemView({
                                 {group.orders.length} ใบงาน
                               </span>
                             </div>
-                            <div className="flex items-center gap-3 text-[9px] text-slate-500">
+                            <div className="flex items-center gap-3 text-[10px] text-slate-500">
                               {totalJobSpend > 0 && (
-                                <span>งบประมาณงานรวม: <strong className="text-indigo-600 font-mono">฿{totalJobSpend.toLocaleString('th-TH')}</strong></span>
+                                <span>งบประมาณงานรวม: <strong className="text-indigo-600 font-mono text-[11px]">฿{totalJobSpend.toLocaleString('th-TH')}</strong></span>
                               )}
-                              <span className="text-slate-400">{isCollapsed ? '[+] ขยาย' : '[-] ย่อ'}</span>
+                              <div className="flex items-center gap-1 text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full font-bold text-[9px] transition-colors hover:bg-indigo-100">
+                                <span>{isCollapsed ? 'ขยายรายการ' : 'ซ่อนรายการ'}</span>
+                                {isCollapsed ? (
+                                  <ChevronDown className="h-3 w-3" />
+                                ) : (
+                                  <ChevronUp className="h-3 w-3" />
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -1211,6 +1259,16 @@ export default function OrderingSystemView({
                               </div>
                             </td>
 
+                            {/* Status Steps Tracker Inline */}
+                            <td className="py-0.5 px-1.5 text-center">
+                              <div className="flex flex-col items-center gap-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  {getStatusBadge(order.status)}
+                                </div>
+                                {renderStatusTrackerInline(order)}
+                              </div>
+                            </td>
+
                             {/* Requester & Purchaser */}
                             <td className="py-0.5 px-1.5 text-slate-500 text-[10px]">
                               <div>ขอ: <strong className="text-slate-600">{order.requesterName}</strong></div>
@@ -1229,36 +1287,26 @@ export default function OrderingSystemView({
                               {order.totalPrice ? `฿${order.totalPrice.toLocaleString('th-TH')}` : '-'}
                             </td>
 
-                            {/* Status Steps Tracker Inline */}
-                            <td className="py-0.5 px-1.5 text-center">
-                              <div className="flex flex-col items-center gap-0.5">
-                                <div className="flex items-center gap-1.5">
-                                  {getStatusBadge(order.status)}
-                                </div>
-                                {renderStatusTrackerInline(order)}
-                              </div>
-                            </td>
-
                             {/* Action Buttons */}
                             <td className="py-0.5 px-1.5 text-right">
                               <div className="flex items-center justify-end gap-0.5">
                                 <button
                                   onClick={() => setViewingPoOrder(order)}
-                                  className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded"
+                                  className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded cursor-pointer"
                                   title="พิมพ์ใบเสนอซื้อ (PDF)"
                                 >
                                   <Eye className="h-3.5 w-3.5" />
                                 </button>
                                 <button
                                   onClick={() => handleOpenEdit(order)}
-                                  className="p-0.5 text-slate-400 hover:text-amber-600 hover:bg-slate-100 rounded"
+                                  className="p-0.5 text-slate-400 hover:text-amber-600 hover:bg-slate-100 rounded cursor-pointer"
                                   title="แก้ไขใบสั่ง"
                                 >
                                   <Edit3 className="h-3.5 w-3.5" />
                                 </button>
                                 <button
                                   onClick={() => handleDeleteOrder(order.id, order.orderTitle)}
-                                  className="p-0.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded"
+                                  className="p-0.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
                                   title="ลบพัสดุจัดซื้อ"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -1301,6 +1349,16 @@ export default function OrderingSystemView({
                         </div>
                       </td>
 
+                      {/* Status Steps Tracker Inline */}
+                      <td className="py-0.5 px-1.5 text-center">
+                        <div className="flex flex-col items-center gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            {getStatusBadge(order.status)}
+                          </div>
+                          {renderStatusTrackerInline(order)}
+                        </div>
+                      </td>
+
                       {/* Requester & Purchaser */}
                       <td className="py-0.5 px-1.5 text-slate-500 text-[10px]">
                         <div>ขอ: <strong className="text-slate-600">{order.requesterName}</strong></div>
@@ -1319,36 +1377,26 @@ export default function OrderingSystemView({
                         {order.totalPrice ? `฿${order.totalPrice.toLocaleString('th-TH')}` : '-'}
                       </td>
 
-                      {/* Status Steps Tracker Inline */}
-                      <td className="py-0.5 px-1.5 text-center">
-                        <div className="flex flex-col items-center gap-0.5">
-                          <div className="flex items-center gap-1.5">
-                            {getStatusBadge(order.status)}
-                          </div>
-                          {renderStatusTrackerInline(order)}
-                        </div>
-                      </td>
-
                       {/* Action Buttons */}
                       <td className="py-0.5 px-1.5 text-right">
                         <div className="flex items-center justify-end gap-0.5">
                           <button
                             onClick={() => setViewingPoOrder(order)}
-                            className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded"
+                            className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded cursor-pointer"
                             title="พิมพ์ใบเสนอซื้อ (PDF)"
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() => handleOpenEdit(order)}
-                            className="p-0.5 text-slate-400 hover:text-amber-600 hover:bg-slate-100 rounded"
+                            className="p-0.5 text-slate-400 hover:text-amber-600 hover:bg-slate-100 rounded cursor-pointer"
                             title="แก้ไขใบสั่ง"
                           >
                             <Edit3 className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() => handleDeleteOrder(order.id, order.orderTitle)}
-                            className="p-0.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded"
+                            className="p-0.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
                             title="ลบพัสดุจัดซื้อ"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -1388,25 +1436,36 @@ export default function OrderingSystemView({
                 {/* Requester name */}
                 <div className="space-y-0.5">
                   <label className="font-bold text-slate-500">ชื่อผู้ขอเสนอซื้อ *</label>
-                  <input
-                    type="text"
+                  <select
                     required
-                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
+                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
                     value={editRequesterName}
                     onChange={(e) => setEditRequesterName(e.target.value)}
-                  />
+                  >
+                    <option value="">-- เลือกผู้ขอซื้อ --</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.name}>
+                        {emp.name} ({emp.role})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Purchaser name */}
                 <div className="space-y-0.5">
                   <label className="font-bold text-slate-500">ชื่อคนจัดซื้อ</label>
-                  <input
-                    type="text"
-                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] font-bold text-indigo-900"
+                  <select
+                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
                     value={editPurchaserName}
                     onChange={(e) => setEditPurchaserName(e.target.value)}
-                    placeholder="ยังไม่ได้ระบุ"
-                  />
+                  >
+                    <option value="">-- เลือกคนจัดซื้อ --</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.name}>
+                        {emp.name} ({emp.role})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Status selector */}
@@ -1430,13 +1489,27 @@ export default function OrderingSystemView({
                 {/* Job No */}
                 <div className="space-y-0.5">
                   <label className="font-bold text-slate-500">Job.No (เลขงาน)</label>
-                  <input
-                    type="text"
-                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] font-mono"
+                  <select
+                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
                     value={editJobNo}
-                    onChange={(e) => setEditJobNo(e.target.value)}
-                    placeholder="เช่น Job-2026-001"
-                  />
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditJobNo(val);
+                      const matchedProj = jobProjects.find(p => p.jobNo === val);
+                      if (matchedProj) {
+                        setEditJobName(matchedProj.projectName);
+                      } else {
+                        setEditJobName('');
+                      }
+                    }}
+                  >
+                    <option value="">-- เลือกหมายเลขงาน --</option>
+                    {jobProjects.map((p) => (
+                      <option key={p.id} value={p.jobNo}>
+                        {p.jobNo} {p.projectName ? `- ${p.projectName}` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Job Name */}
@@ -1444,10 +1517,11 @@ export default function OrderingSystemView({
                   <label className="font-bold text-slate-500">Job.Name (ชื่องาน)</label>
                   <input
                     type="text"
-                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
+                    disabled
+                    className="w-full px-2 py-0.5 bg-slate-100 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] text-slate-600 font-medium"
                     value={editJobName}
                     onChange={(e) => setEditJobName(e.target.value)}
-                    placeholder="เช่น ระบบบอร์ดไมโคร"
+                    placeholder="จะเลือกตามหมายเลขงานอัตโนมัติ"
                   />
                 </div>
 
@@ -1541,7 +1615,7 @@ export default function OrderingSystemView({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded"
+                  className="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded cursor-pointer"
                 >
                   บันทึกการแก้ไข
                 </button>

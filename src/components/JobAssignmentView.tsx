@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Job, Employee, JobProject, DailyReport, ProjectModule, normalizeModules } from '../types';
+import { Job, Employee, JobProject, DailyReport, normalizeModules } from '../types';
 import { 
   Briefcase, 
   User, 
@@ -15,24 +15,12 @@ import {
   Play, 
   Tag, 
   Activity, 
-  AlertTriangle,
   Users,
   FolderGit2,
-  Building2,
-  Phone,
-  Hash,
-  FileSpreadsheet,
-  ChevronRight,
-  UserCheck,
-  UserPlus,
-  Compass,
   Camera,
-  Image as ImageIcon,
   Eye,
   ClipboardList,
-  Layers,
-  Check,
-  Upload
+  Check
 } from 'lucide-react';
 import DailyReportView from './DailyReportView';
 
@@ -59,405 +47,7 @@ interface JobAssignmentViewProps {
   onDeleteDailyReport: (id: string) => void;
 }
 
-type ActiveTab = 'tasks' | 'projects' | 'employees' | 'daily_reports';
-
-function ProjectModulesManager({ 
-  proj, 
-  onEditJobProject,
-  jobs,
-  onEditJob
-}: { 
-  proj: JobProject; 
-  onEditJobProject: (id: string, updatedFields: Partial<JobProject>) => Promise<void>; 
-  jobs: Job[];
-  onEditJob: (id: string, updatedFields: Partial<Job>) => Promise<void>;
-}) {
-  const [newCode, setNewCode] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newImgUrl, setNewImgUrl] = useState('');
-  
-  // For editing
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingCode, setEditingCode] = useState('');
-  const [editingName, setEditingName] = useState('');
-
-  // Normalize existing modules
-  const rawModules = proj.modules || [];
-  const modules = normalizeModules(rawModules);
-
-  // Sort modules by module code number (least on top, greatest on bottom)
-  const sortedModules = useMemo(() => {
-    return [...modules].sort((a, b) => {
-      const cleanA = a.code.replace(/^\D+/g, '');
-      const cleanB = b.code.replace(/^\D+/g, '');
-      const numA = parseInt(cleanA, 10);
-      const numB = parseInt(cleanB, 10);
-      
-      if (!isNaN(numA) && !isNaN(numB)) {
-        if (numA !== numB) return numA - numB;
-      }
-      return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
-    });
-  }, [modules]);
-
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const codeVal = newCode.trim();
-    const nameVal = newName.trim();
-    if (!codeVal || !nameVal) return;
-    
-    // Check if code is already registered
-    if (modules.some(m => m.code === codeVal)) {
-      alert('มีรหัสโมดูลนี้ในโครงการอยู่แล้ว');
-      return;
-    }
-
-    const updated = [...modules, { code: codeVal, name: nameVal, imageUrl: newImgUrl || '' }];
-    await onEditJobProject(proj.id, { modules: updated });
-    
-    setNewCode('');
-    setNewName('');
-    setNewImgUrl('');
-  };
-
-  const handleSaveEdit = async (idx: number) => {
-    const codeVal = editingCode.trim();
-    const nameVal = editingName.trim();
-    if (!codeVal || !nameVal) return;
-
-    const oldModule = sortedModules[idx];
-    
-    // Check duplicates except itself
-    if (modules.some(m => m.code === codeVal && m.code !== oldModule.code)) {
-      alert('มีรหัสโมดูลนี้ในโครงการอยู่แล้ว');
-      return;
-    }
-
-    const updated = modules.map(m => {
-      if (m.code === oldModule.code) {
-        return { ...m, code: codeVal, name: nameVal };
-      }
-      return m;
-    });
-    
-    await onEditJobProject(proj.id, { modules: updated });
-
-    // Also update all tasks that are bound to this old name/code & jobNo
-    const oldStringFormat = `${oldModule.code} - ${oldModule.name}`;
-    const oldPlainName = oldModule.name;
-    const newStringFormat = `${codeVal} - ${nameVal}`;
-
-    const relatedJobs = jobs.filter(
-      j => j.jobNo === proj.jobNo && (j.module === oldStringFormat || j.module === oldPlainName || j.module === oldModule.code)
-    );
-    if (relatedJobs.length > 0) {
-      if (confirm(`พบใบสั่งงานในระบบ ${relatedJobs.length} รายการที่อ้างอิงโมดูลเดิม\nต้องการเปลี่ยนชื่อโมดูลสำหรับใบสั่งงานเหล่านี้เป็น "${newStringFormat}" ด้วยหรือไม่?`)) {
-        for (const rJob of relatedJobs) {
-          await onEditJob(rJob.id, { module: newStringFormat });
-        }
-      }
-    }
-
-    setEditingIndex(null);
-  };
-
-  const handleDelete = async (moduleCode: string, moduleName: string) => {
-    if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบโมดูล "${moduleCode} - ${moduleName}" ออกจากโครงการ?`)) {
-      const updated = modules.filter(m => m.code !== moduleCode);
-      await onEditJobProject(proj.id, { modules: updated });
-    }
-  };
-
-  const handleUploadImage = async (moduleCode: string, base64Data: string) => {
-    const updated = modules.map(m => {
-      if (m.code === moduleCode) {
-        return { ...m, imageUrl: base64Data };
-      }
-      return m;
-    });
-    await onEditJobProject(proj.id, { modules: updated });
-  };
-
-  const handleDeleteImage = async (moduleCode: string) => {
-    if (confirm('ต้องการลบรูปภาพโมดูลนี้ใช่หรือไม่?')) {
-      const updated = modules.map(m => {
-        if (m.code === moduleCode) {
-          return { ...m, imageUrl: '' };
-        }
-        return m;
-      });
-      await onEditJobProject(proj.id, { modules: updated });
-    }
-  };
-
-  return (
-    <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-100 space-y-4 mt-2">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-150">
-        <div className="flex items-center gap-1.5 text-xs font-black text-slate-700">
-          <Layers className="h-4.5 w-4.5 text-indigo-500 shrink-0" />
-          <span>โมดูลและระบบย่อย ({sortedModules.length})</span>
-          <span className="text-[10px] text-slate-400 font-normal ml-1">เรียงตามรหัสโมดูลจากน้อยไปมาก</span>
-        </div>
-      </div>
-
-      {/* Multi-field Add Form */}
-      <form onSubmit={handleAdd} className="bg-white p-3 rounded-lg border border-slate-200/60 shadow-2xs space-y-3">
-        <div className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">ลงทะเบียนโมดูลใหม่</div>
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-          {/* Code field */}
-          <div className="sm:col-span-3">
-            <input
-              type="text"
-              required
-              placeholder="รหัสโมดูล (เช่น 01)"
-              value={newCode}
-              onChange={(e) => setNewCode(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
-            />
-          </div>
-          {/* Name field */}
-          <div className="sm:col-span-6">
-            <input
-              type="text"
-              required
-              placeholder="ชื่อโมดูล (เช่น ตู้คอนโทรลหลัก)"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
-            />
-          </div>
-          {/* Action button */}
-          <div className="sm:col-span-3 flex gap-2">
-            <button
-              type="submit"
-              className="w-full px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white text-[11px] font-black rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 shadow-xs h-[32px]"
-            >
-              <Plus className="h-3.5 w-3.5 stroke-[3]" />
-              <span>ลงทะเบียน</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Optional Base64 Image Preview / Selector inside Form */}
-        <div className="flex items-center gap-3 pt-1 border-t border-slate-100">
-          <label className="text-[10px] text-slate-500 font-bold flex items-center gap-1 cursor-pointer hover:text-indigo-600 transition-colors">
-            <Camera className="h-3.5 w-3.5 text-slate-400" />
-            <span>{newImgUrl ? 'เปลี่ยนรูปแนบโมดูล' : 'แนบรูปภาพโมดูล'}</span>
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                  setNewImgUrl(reader.result as string);
-                };
-                reader.readAsDataURL(file);
-              }}
-            />
-          </label>
-
-          {newImgUrl && (
-            <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-              <img src={newImgUrl} alt="Preview" className="h-5 w-5 rounded object-cover" />
-              <button
-                type="button"
-                onClick={() => setNewImgUrl('')}
-                className="text-[9px] text-rose-500 hover:text-rose-600 cursor-pointer font-bold"
-              >
-                ลบรูป
-              </button>
-            </div>
-          )}
-
-          {/* Prompt Unsplash presets */}
-          <div className="flex items-center gap-1 ml-auto">
-            <span className="text-[9px] text-slate-400 font-sans">รูปตัวอย่าง:</span>
-            <button
-              type="button"
-              onClick={() => setNewImgUrl('https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80')}
-              className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors"
-            >
-              +ตู้ไฟ
-            </button>
-            <button
-              type="button"
-              onClick={() => setNewImgUrl('https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80')}
-              className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors"
-            >
-              +แผงวงจร
-            </button>
-          </div>
-        </div>
-      </form>
-
-      {/* Modules List/Grid sorted by module code */}
-      {sortedModules.length === 0 ? (
-        <span className="text-[11px] text-slate-400 italic font-sans font-normal block pl-1">
-          ยังไม่มีการลงทะเบียนโมดูลในระบบ คุณสามารถเพิ่มโมดูลเพื่อใช้อ้างอิงมอบหมายงานได้
-        </span>
-      ) : (
-        <div className="flex flex-col gap-1">
-          {sortedModules.map((m, idx) => (
-            <div 
-              key={m.code}
-              className="flex items-center justify-between p-1 py-1 px-1.5 hover:bg-slate-50/50 border-b border-slate-100 last:border-0 transition-colors group/mod relative"
-            >
-              {editingIndex === idx ? (
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
-                  <div className="grid grid-cols-12 gap-1.5 flex-grow">
-                    <input
-                      type="text"
-                      placeholder="รหัสโมดูล"
-                      value={editingCode}
-                      onChange={(e) => setEditingCode(e.target.value)}
-                      className="col-span-4 px-2 py-1 bg-white border border-indigo-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                      autoFocus
-                    />
-                    <input
-                      type="text"
-                      placeholder="ชื่อโมดูล"
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      className="col-span-8 px-2 py-1 bg-white border border-indigo-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5 justify-end shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleSaveEdit(idx)}
-                      className="text-white bg-emerald-600 hover:bg-emerald-500 px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-0.5 transition-colors cursor-pointer"
-                      title="บันทึก"
-                    >
-                      <Check className="h-3.5 w-3.5 stroke-[3]" />
-                      <span>บันทึก</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingIndex(null)}
-                      className="text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-0.5 transition-colors cursor-pointer"
-                      title="ยกเลิก"
-                    >
-                      <X className="h-3.5 w-3.5 stroke-[3]" />
-                      <span>ยกเลิก</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3 w-full">
-                  {/* Module Image section */}
-                  <div className="relative shrink-0 group/img">
-                    {m.imageUrl ? (
-                      <div className="relative h-12 w-12 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 shadow-2xs">
-                        <img 
-                          src={m.imageUrl} 
-                          alt={m.name} 
-                          className="h-full w-full object-cover"
-                        />
-                        {/* Remove Image overlay */}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteImage(m.code)}
-                          className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-white cursor-pointer"
-                          title="ลบรูปภาพโมดูล"
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-rose-200 hover:text-rose-400 stroke-[2.5]" />
-                        </button>
-                      </div>
-                    ) : (
-                      <label className="flex flex-col items-center justify-center h-12 w-12 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-indigo-50/50 hover:border-indigo-300 transition-all cursor-pointer relative">
-                        <Upload className="h-4 w-4 text-slate-400" />
-                        <span className="text-[8px] text-slate-400 font-bold mt-0.5">เพิ่มรูป</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              handleUploadImage(m.code, reader.result as string);
-                            };
-                            reader.readAsDataURL(file);
-                          }}
-                        />
-                      </label>
-                    )}
-                  </div>
-
-                  {/* Text details */}
-                  <div className="flex-grow min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-[10px] font-black text-indigo-700 font-mono rounded">
-                        {m.code}
-                      </span>
-                      <h5 className="text-xs font-black text-slate-800 truncate">
-                        {m.name}
-                      </h5>
-                    </div>
-                  </div>
-
-                  {/* Actions column */}
-                  <div className="flex items-center gap-1">
-                    {/* Add/Replace Image via Preset (if no image) */}
-                    {!m.imageUrl && (
-                      <div className="hidden sm:flex items-center gap-1 mr-1">
-                        <button
-                          type="button"
-                          onClick={() => handleUploadImage(m.code, 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80')}
-                          className="text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 py-0.5 rounded cursor-pointer"
-                          title="จำลองรูปภาพตู้ไฟ"
-                        >
-                          +ตู้ไฟ
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleUploadImage(m.code, 'https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80')}
-                          className="text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 py-0.5 rounded cursor-pointer"
-                          title="จำลองรูปภาพแผงวงจร"
-                        >
-                          +บอร์ด
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Edit button */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingIndex(idx);
-                        setEditingCode(m.code);
-                        setEditingName(m.name);
-                      }}
-                      className="text-slate-400 hover:text-indigo-600 hover:bg-slate-100 p-1 rounded-lg transition-colors cursor-pointer"
-                      title="แก้ไขข้อมูลโมดูล"
-                    >
-                      <Edit3 className="h-3.5 w-3.5" />
-                    </button>
-
-                    {/* Delete button */}
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(m.code, m.name)}
-                      className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1 rounded-lg transition-colors cursor-pointer"
-                      title="ลบโมดูล"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+type ActiveTab = 'tasks' | 'daily_reports';
 
 export default function JobAssignmentView({
   jobs,
@@ -502,30 +92,6 @@ export default function JobAssignmentView({
   const [taskTargetDate, setTaskTargetDate] = useState('');
   const [taskImageUrl, setTaskImageUrl] = useState('');
   const [activeImagePreview, setActiveImagePreview] = useState<string | null>(null);
-
-  // -------------------- STATE FOR EMPLOYEES TAB --------------------
-  const [empSearch, setEmpSearch] = useState('');
-  const [isEmpAddModalOpen, setIsEmpAddModalOpen] = useState(false);
-  const [isEmpEditModalOpen, setIsEmpEditModalOpen] = useState(false);
-  const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
-
-  // Employee form fields
-  const [empName, setEmpName] = useState('');
-  const [empRole, setEmpRole] = useState('');
-  const [empPhone, setEmpPhone] = useState('');
-
-  // -------------------- STATE FOR PROJECTS TAB --------------------
-  const [projSearch, setProjSearch] = useState('');
-  const [isProjAddModalOpen, setIsProjAddModalOpen] = useState(false);
-  const [isProjEditModalOpen, setIsProjEditModalOpen] = useState(false);
-  const [selectedProj, setSelectedProj] = useState<JobProject | null>(null);
-
-  // Project form fields
-  const [projJobNo, setProjJobNo] = useState('');
-  const [projYear, setProjYear] = useState(new Date().getFullYear().toString());
-  const [projCustomer, setProjCustomer] = useState('');
-  const [projName, setProjName] = useState('');
-
 
   // Helper: Find Project metadata based on JobNo
   const getProjectMeta = (jobNo: string) => {
@@ -593,86 +159,8 @@ export default function JobAssignmentView({
     setTaskTargetDate(oneWeekFromNow.toISOString().split('T')[0]);
   };
 
-  // Employee form submissions
-  const handleEmpAddSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!empName.trim()) return;
-
-    await onAddEmployee({
-      name: empName.trim(),
-      role: empRole.trim() || undefined,
-      phone: empPhone.trim() || undefined
-    });
-
-    setIsEmpAddModalOpen(false);
-    setEmpName('');
-    setEmpRole('');
-    setEmpPhone('');
-  };
-
-  const handleEmpEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedEmp || !empName.trim()) return;
-
-    await onEditEmployee(selectedEmp.id, {
-      name: empName.trim(),
-      role: empRole.trim() || undefined,
-      phone: empPhone.trim() || undefined
-    });
-
-    setIsEmpEditModalOpen(false);
-    setSelectedEmp(null);
-    setEmpName('');
-    setEmpRole('');
-    setEmpPhone('');
-  };
-
-  // Project form submissions
-  const handleProjAddSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!projJobNo.trim() || !projCustomer.trim() || !projName.trim()) return;
-
-    // Check duplicate
-    const isDuplicate = jobProjects.some(p => p.jobNo.toLowerCase() === projJobNo.trim().toLowerCase());
-    if (isDuplicate) {
-      alert(`มีรหัสงาน ${projJobNo} นี้ในระบบแล้ว กรุณาใช้รหัสอื่น`);
-      return;
-    }
-
-    await onAddJobProject({
-      jobNo: projJobNo.trim().toUpperCase(),
-      year: projYear.trim() || new Date().getFullYear().toString(),
-      customer: projCustomer.trim(),
-      projectName: projName.trim()
-    });
-
-    setIsProjAddModalOpen(false);
-    setProjJobNo('');
-    setProjCustomer('');
-    setProjName('');
-  };
-
-  const handleProjEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedProj || !projJobNo.trim() || !projCustomer.trim() || !projName.trim()) return;
-
-    await onEditJobProject(selectedProj.id, {
-      jobNo: projJobNo.trim().toUpperCase(),
-      year: projYear.trim(),
-      customer: projCustomer.trim(),
-      projectName: projName.trim()
-    });
-
-    setIsProjEditModalOpen(false);
-    setSelectedProj(null);
-    setProjJobNo('');
-    setProjCustomer('');
-    setProjName('');
-  };
-
   // Open task modals with default selections prefilled
   const openTaskAdd = () => {
-    // Select first job project and first employee as default, or empty if none
     setTaskJobNo(jobProjects.length > 0 ? jobProjects[0].jobNo : '');
     setTaskAssignee(employees.length > 0 ? employees[0].name : '');
     setTaskModule('');
@@ -697,41 +185,6 @@ export default function JobAssignmentView({
     setTaskTargetDate(task.targetDate || '');
     setTaskImageUrl(task.imageUrl || '');
     setIsTaskEditModalOpen(true);
-  };
-
-  const openEmpEdit = (emp: Employee) => {
-    setSelectedEmp(emp);
-    setEmpName(emp.name);
-    setEmpRole(emp.role || '');
-    setEmpPhone(emp.phone || '');
-    setIsEmpEditModalOpen(true);
-  };
-
-  const openProjEdit = (proj: JobProject) => {
-    setSelectedProj(proj);
-    setProjJobNo(proj.jobNo);
-    setProjYear(proj.year);
-    setProjCustomer(proj.customer);
-    setProjName(proj.projectName);
-    setIsProjEditModalOpen(true);
-  };
-
-  // Quick generate Job No helper in projects tab
-  const autoGenerateNewProjJobNo = () => {
-    const yy = projYear ? projYear.slice(-2) : new Date().getFullYear().toString().slice(-2);
-    const prefix = `JOB-${yy}07-`; // July by default or generic
-    const matching = jobProjects.filter(p => p.jobNo.startsWith(prefix));
-    
-    let nextNum = 1;
-    if (matching.length > 0) {
-      const serials = matching.map(p => {
-        const parts = p.jobNo.split('-');
-        const serialStr = parts[parts.length - 1];
-        return parseInt(serialStr, 10) || 0;
-      });
-      nextNum = Math.max(...serials) + 1;
-    }
-    setProjJobNo(`${prefix}${String(nextNum).padStart(3, '0')}`);
   };
 
   // -------------------- FILTER LOGICS --------------------
@@ -796,28 +249,8 @@ export default function JobAssignmentView({
     }));
   }, [groupedTasks]);
 
-  // Employees Filter
-  const filteredEmployees = employees.filter(emp => {
-    return (
-      emp.name.toLowerCase().includes(empSearch.toLowerCase()) ||
-      (emp.role || '').toLowerCase().includes(empSearch.toLowerCase()) ||
-      (emp.phone || '').toLowerCase().includes(empSearch.toLowerCase())
-    );
-  });
-
-  // Projects Filter
-  const filteredProjects = jobProjects.filter(proj => {
-    return (
-      proj.jobNo.toLowerCase().includes(projSearch.toLowerCase()) ||
-      proj.customer.toLowerCase().includes(projSearch.toLowerCase()) ||
-      proj.projectName.toLowerCase().includes(projSearch.toLowerCase()) ||
-      proj.year.includes(projSearch)
-    );
-  });
-
   // -------------------- STATS CALCULATORS --------------------
   const completedTasksCount = jobs.filter(t => t.status === 'completed').length;
-  const activeTasksCount = jobs.filter(t => t.status === 'in_progress' || t.status === 'pending').length;
 
   return (
     <div className="space-y-6">
@@ -831,7 +264,7 @@ export default function JobAssignmentView({
 
         <div className="z-10">
           <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-widest font-mono">
-            <Compass className="h-4 w-4 animate-spin-slow text-indigo-400" />
+            <Activity className="h-4 w-4 text-indigo-400" />
             <span>Operational Center</span>
           </div>
           <h2 className="text-xl font-black text-white font-sans flex items-center gap-2 mt-1.5">
@@ -839,7 +272,7 @@ export default function JobAssignmentView({
             ระบบจ่ายงาน & รายงานความคืบหน้าประจำวัน
           </h2>
           <p className="text-xs text-slate-400 font-sans mt-1 max-w-xl">
-            บันทึกรหัสงานปีพนักงาน มอบหมายและติดตามความคืบหน้า และรายงานการทำงานประจำวันแบบครบวงจรในที่เดียว
+            มอบหมายและติดตามความคืบหน้างานย่อยรายมอดูล และพนักงานเขียนรายงานการปฏิบัติงานประจำวันพร้อมภาพถ่ายแนบเข้าระบบอย่างเป็นระเบียบ
           </p>
         </div>
 
@@ -855,30 +288,6 @@ export default function JobAssignmentView({
           >
             <Briefcase className="h-4 w-4" />
             <span>งานมอบหมาย ({jobs.length})</span>
-          </button>
-          <button
-            onClick={() => setSubTab('projects')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-              subTab === 'projects' 
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
-            }`}
-            id="tab-manage-projects"
-          >
-            <FolderGit2 className="h-4 w-4" />
-            <span>ตั้งค่า โปรเจ็ค ({jobProjects.length})</span>
-          </button>
-          <button
-            onClick={() => setSubTab('employees')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-              subTab === 'employees' 
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
-            }`}
-            id="tab-manage-employees"
-          >
-            <Users className="h-4 w-4" />
-            <span>จัดการรายชื่อพนักงาน ({employees.length})</span>
           </button>
           <button
             onClick={() => setSubTab('daily_reports')}
@@ -909,7 +318,7 @@ export default function JobAssignmentView({
                 ตารางงาน (Assigned Tasks)
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                งานระดับมอดูลที่มอบหมายให้ช่างเทคนิคและวิศวกร ดำเนินการ และลงความคืบหน้าแบบ Real-time
+                งานระดับมอดูลที่มอบหมายให้ช่างเทคนิคและวิศวกร ดำเนินการ และรายงานความคืบหน้าแบบ Real-time
               </p>
             </div>
 
@@ -1080,11 +489,22 @@ export default function JobAssignmentView({
 
                 return (
                   <div key={assigneeGroup.assignee} className="space-y-1.5">
-                    {/* Assignee Header - Outside the card/box, minimalist, very clean */}
+                    
+                    {/* Assignee Header - Shows employee profile photos */}
                     <div className="flex items-center gap-1.5 px-1.5 py-0.5 select-none">
-                      <div className="h-4.5 w-4.5 rounded-full bg-indigo-600 flex items-center justify-center text-[8.5px] font-black font-mono text-white shrink-0 shadow-3xs">
-                        {assigneeGroup.assignee.slice(0, 2)}
-                      </div>
+                      {empMeta?.imageUrl ? (
+                        <img 
+                          src={empMeta.imageUrl} 
+                          alt={assigneeGroup.assignee} 
+                          className="h-5.5 w-5.5 rounded-full object-cover shrink-0 border border-slate-250 shadow-3xs" 
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="h-5 w-5 rounded-full bg-indigo-600 flex items-center justify-center text-[8.5px] font-black font-mono text-white shrink-0 shadow-3xs">
+                          {assigneeGroup.assignee.slice(0, 2)}
+                        </div>
+                      )}
+                      
                       <span className="text-[9.5px] font-bold text-slate-400 uppercase shrink-0">ผู้รับผิดชอบ:</span>
                       <span className="text-[10.5px] font-black text-slate-800 leading-none shrink-0">
                         {assigneeGroup.assignee}
@@ -1107,16 +527,32 @@ export default function JobAssignmentView({
                         return (
                           <div 
                             key={group.key}
-                            className="border-b border-slate-100 last:border-0 pb-1.5 pt-0.5"
+                            className="bg-white rounded-xl border border-slate-200/60 p-2.5 shadow-2xs relative overflow-hidden"
                           >
-                            {/* Group Header - Extremely Compact */}
-                            <div className="px-1.5 py-0.5 border-b border-slate-50/50 flex items-center justify-between gap-2">
+                            {/* Group Header - Shows Project images next to badges */}
+                            <div className="px-1.5 pb-1.5 mb-1.5 border-b border-slate-100 flex items-center justify-between gap-2">
                               
                               <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
+                                
+                                {/* Project Thumbnail Image */}
+                                {projMeta?.projectImageUrl ? (
+                                  <img 
+                                    src={projMeta.projectImageUrl} 
+                                    alt={group.jobNo} 
+                                    className="h-5 w-5 rounded-md object-cover border border-slate-250/70 shrink-0 shadow-4xs" 
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <div className="h-5 w-5 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+                                    <FolderGit2 className="h-3 w-3 text-slate-400" />
+                                  </div>
+                                )}
+
                                 {/* Job No */}
                                 <span className="text-[9.5px] font-black text-indigo-700 font-mono tracking-wide px-1.5 py-0.5 bg-indigo-50 border border-indigo-100/60 rounded-md shrink-0">
                                   {group.jobNo}
                                 </span>
+                                
                                 {projMeta ? (
                                   <span className="text-[9px] font-bold text-slate-500 truncate max-w-[120px] leading-none" title={`ลูกค้า: ${projMeta.customer} | โครงการ: ${projMeta.projectName}`}>
                                     ({projMeta.customer})
@@ -1153,642 +589,235 @@ export default function JobAssignmentView({
 
                             </div>
 
-                    {/* Group Content / Task Items - Aligned Table-like Layout */}
-                    <div className="divide-y divide-slate-100/60">
-                      {/* Column Headers for Desktop - Aligns perfectly with the grid below */}
-                      <div className="hidden lg:grid lg:grid-cols-[1fr_310px_110px_150px_55px] lg:gap-2 px-1.5 py-0.5 bg-slate-50/30 border-b border-slate-100/40 select-none">
-                        <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans">รายละเอียดงาน</span>
-                        <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans text-center">ขั้นตอน / สถานะ</span>
-                        <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans text-center">กำหนดส่ง</span>
-                        <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans text-center">รูปถ่ายงาน</span>
-                        <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans text-center">จัดการ</span>
-                      </div>
-
-                      {group.tasks.map((task, index) => {
-                        const isOverdue = 
-                          task.status !== 'completed' && 
-                          task.status !== 'cancelled' && 
-                          task.targetDate && 
-                          new Date(task.targetDate) < new Date(new Date().setHours(0,0,0,0));
-
-                        return (
-                          <div 
-                            key={task.id}
-                            className={`p-1 px-1.5 transition-all flex flex-col gap-1 sm:gap-1.5 lg:grid lg:grid-cols-[1fr_310px_110px_150px_55px] lg:gap-2 lg:items-center relative overflow-hidden group/item ${
-                              isOverdue ? 'bg-rose-50/10' : 'hover:bg-slate-50/20'
-                            }`}
-                          >
-                            {/* Left visual margin indicator for nested list (if overdue) */}
-                            {isOverdue && (
-                              <div className="absolute top-0 left-0 bottom-0 w-1 bg-rose-500" />
-                            )}
-
-                            {/* 1. Index & Description */}
-                            <div className="flex items-start gap-1.5 min-w-0 flex-1">
-                              <span className="text-[8.5px] font-mono font-bold text-slate-400 bg-slate-100 px-1 py-0.5 rounded shrink-0 leading-none mt-0.5">
-                                #{index + 1}
-                              </span>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[10px] font-bold text-slate-600 font-sans break-words leading-tight" title={task.description}>
-                                  {task.description || 'ไม่มีคำอธิบายเพิ่มเติม'}
-                                </p>
+                            {/* Group Content / Task Items - Aligned Table-like Layout */}
+                            <div className="divide-y divide-slate-100/60">
+                              {/* Column Headers for Desktop - Aligns perfectly with the grid below */}
+                              <div className="hidden lg:grid lg:grid-cols-[1fr_310px_110px_150px_55px] lg:gap-2 px-1.5 py-0.5 bg-slate-50/30 border-b border-slate-100/40 select-none">
+                                <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans">รายละเอียดงาน</span>
+                                <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans text-center">ขั้นตอน / สถานะ</span>
+                                <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans text-center">กำหนดส่ง</span>
+                                <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans text-center">รูปถ่ายงาน</span>
+                                <span className="text-[8px] font-extrabold text-slate-400 uppercase font-sans text-center">จัดการ</span>
                               </div>
-                            </div>
 
-                            {/* 2. Minimalist Clickable 3-Step Flow Column */}
-                            <div className="shrink-0 w-full sm:w-[310px] flex items-center justify-start lg:justify-center self-center">
-                              <div className="inline-flex items-center gap-1 bg-slate-50 border border-slate-150 rounded-lg p-0.5 shadow-4xs select-none font-sans w-full sm:w-auto">
-                                {/* Step 1: มอบงาน */}
-                                <button 
-                                  type="button"
-                                  onClick={() => onEditJob(task.id, { status: 'pending' })}
-                                  className={`inline-flex items-center justify-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black border transition-all cursor-pointer flex-1 sm:flex-none ${
-                                    task.status === 'pending'
-                                      ? 'bg-indigo-100 text-indigo-700 border-indigo-300 shadow-4xs'
-                                      : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                  }`}
-                                  title="เปลี่ยนสถานะเป็น 1.มอบงาน"
-                                >
-                                  <div className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[7px] font-black shadow-4xs transition-colors ${
-                                    task.status === 'pending' ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'
-                                  }`}>
-                                    {task.status !== 'pending' ? (
-                                      <Check className="h-1.5 w-1.5 stroke-[3.5]" />
-                                    ) : (
-                                      '1'
-                                    )}
-                                  </div>
-                                  <span>1.มอบงาน</span>
-                                </button>
+                              {group.tasks.map((task, index) => {
+                                const isOverdue = 
+                                  task.status !== 'completed' && 
+                                  task.status !== 'cancelled' && 
+                                  task.targetDate && 
+                                  new Date(task.targetDate) < new Date(new Date().setHours(0,0,0,0));
 
-                                <span className={`text-[8px] font-bold ${
-                                  task.status === 'in_progress' || task.status === 'completed' ? 'text-amber-500' : 'text-slate-300'
-                                }`}>›</span>
-
-                                {/* Step 2: กำลังทำ */}
-                                <button 
-                                  type="button"
-                                  onClick={() => onEditJob(task.id, { status: 'in_progress' })}
-                                  className={`inline-flex items-center justify-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black border transition-all cursor-pointer flex-1 sm:flex-none ${
-                                    task.status === 'in_progress'
-                                      ? 'bg-amber-100 text-amber-700 border-amber-300 animate-pulse shadow-sm shadow-amber-500/5'
-                                      : task.status === 'completed'
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                        : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 hover:text-slate-600'
-                                  }`}
-                                  title="เปลี่ยนสถานะเป็น 2.กำลังทำ"
-                                >
-                                  <div className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[7px] font-black transition-colors ${
-                                    task.status === 'in_progress'
-                                      ? 'bg-amber-500 text-white'
-                                      : task.status === 'completed'
-                                        ? 'bg-emerald-600 text-white'
-                                        : 'bg-slate-200 text-slate-500'
-                                  }`}>
-                                    {task.status === 'completed' ? (
-                                      <Check className="h-1.5 w-1.5 stroke-[3.5]" />
-                                    ) : (
-                                      '2'
-                                    )}
-                                  </div>
-                                  <span>2.กำลังทำ</span>
-                                </button>
-
-                                <span className={`text-[8px] font-bold ${
-                                  task.status === 'completed' ? 'text-emerald-500' : 'text-slate-300'
-                                }`}>›</span>
-
-                                {/* Step 3: สำเร็จ */}
-                                <button 
-                                  type="button"
-                                  onClick={() => onEditJob(task.id, { status: 'completed' })}
-                                  className={`inline-flex items-center justify-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black border transition-all cursor-pointer flex-1 sm:flex-none ${
-                                    task.status === 'completed'
-                                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-4xs shadow-emerald-600/10'
-                                      : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 hover:text-slate-600'
-                                  }`}
-                                  title="เปลี่ยนสถานะเป็น 3.สำเร็จ"
-                                >
-                                  <div className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[7px] font-black transition-colors ${
-                                    task.status === 'completed' ? 'bg-white text-emerald-600' : 'bg-slate-200 text-slate-500'
-                                  }`}>
-                                    {task.status === 'completed' ? (
-                                      <Check className="h-1.5 w-1.5 stroke-[3.5]" />
-                                    ) : (
-                                      '3'
-                                    )}
-                                  </div>
-                                  <span>3.สำเร็จ</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* 3. Target Date - Flat Inline Badge */}
-                            <div className="flex items-center gap-1 shrink-0 text-[10px] font-sans bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-md lg:w-[110px] lg:justify-center self-start sm:self-center">
-                              <Calendar className="h-3 w-3 text-slate-400 shrink-0" />
-                              <span className="text-[8.5px] text-slate-400 font-bold uppercase leading-none lg:hidden">กำหนด:</span>
-                              <span className={`font-mono text-[9px] font-bold leading-none ${
-                                isOverdue ? 'text-rose-600 font-black' : 'text-slate-600'
-                              }`}>
-                                {task.targetDate ? new Date(task.targetDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : 'ไม่ระบุ'}
-                              </span>
-                            </div>
-
-                            {/* 4. Image Section */}
-                            <div className="flex items-center gap-1.5 shrink-0 lg:w-[150px] lg:justify-center self-start sm:self-center">
-                              {task.imageUrl ? (
-                                <div className="flex items-center gap-1">
+                                return (
                                   <div 
-                                    className="relative group/img h-6 w-9 rounded-md overflow-hidden border border-slate-200/80 cursor-pointer bg-slate-50 flex items-center justify-center shadow-4xs" 
-                                    onClick={() => setActiveImagePreview(task.imageUrl || null)}
-                                    title="คลิกเพื่อดูรูปภาพขยายใหญ่"
+                                    key={task.id}
+                                    className={`p-1 px-1.5 transition-all flex flex-col gap-1 sm:gap-1.5 lg:grid lg:grid-cols-[1fr_310px_110px_150px_55px] lg:gap-2 lg:items-center relative overflow-hidden group/item ${
+                                      isOverdue ? 'bg-rose-50/10' : 'hover:bg-slate-50/20'
+                                    }`}
                                   >
-                                    <img src={task.imageUrl} alt="รูปงานเสร็จ" className="h-full w-full object-cover group-hover/img:scale-110 transition-all" referrerPolicy="no-referrer" />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                                      <Eye className="h-2.5 w-2.5 text-white" />
+                                    {/* Left visual margin indicator for nested list (if overdue) */}
+                                    {isOverdue && (
+                                      <div className="absolute top-0 left-0 bottom-0 w-1 bg-rose-500" />
+                                    )}
+
+                                    {/* 1. Index & Description */}
+                                    <div className="flex items-start gap-1.5 min-w-0 flex-1">
+                                      <span className="text-[8.5px] font-mono font-bold text-slate-400 bg-slate-100 px-1 py-0.5 rounded shrink-0 leading-none mt-0.5">
+                                        #{index + 1}
+                                      </span>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-bold text-slate-600 font-sans break-words leading-tight" title={task.description}>
+                                          {task.description || 'ไม่มีคำอธิบายเพิ่มเติม'}
+                                        </p>
+                                      </div>
                                     </div>
+
+                                    {/* 2. Clickable 3-Step Flow Column */}
+                                    <div className="shrink-0 w-full sm:w-[310px] flex items-center justify-start lg:justify-center self-center">
+                                      <div className="inline-flex items-center gap-1 bg-slate-50 border border-slate-150 rounded-lg p-0.5 shadow-4xs select-none font-sans w-full sm:w-auto">
+                                        
+                                        {/* Step 1: มอบงาน */}
+                                        <button 
+                                          type="button"
+                                          onClick={() => onEditJob(task.id, { status: 'pending' })}
+                                          className={`inline-flex items-center justify-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black border transition-all cursor-pointer flex-1 sm:flex-none ${
+                                            task.status === 'pending'
+                                              ? 'bg-indigo-100 text-indigo-700 border-indigo-300 shadow-4xs'
+                                              : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                          }`}
+                                          title="เปลี่ยนสถานะเป็น 1.มอบงาน"
+                                        >
+                                          <div className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[7px] font-black shadow-4xs transition-colors ${
+                                            task.status === 'pending' ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'
+                                          }`}>
+                                            {task.status !== 'pending' ? (
+                                              <Check className="h-1.5 w-1.5 stroke-[3.5]" />
+                                            ) : (
+                                              '1'
+                                            )}
+                                          </div>
+                                          <span>1.มอบงาน</span>
+                                        </button>
+
+                                        <span className={`text-[8px] font-bold ${
+                                          task.status === 'in_progress' || task.status === 'completed' ? 'text-amber-500' : 'text-slate-300'
+                                        }`}>›</span>
+
+                                        {/* Step 2: กำลังทำ */}
+                                        <button 
+                                          type="button"
+                                          onClick={() => onEditJob(task.id, { status: 'in_progress' })}
+                                          className={`inline-flex items-center justify-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black border transition-all cursor-pointer flex-1 sm:flex-none ${
+                                            task.status === 'in_progress'
+                                              ? 'bg-amber-100 text-amber-700 border-amber-300 animate-pulse shadow-sm shadow-amber-500/5'
+                                              : task.status === 'completed'
+                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                                : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 hover:text-slate-600'
+                                          }`}
+                                          title="เปลี่ยนสถานะเป็น 2.กำลังทำ"
+                                        >
+                                          <div className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[7px] font-black transition-colors ${
+                                            task.status === 'in_progress'
+                                              ? 'bg-amber-500 text-white'
+                                              : task.status === 'completed'
+                                                ? 'bg-emerald-600 text-white'
+                                                : 'bg-slate-200 text-slate-500'
+                                          }`}>
+                                            {task.status === 'completed' ? (
+                                              <Check className="h-1.5 w-1.5 stroke-[3.5]" />
+                                            ) : (
+                                              '2'
+                                            )}
+                                          </div>
+                                          <span>2.กำลังทำ</span>
+                                        </button>
+
+                                        <span className={`text-[8px] font-bold ${
+                                          task.status === 'completed' ? 'text-emerald-500' : 'text-slate-300'
+                                        }`}>›</span>
+
+                                        {/* Step 3: สำเร็จ */}
+                                        <button 
+                                          type="button"
+                                          onClick={() => onEditJob(task.id, { status: 'completed' })}
+                                          className={`inline-flex items-center justify-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black border transition-all cursor-pointer flex-1 sm:flex-none ${
+                                            task.status === 'completed'
+                                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-4xs shadow-emerald-600/10'
+                                              : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200 hover:text-slate-600'
+                                          }`}
+                                          title="เปลี่ยนสถานะเป็น 3.สำเร็จ"
+                                        >
+                                          <div className={`h-3.5 w-3.5 rounded-full flex items-center justify-center text-[7px] font-black transition-colors ${
+                                            task.status === 'completed' ? 'bg-white text-emerald-600' : 'bg-slate-200 text-slate-500'
+                                          }`}>
+                                            {task.status === 'completed' ? (
+                                              <Check className="h-1.5 w-1.5 stroke-[3.5]" />
+                                            ) : (
+                                              '3'
+                                            )}
+                                          </div>
+                                          <span>3.สำเร็จ</span>
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* 3. Target Date */}
+                                    <div className="flex items-center gap-1 shrink-0 text-[10px] font-sans bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-md lg:w-[110px] lg:justify-center self-start sm:self-center">
+                                      <Calendar className="h-3 w-3 text-slate-400 shrink-0" />
+                                      <span className="text-[8.5px] text-slate-400 font-bold uppercase leading-none lg:hidden">กำหนด:</span>
+                                      <span className={`font-mono text-[9px] font-bold leading-none ${
+                                        isOverdue ? 'text-rose-600 font-black' : 'text-slate-600'
+                                      }`}>
+                                        {task.targetDate ? new Date(task.targetDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : 'ไม่ระบุ'}
+                                      </span>
+                                    </div>
+
+                                    {/* 4. Photo Proof Section */}
+                                    <div className="flex items-center gap-1.5 shrink-0 lg:w-[150px] lg:justify-center self-start sm:self-center">
+                                      {task.imageUrl ? (
+                                        <div className="flex items-center gap-1">
+                                          <div 
+                                            className="relative group/img h-6 w-9 rounded-md overflow-hidden border border-slate-200/85 cursor-pointer bg-slate-50 flex items-center justify-center shadow-4xs" 
+                                            onClick={() => setActiveImagePreview(task.imageUrl || null)}
+                                            title="คลิกเพื่อดูรูปภาพขยายใหญ่"
+                                          >
+                                            <img src={task.imageUrl} alt="รูปงานเสร็จ" className="h-full w-full object-cover group-hover/img:scale-110 transition-all" referrerPolicy="no-referrer" />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                                              <Eye className="h-2.5 w-2.5 text-white" />
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() => {
+                                              if (confirm('ต้องการลบรูปงานออกหรือไม่?')) {
+                                                onEditJob(task.id, { imageUrl: '' });
+                                              }
+                                            }}
+                                            className="text-[8px] text-rose-500 hover:text-rose-600 font-bold hover:underline"
+                                          >
+                                            ลบ
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-1">
+                                          <label className="flex items-center justify-center gap-1 cursor-pointer bg-slate-50 hover:bg-slate-100 hover:border-indigo-300 border border-dashed border-slate-200 h-6 px-1.5 rounded-md text-[8px] text-slate-400 font-sans transition-all text-center">
+                                            <Camera className="h-3 w-3 text-indigo-400 shrink-0" />
+                                            <span>แนบรูป</span>
+                                            <input 
+                                              type="file" 
+                                              accept="image/*" 
+                                              className="hidden" 
+                                              onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => {
+                                                  onEditJob(task.id, { imageUrl: reader.result as string });
+                                                };
+                                                reader.readAsDataURL(file);
+                                              }} 
+                                            />
+                                          </label>
+                                          
+                                          <button 
+                                            onClick={() => onEditJob(task.id, { imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80' })}
+                                            className="text-[7.5px] h-6 bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 rounded border border-slate-200/50 leading-none"
+                                            title="ใช้รูปจำลองตู้ไฟ"
+                                          >
+                                            +ตู้ไฟ
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* 5. Controls */}
+                                    <div className="flex items-center gap-1 border-t sm:border-t-0 border-slate-150/60 pt-1.5 sm:pt-0 lg:pt-0 lg:border-t-0 lg:border-l lg:border-slate-100 lg:pl-2 lg:w-[55px] lg:justify-center self-stretch sm:self-center justify-end shrink-0">
+                                      <button
+                                        onClick={() => openTaskEdit(task)}
+                                        className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer"
+                                        title="แก้ไขรายละเอียดงาน"
+                                      >
+                                        <Edit3 className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          if (confirm(`ต้องการลบงาน "${task.module}" สำหรับ JOB ${task.jobNo} หรือไม่?`)) {
+                                            onDeleteJob(task.id);
+                                          }
+                                        }}
+                                        className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                                        title="ลบงานนี้ออก"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    </div>
+
                                   </div>
-                                  <button
-                                    onClick={() => {
-                                      if (confirm('ต้องการลบรูปงานออกหรือไม่?')) {
-                                        onEditJob(task.id, { imageUrl: '' });
-                                      }
-                                    }}
-                                    className="text-[8px] text-rose-500 hover:text-rose-600 font-bold hover:underline"
-                                  >
-                                    ลบ
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1">
-                                  <label className="flex items-center justify-center gap-1 cursor-pointer bg-slate-50 hover:bg-slate-100 hover:border-indigo-300 border border-dashed border-slate-200 h-6 px-1.5 rounded-md text-[8px] text-slate-400 font-sans transition-all text-center">
-                                    <Camera className="h-3 w-3 text-indigo-400 shrink-0" />
-                                    <span>แนบรูป</span>
-                                    <input 
-                                      type="file" 
-                                      accept="image/*" 
-                                      className="hidden" 
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (!file) return;
-                                        const reader = new FileReader();
-                                        reader.onloadend = () => {
-                                          onEditJob(task.id, { imageUrl: reader.result as string });
-                                        };
-                                        reader.readAsDataURL(file);
-                                      }} 
-                                    />
-                                  </label>
-                                  
-                                  <button 
-                                    onClick={() => onEditJob(task.id, { imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80' })}
-                                    className="text-[7.5px] h-6 bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 rounded border border-slate-200/50 leading-none"
-                                    title="ใช้รูปจำลองตู้คอนโทรล"
-                                  >
-                                    +ตู้ไฟ
-                                  </button>
-                                  <button 
-                                    onClick={() => onEditJob(task.id, { imageUrl: 'https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80' })}
-                                    className="text-[7.5px] h-6 bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 rounded border border-slate-200/50"
-                                    title="ใช้รูปจำลองเครื่องจักร"
-                                  >
-                                    +บิลด์
-                                  </button>
-                                </div>
-                              )}
+                                );
+                              })}
                             </div>
-
-                            {/* 5. Controls - Micro sized */}
-                            <div className="flex items-center gap-1 border-t sm:border-t-0 border-slate-150/60 pt-1.5 sm:pt-0 lg:pt-0 lg:border-t-0 lg:border-l lg:border-slate-100 lg:pl-2 lg:w-[55px] lg:justify-center self-stretch sm:self-center justify-end shrink-0">
-                              <button
-                                onClick={() => openTaskEdit(task)}
-                                className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer"
-                                title="แก้ไขรายละเอียดงาน"
-                              >
-                                <Edit3 className="h-3 w-3" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (confirm(`ต้องการลบงาน "${task.module}" สำหรับ JOB ${task.jobNo} หรือไม่?`)) {
-                                    onDeleteJob(task.id);
-                                  }
-                                }}
-                                className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
-                                title="ลบงานนี้ออก"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
-                            </div>
-
                           </div>
                         );
                       })}
                     </div>
-                  </div>
-                );
-              })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-        </div>
-      )}
-
-      {/* ======================================================================= */}
-      {/* ======================= TAB 2: JOB MASTER / PROJECTS ================== */}
-      {/* ======================================================================= */}
-      {subTab === 'projects' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          
-          {/* Header row */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h3 className="text-base font-extrabold text-slate-800 font-sans flex items-center gap-1.5">
-                <FolderGit2 className="h-4 w-4 text-indigo-500" />
-                ตั้งค่า โปรเจ็ค
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                หมวดคุมรหัสประจำตัวโครงการ ปีงบประมาณ และชื่อลูกค้าเพื่อใช้อ้างอิงจัดระเบียบงานและประวัติทั้งหมด
-              </p>
-            </div>
-
-            <button
-              onClick={() => {
-                setProjJobNo('');
-                setProjYear(new Date().getFullYear().toString());
-                setProjCustomer('');
-                setProjName('');
-                setIsProjAddModalOpen(true);
-              }}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-indigo-600/10 transition-all cursor-pointer shrink-0"
-              id="btn-add-project"
-            >
-              <Plus className="h-4 w-4" />
-              <span>สร้างรหัสโครงการใหม่</span>
-            </button>
-          </div>
-
-          {/* Search Master Project - Compact, Flat */}
-          <div className="bg-slate-50/40 p-2 py-1.5 rounded-xl border border-slate-100 shadow-3xs flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5 shrink-0 px-1">
-              <Search className="h-3.5 w-3.5 text-slate-400" />
-              <span className="text-[10px] font-bold text-slate-500 font-sans">ค้นหาโปรเจกต์:</span>
-            </div>
-            <div className="relative flex-grow min-w-[200px]">
-              <input
-                type="text"
-                placeholder="ป้อนรหัส Job No., ปี, ชื่อลูกค้า หรือ ชื่อโปรเจกต์..."
-                value={projSearch}
-                onChange={(e) => setProjSearch(e.target.value)}
-                className="w-full pl-3 pr-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-sans text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
-              />
-            </div>
-            {projSearch && (
-              <button
-                onClick={() => setProjSearch('')}
-                className="px-3 py-1 text-[10px] font-bold text-rose-500 hover:text-rose-600 bg-rose-50 rounded-xl cursor-pointer shrink-0 ml-auto"
-              >
-                ล้างคำค้น
-              </button>
-            )}
-          </div>
-
-          {/* Project List / Grid */}
-          {filteredProjects.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-xs">
-              <FolderGit2 className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-              <h4 className="text-sm font-extrabold text-slate-700 font-sans">ไม่พบรหัสงานโครงการ</h4>
-              <p className="text-xs text-slate-400 font-sans mt-1 max-w-sm mx-auto">
-                ยังไม่มีข้อมูลโปรเจกต์ในระบบที่ตรงกับการค้นหา คุณสามารถกดปุ่ม "สร้างรหัสโครงการใหม่" ด้านบน เพื่อระบุเลข Job No., ปีงบประมาณ และชื่อลูกค้าสำหรับโปรเจกต์
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {filteredProjects.map(proj => {
-                // Find how many tasks are tied to this master Job No
-                const associatedTasks = jobs.filter(j => j.jobNo === proj.jobNo);
-                const completedAssociated = associatedTasks.filter(j => j.status === 'completed').length;
-
-                return (
-                  <div 
-                    key={proj.id}
-                    className="hover:bg-slate-50/40 p-2 py-1.5 transition-all border-b border-slate-100 last:border-0 flex flex-col gap-1.5"
-                  >
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-grow min-w-0">
-                        
-                        {/* Project Image & Job Number */}
-                        <div className="shrink-0 flex items-center gap-2 w-48">
-                          {/* Project Image */}
-                          <div className="relative group/projimg w-9 h-9 rounded bg-slate-50 border border-slate-200/60 flex items-center justify-center overflow-hidden shrink-0 shadow-4xs">
-                            {proj.projectImageUrl ? (
-                              <>
-                                <img src={proj.projectImageUrl} alt={proj.projectName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/projimg:opacity-100 flex items-center justify-center transition-opacity">
-                                  <Camera className="h-3 w-3 text-white" />
-                                </div>
-                              </>
-                            ) : (
-                              <div className="flex flex-col items-center justify-center text-slate-400">
-                                <Camera className="h-3.5 w-3.5 text-slate-300" />
-                                <span className="text-[7px] font-bold">แนบรูป</span>
-                              </div>
-                            )}
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  onEditJobProject(proj.id, { projectImageUrl: reader.result as string });
-                                };
-                                reader.readAsDataURL(file);
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                // trigger preceding input file click
-                                const sibling = e.currentTarget.previousSibling as HTMLInputElement;
-                                sibling?.click();
-                              }}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            />
-                          </div>
-
-                          <div className="flex flex-col">
-                            <span className="text-[10px] font-black text-indigo-700 font-mono tracking-wide px-1.5 py-0.5 bg-indigo-50 border border-indigo-100/65 rounded block text-center leading-none">
-                              {proj.jobNo}
-                            </span>
-                            {proj.projectImageUrl && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (confirm('ลบรูปภาพโครงการนี้ใช่หรือไม่?')) {
-                                    onEditJobProject(proj.id, { projectImageUrl: '' });
-                                  }
-                                }}
-                                className="text-[8px] text-rose-500 hover:text-rose-600 font-bold block text-center mt-0.5 hover:underline"
-                              >
-                                ลบรูป
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Year */}
-                        <div className="shrink-0 w-20 sm:text-center">
-                          <span className="text-[10px] font-extrabold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60 font-mono">
-                            ปี {proj.year}
-                          </span>
-                        </div>
-
-                        {/* Customer Info */}
-                        <div className="shrink-0 w-44 min-w-0">
-                          <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">ลูกค้า / Customer</span>
-                          <span className="text-xs font-black text-slate-700 truncate block mt-0.5">
-                            {proj.customer}
-                          </span>
-                        </div>
-
-                        {/* Project Name / Description */}
-                        <div className="flex-grow min-w-0">
-                          <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">ชื่อโครงการ / โครงสร้างงาน</span>
-                          <p className="text-xs font-extrabold text-slate-800 font-sans truncate mt-0.5" title={proj.projectName}>
-                            {proj.projectName}
-                          </p>
-                        </div>
-
-                        {/* Module micro stats */}
-                        <div className="shrink-0 w-48 text-left sm:text-right sm:pr-4">
-                          <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">งานย่อยที่มอบหมาย</span>
-                          <div className="mt-0.5">
-                            {associatedTasks.length > 0 ? (
-                              <span className="text-xs font-bold text-slate-700 font-mono">
-                                สำเร็จ {completedAssociated}/{associatedTasks.length} ({Math.round((completedAssociated / associatedTasks.length) * 100)}%)
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-slate-400 italic font-sans font-normal block mt-0.5">
-                                ไม่มีมอดูลย่อย
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                      </div>
-
-                      {/* Edit/Delete Controls */}
-                      <div className="shrink-0 flex items-center gap-1 border-t lg:border-t-0 lg:border-l border-slate-100 pt-2 lg:pt-0 lg:pl-3">
-                        <button
-                          onClick={() => openProjEdit(proj)}
-                          className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                          title="แก้ไขรายละเอียดโปรเจกต์"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                        
-                        <button
-                          onClick={() => {
-                            if (associatedTasks.length > 0) {
-                              alert(`ไม่สามารถลบรหัสงาน ${proj.jobNo} นี้ได้ เนื่องจากยังมีงานมอดูลย่อยมอบหมายอยู่จำนวน ${associatedTasks.length} รายการ`);
-                              return;
-                            }
-                            if (confirm(`ยืนยันการลบรหัสงาน "${proj.jobNo}" ของลูกค้า "${proj.customer}" ออกจากระบบหรือไม่?`)) {
-                              onDeleteJobProject(proj.id);
-                            }
-                          }}
-                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="ลบโปรเจกต์นี้"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Divider and Module Manager Section */}
-                    <div className="border-t border-slate-100 pt-1.5">
-                      <ProjectModulesManager 
-                        proj={proj}
-                        onEditJobProject={onEditJobProject}
-                        jobs={jobs}
-                        onEditJob={onEditJob}
-                      />
-                    </div>
-
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-        </div>
-      )}
-
-      {/* ======================================================================= */}
-      {/* ======================= TAB 3: EMPLOYEES DIRECTORY ==================== */}
-      {/* ======================================================================= */}
-      {subTab === 'employees' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          
-          {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h3 className="text-base font-extrabold text-slate-800 font-sans flex items-center gap-1.5">
-                <Users className="h-4 w-4 text-emerald-500" />
-                สารบบข้อมูลและพนักงาน (Employee Directory)
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                เพิ่ม ลบ และบันทึกข้อมูลทีมช่างและวิศวกรผู้รับผิดชอบงานเพื่อใช้ในเมนูดร็อปดาวน์สั่งงานได้อย่างสะดวกสบาย
-              </p>
-            </div>
-
-            <button
-              onClick={() => {
-                setEmpName('');
-                setEmpRole('');
-                setEmpPhone('');
-                setIsEmpAddModalOpen(true);
-              }}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-indigo-600/10 transition-all cursor-pointer shrink-0"
-              id="btn-add-employee"
-            >
-              <UserPlus className="h-4 w-4" />
-              <span>เพิ่มรายชื่อพนักงาน</span>
-            </button>
-          </div>
-
-          {/* Search bar - Compact, Flat */}
-          <div className="bg-slate-50/40 p-2 py-1.5 rounded-xl border border-slate-100 shadow-3xs flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5 shrink-0 px-1">
-              <Search className="h-3.5 w-3.5 text-slate-400" />
-              <span className="text-[10px] font-bold text-slate-500 font-sans">ค้นหาพนักงาน:</span>
-            </div>
-            <div className="relative flex-grow min-w-[200px]">
-              <input
-                type="text"
-                placeholder="ป้อนชื่อพนักงาน, ตำแหน่งหน้าที่ หรือเบอร์โทรศัพท์..."
-                value={empSearch}
-                onChange={(e) => setEmpSearch(e.target.value)}
-                className="w-full pl-3 pr-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-sans text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
-              />
-            </div>
-            {empSearch && (
-              <button
-                onClick={() => setEmpSearch('')}
-                className="px-3 py-1 text-[10px] font-bold text-rose-500 hover:text-rose-600 bg-rose-50 rounded-xl cursor-pointer shrink-0 ml-auto"
-              >
-                ล้างคำค้น
-              </button>
-            )}
-          </div>
-
-          {/* Employees List */}
-          {filteredEmployees.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200/80 p-12 text-center shadow-xs">
-              <Users className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-              <h4 className="text-sm font-extrabold text-slate-700 font-sans">ไม่พบข้อมูลรายชื่อพนักงาน</h4>
-              <p className="text-xs text-slate-400 font-sans mt-1 max-w-sm mx-auto">
-                ยังไม่มีข้อมูลพนักงานหรือทีมช่างในระบบที่ตรงกับตัวกรอง คุณสามารถกดปุ่ม "เพิ่มรายชื่อพนักงาน" ด้านบนเพื่อเพิ่มข้อมูลเบื้องต้น
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {filteredEmployees.map(emp => {
-                // Find jobs currently assigned to this employee
-                const assignedCount = jobs.filter(j => j.assignee === emp.name && (j.status === 'in_progress' || j.status === 'pending')).length;
-
-                return (
-                  <div 
-                    key={emp.id}
-                    className="hover:bg-slate-50/40 p-2 py-1.5 transition-all border-b border-slate-100 last:border-0 flex flex-col lg:flex-row lg:items-center justify-between gap-3"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-grow min-w-0">
-                      
-                      {/* Avatar & Name */}
-                      <div className="flex items-center gap-3 shrink-0 w-56">
-                        <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-700 text-xs font-black font-mono">
-                          {emp.name.slice(3, 5).trim() || emp.name.slice(0, 2)}
-                        </div>
-                        <div className="truncate text-left">
-                          <h4 className="text-xs font-black text-slate-800 font-sans truncate leading-none">
-                            {emp.name}
-                          </h4>
-                          <span className="text-[9px] text-slate-400 block mt-1.5 truncate leading-none">
-                            พนักงาน ID: {emp.id}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Role / Position */}
-                      <div className="shrink-0 w-48 min-w-0">
-                        <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">ตำแหน่งหน้าที่</span>
-                        <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-100 font-bold px-2 py-0.5 rounded-md inline-block mt-1 truncate max-w-full">
-                          {emp.role || 'ช่างเทคนิคทั่วไป'}
-                        </span>
-                      </div>
-
-                      {/* Contact phone */}
-                      <div className="shrink-0 w-44 min-w-0">
-                        <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">เบอร์โทรศัพท์</span>
-                        {emp.phone ? (
-                          <div className="flex items-center gap-1.5 text-slate-600 mt-1">
-                            <Phone className="h-3 w-3 text-slate-400" />
-                            <a href={`tel:${emp.phone}`} className="text-xs hover:underline hover:text-indigo-600 font-mono font-bold">
-                              {emp.phone}
-                            </a>
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 italic block mt-1">ไม่ได้ระบุเบอร์โทร</span>
-                        )}
-                      </div>
-
-                      {/* Unresolved assigned tasks */}
-                      <div className="flex-grow text-left sm:text-right sm:pr-4">
-                        <span className="text-[9px] text-slate-400 font-bold font-sans uppercase block">งานค้างที่รับผิดชอบ</span>
-                        <div className="mt-1">
-                          <span className={`text-xs font-black font-mono px-2 py-0.5 rounded-md ${assignedCount > 0 ? 'text-amber-700 bg-amber-50 border border-amber-150' : 'text-slate-400 bg-slate-50'}`}>
-                            {assignedCount} งาน
-                          </span>
-                        </div>
-                      </div>
-
-                    </div>
-
-                    {/* Edit/Delete control panel */}
-                    <div className="shrink-0 flex items-center gap-1 border-t lg:border-t-0 lg:border-l border-slate-100 pt-2 lg:pt-0 lg:pl-3">
-                      <button
-                        onClick={() => openEmpEdit(emp)}
-                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                        title="แก้ไขข้อมูลพนักงาน"
-                      >
-                        <Edit3 className="h-4 w-4" />
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          if (assignedCount > 0) {
-                            alert(`ไม่สามารถลบรายชื่อพนักงาน "${emp.name}" ได้ เนื่องจากยังมีงานมอบหมายที่ค้างส่งอยู่จำนวน ${assignedCount} งาน`);
-                            return;
-                          }
-                          if (confirm(`ยืนยันการนำพนักงาน "${emp.name}" ออกจากระบบทะเบียนหรือไม่?`)) {
-                            onDeleteEmployee(emp.id);
-                          }
-                        }}
-                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="ลบพนักงานออกจากระบบ"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-
                   </div>
                 );
               })}
@@ -1838,22 +867,9 @@ export default function JobAssignmentView({
                 
                 {/* Job No (from Master Project Dropdown) */}
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-slate-500 font-sans block">
-                      หมายเลขใบสั่งงาน / Job No. <span className="text-rose-500">*</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsTaskAddModalOpen(false);
-                        setSubTab('projects');
-                        setTimeout(() => setIsProjAddModalOpen(true), 150);
-                      }}
-                      className="text-[9px] text-indigo-600 hover:underline font-bold flex items-center gap-0.5 cursor-pointer"
-                    >
-                      + เพิ่มรหัส Job ใหม่
-                    </button>
-                  </div>
+                  <label className="text-[10px] font-bold text-slate-500 font-sans block">
+                    หมายเลขใบสั่งงาน / Job No. <span className="text-rose-500">*</span>
+                  </label>
 
                   {jobProjects.length === 0 ? (
                     <div className="p-2 bg-amber-50 text-amber-700 text-[10px] border border-amber-200 rounded-lg">
@@ -1894,7 +910,6 @@ export default function JobAssignmentView({
                       const currentProj = jobProjects.find(p => p.jobNo === taskJobNo);
                       const currentProjModules = normalizeModules(currentProj?.modules || []);
                       
-                      // Sort by module number code (least to greatest)
                       const sortedProjModules = [...currentProjModules].sort((a, b) => {
                         const cleanA = a.code.replace(/^\D+/g, '');
                         const cleanB = b.code.replace(/^\D+/g, '');
@@ -1969,22 +984,9 @@ export default function JobAssignmentView({
                 {/* Assignee Selection (from Employees list) */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-slate-500 font-sans block">
-                        ทีมช่างผู้รับผิดชอบ <span className="text-rose-500">*</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsTaskAddModalOpen(false);
-                          setSubTab('employees');
-                          setTimeout(() => setIsEmpAddModalOpen(true), 150);
-                        }}
-                        className="text-[9px] text-indigo-600 hover:underline font-bold cursor-pointer"
-                      >
-                        + เพิ่มรายชื่อช่าง
-                      </button>
-                    </div>
+                    <label className="text-[10px] font-bold text-slate-500 font-sans block">
+                      ทีมช่างผู้รับผิดชอบ <span className="text-rose-500">*</span>
+                    </label>
 
                     {employees.length === 0 ? (
                       <input
@@ -2161,7 +1163,6 @@ export default function JobAssignmentView({
                     const currentProj = jobProjects.find(p => p.jobNo === taskJobNo);
                     const currentProjModules = normalizeModules(currentProj?.modules || []);
                     
-                    // Sort by module number code (least to greatest)
                     const sortedProjModules = [...currentProjModules].sort((a, b) => {
                       const cleanA = a.code.replace(/^\D+/g, '');
                       const cleanB = b.code.replace(/^\D+/g, '');
@@ -2338,354 +1339,6 @@ export default function JobAssignmentView({
                   className="px-4 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 rounded-xl shadow-sm cursor-pointer"
                 >
                   บันทึกแก้ไข
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-
-      {/* -------------------- ADD EMPLOYEE MODAL -------------------- */}
-      {isEmpAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-100 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-5 border-b border-slate-100">
-              <h3 className="text-sm font-black text-slate-800 font-sans flex items-center gap-2">
-                <UserPlus className="h-4.5 w-4.5 text-indigo-600" />
-                เพิ่มข้อมูลพนักงานลงทะเบียน
-              </h3>
-              <button
-                onClick={() => setIsEmpAddModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleEmpAddSubmit}>
-              <div className="p-5 space-y-4">
-                
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อ-นามสกุล / ชื่อเล่นพนักงาน <span className="text-rose-500">*</span></label>
-                  <input
-                    type="text"
-                    required
-                    value={empName}
-                    onChange={(e) => setEmpName(e.target.value)}
-                    placeholder="เช่น ช่างเก่ง (Keng), วิศวกรชานนท์"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 block">ตำแหน่งหน้าที่ / แผนกความถนัด</label>
-                  <input
-                    type="text"
-                    value={empRole}
-                    onChange={(e) => setEmpRole(e.target.value)}
-                    placeholder="เช่น ช่างประกอบตู้คอนโทรล, ช่างกลโรงงาน, เชื่อมโครงประกอบ"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 block">เบอร์โทรศัพท์ติดต่อ</label>
-                  <input
-                    type="text"
-                    value={empPhone}
-                    onChange={(e) => setEmpPhone(e.target.value)}
-                    placeholder="เช่น 08x-xxx-xxxx"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:outline-hidden"
-                  />
-                </div>
-
-              </div>
-
-              <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2.5 rounded-b-2xl">
-                <button
-                  type="button"
-                  onClick={() => setIsEmpAddModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl cursor-pointer"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 rounded-xl cursor-pointer"
-                >
-                  บันทึกข้อมูล
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* -------------------- EDIT EMPLOYEE MODAL -------------------- */}
-      {isEmpEditModalOpen && selectedEmp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-100 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-5 border-b border-slate-100">
-              <h3 className="text-sm font-black text-slate-800 font-sans flex items-center gap-2">
-                <Edit3 className="h-4.5 w-4.5 text-indigo-600" />
-                แก้ไขประวัติพนักงาน: {selectedEmp.name}
-              </h3>
-              <button
-                onClick={() => setIsEmpEditModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleEmpEditSubmit}>
-              <div className="p-5 space-y-4">
-                
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อ-นามสกุล / ชื่อเล่นพนักงาน <span className="text-rose-500">*</span></label>
-                  <input
-                    type="text"
-                    required
-                    value={empName}
-                    onChange={(e) => setEmpName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 block">ตำแหน่งหน้าที่ / แผนกความถนัด</label>
-                  <input
-                    type="text"
-                    value={empRole}
-                    onChange={(e) => setEmpRole(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 block">เบอร์โทรศัพท์ติดต่อ</label>
-                  <input
-                    type="text"
-                    value={empPhone}
-                    onChange={(e) => setEmpPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:outline-hidden"
-                  />
-                </div>
-
-              </div>
-
-              <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2.5 rounded-b-2xl">
-                <button
-                  type="button"
-                  onClick={() => setIsEmpEditModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl cursor-pointer"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 rounded-xl cursor-pointer"
-                >
-                  บันทึกการแก้ไข
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-
-      {/* -------------------- ADD PROJECT MODAL -------------------- */}
-      {isProjAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-100 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-5 border-b border-slate-100">
-              <h3 className="text-sm font-black text-slate-800 font-sans flex items-center gap-2">
-                <FolderGit2 className="h-4.5 w-4.5 text-indigo-600" />
-                เพิ่มรหัสโปรเจ็คใหม่
-              </h3>
-              <button
-                onClick={() => setIsProjAddModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleProjAddSubmit}>
-              <div className="p-5 space-y-4">
-                
-                {/* Job No with Auto generator button */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 block">หมายเลข Job No. <span className="text-rose-500">*</span></label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      required
-                      value={projJobNo}
-                      onChange={(e) => setProjJobNo(e.target.value)}
-                      placeholder="เช่น JOB-2607-005"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 uppercase focus:outline-hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={autoGenerateNewProjJobNo}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 text-[10px] font-black rounded-lg transition-colors cursor-pointer shrink-0"
-                    >
-                      สร้างเลขรหัส
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Year */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 block">ปีงบประมาณ / ปี พ.ศ. ค.ศ. <span className="text-rose-500">*</span></label>
-                    <input
-                      type="text"
-                      required
-                      value={projYear}
-                      onChange={(e) => setProjYear(e.target.value)}
-                      placeholder="เช่น 2026"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:outline-hidden"
-                    />
-                  </div>
-
-                  {/* Customer */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 block">ลูกค้า (Customer) <span className="text-rose-500">*</span></label>
-                    <input
-                      type="text"
-                      required
-                      value={projCustomer}
-                      onChange={(e) => setProjCustomer(e.target.value)}
-                      placeholder="เช่น Gtt-store, Siam Automation"
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden"
-                    />
-                  </div>
-                </div>
-
-                {/* Project Name */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อโครงการ / รายละเอียดโครงการ <span className="text-rose-500">*</span></label>
-                  <textarea
-                    required
-                    rows={3}
-                    value={projName}
-                    onChange={(e) => setProjName(e.target.value)}
-                    placeholder="เช่น งานติดตั้งตู้ควบคุมแผงกระจายกำลังหลักและโปรแกรมมิ่ง"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden"
-                  />
-                </div>
-
-              </div>
-
-              <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2.5 rounded-b-2xl">
-                <button
-                  type="button"
-                  onClick={() => setIsProjAddModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl cursor-pointer"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 rounded-xl shadow-sm cursor-pointer"
-                >
-                  สร้างรหัสโครงการ
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* -------------------- EDIT PROJECT MODAL -------------------- */}
-      {isProjEditModalOpen && selectedProj && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-100 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-5 border-b border-slate-100">
-              <h3 className="text-sm font-black text-slate-800 font-sans flex items-center gap-2">
-                <Edit3 className="h-4.5 w-4.5 text-indigo-600" />
-                แก้ไขข้อมูลโปรเจกต์: {selectedProj.jobNo}
-              </h3>
-              <button
-                onClick={() => setIsProjEditModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleProjEditSubmit}>
-              <div className="p-5 space-y-4">
-                
-                {/* Job No */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 block">หมายเลข Job No. <span className="text-rose-500">*</span></label>
-                  <input
-                    type="text"
-                    required
-                    value={projJobNo}
-                    onChange={(e) => setProjJobNo(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 uppercase focus:outline-hidden"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Year */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 block">ปีงบประมาณ / ปี พ.ศ. ค.ศ. <span className="text-rose-500">*</span></label>
-                    <input
-                      type="text"
-                      required
-                      value={projYear}
-                      onChange={(e) => setProjYear(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:outline-hidden"
-                    />
-                  </div>
-
-                  {/* Customer */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 block">ลูกค้า (Customer) <span className="text-rose-500">*</span></label>
-                    <input
-                      type="text"
-                      required
-                      value={projCustomer}
-                      onChange={(e) => setProjCustomer(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden"
-                    />
-                  </div>
-                </div>
-
-                {/* Project Name */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อโครงการ / รายละเอียดโครงการ <span className="text-rose-500">*</span></label>
-                  <textarea
-                    required
-                    rows={3}
-                    value={projName}
-                    onChange={(e) => setProjName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden"
-                  />
-                </div>
-
-              </div>
-
-              <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2.5 rounded-b-2xl">
-                <button
-                  type="button"
-                  onClick={() => setIsProjEditModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl cursor-pointer"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-500 active:scale-95 rounded-xl shadow-sm cursor-pointer"
-                >
-                  บันทึกแก้ไขโครงการ
                 </button>
               </div>
             </form>

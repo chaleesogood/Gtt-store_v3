@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Product, Category } from '../types';
-import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart } from 'lucide-react';
+import { Product, Category, Employee, JobProject } from '../types';
+import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag } from 'lucide-react';
 import CategoryView from './CategoryView';
 import OrderingSystemView from './OrderingSystemView';
+import ShoppingCartView from './ShoppingCartView';
 import { INITIAL_CATEGORIES } from '../initialData';
 
 interface ProductListViewProps {
@@ -18,6 +19,8 @@ interface ProductListViewProps {
   onEditCategory: (id: string, updated: Partial<Category>) => void;
   onDeleteCategory: (id: string) => void;
   addToast: (type: 'success' | 'warning' | 'info', title: string, message: string) => void;
+  employees: Employee[];
+  jobProjects: JobProject[];
 }
 
 // Curated stock photos for quick selection
@@ -32,6 +35,38 @@ const PRESET_IMAGES = [
   { name: 'รองเท้าผ้าใบ', url: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300&auto=format&fit=crop&q=60' },
 ];
 
+export const PRODUCT_COLORS = [
+  { name: 'ดำ', hex: '#000000', bgClass: 'bg-black', textClass: 'text-white border-slate-700' },
+  { name: 'ขาว', hex: '#FFFFFF', bgClass: 'bg-white', textClass: 'text-slate-800 border-slate-300' },
+  { name: 'แดง', hex: '#EF4444', bgClass: 'bg-red-500', textClass: 'text-white border-red-600' },
+  { name: 'เหลือง', hex: '#FBBF24', bgClass: 'bg-amber-400', textClass: 'text-slate-900 border-amber-500' },
+  { name: 'น้ำเงิน', hex: '#3B82F6', bgClass: 'bg-blue-600', textClass: 'text-white border-blue-700' },
+  { name: 'เขียว', hex: '#10B981', bgClass: 'bg-emerald-500', textClass: 'text-white border-emerald-600' },
+  { name: 'เทา', hex: '#6B7280', bgClass: 'bg-gray-500', textClass: 'text-white border-gray-600' },
+  { name: 'น้ำตาล', hex: '#78350F', bgClass: 'bg-amber-900', textClass: 'text-white border-amber-950' },
+  { name: 'ส้ม', hex: '#F97316', bgClass: 'bg-orange-500', textClass: 'text-white border-orange-600' },
+  { name: 'ฟ้า', hex: '#06B6D4', bgClass: 'bg-cyan-500', textClass: 'text-white border-cyan-600' },
+  { name: 'ม่วง', hex: '#8B5CF6', bgClass: 'bg-violet-500', textClass: 'text-white border-violet-600' },
+  { name: 'ชมพู', hex: '#EC4899', bgClass: 'bg-pink-500', textClass: 'text-white border-pink-600' },
+  { name: 'เขียว-เหลือง', hex: 'linear-gradient(135deg, #22C55E 50%, #EAB308 50%)', bgClass: 'bg-gradient-to-br from-green-500 via-green-500 via-50% to-yellow-400 to-50%', textClass: 'text-slate-900 border-slate-300' },
+];
+
+export const getColorDotAndBadge = (colorName?: string) => {
+  if (!colorName) return null;
+  const match = PRODUCT_COLORS.find(c => c.name === colorName);
+  if (!match) return null;
+  
+  return (
+    <span className="inline-flex items-center gap-1 ml-1.5 px-1.5 py-0.5 text-[8.5px] font-bold rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 shadow-3xs leading-none">
+      <span 
+        className={`w-2.5 h-2.5 rounded-full border border-slate-300 dark:border-slate-700 shrink-0 ${match.bgClass}`} 
+        style={colorName === 'เขียว-เหลือง (งานไฟฟ้า)' ? { background: match.hex } : undefined}
+      />
+      <span>{colorName}</span>
+    </span>
+  );
+};
+
 export default function ProductListView({
   products,
   categories,
@@ -45,14 +80,53 @@ export default function ProductListView({
   onEditCategory,
   onDeleteCategory,
   addToast,
+  employees,
+  jobProjects,
 }: ProductListViewProps) {
   // Filters & Search
-  const [activeSubTab, setActiveSubTab] = useState<'products' | 'categories' | 'ordering'>('products');
+  const [activeSubTab, setActiveSubTab] = useState<'products' | 'categories' | 'ordering' | 'cart'>('products');
   const [preselectedProductId, setPreselectedProductId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+
+  // Shopping Cart state
+  const [cartItems, setCartItems] = useState<any[]>(() => {
+    const saved = localStorage.getItem('stock_manager_cart');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('stock_manager_cart', JSON.stringify(cartItems));
+  }, [cartItems]);
+
+  const handleAddToCart = (product: Product) => {
+    const exists = cartItems.find((item) => item.product.id === product.id);
+    if (exists) {
+      setCartItems(
+        cartItems.map((item) =>
+          item.product.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        )
+      );
+    } else {
+      setCartItems([
+        ...cartItems,
+        {
+          product,
+          quantity: 1,
+          pricePerUnit: product.costPrice || product.price || 0,
+          unit: product.unit || 'ชิ้น',
+          jobNo: '',
+          jobName: '',
+          remark: '',
+        },
+      ]);
+    }
+    addToast('success', 'เพิ่มลงตะกร้าพัสดุสำเร็จ', `เพิ่ม "${product.name}" ในตะกร้าขอจัดซื้อเรียบร้อยแล้ว`);
+  };
 
   const toggleCategoryCollapse = (catId: string) => {
     setCollapsedCategories((prev) => ({
@@ -69,6 +143,7 @@ export default function ProductListView({
   const [formName, setFormName] = useState('');
   const [formSku, setFormSku] = useState('');
   const [formCategory, setFormCategory] = useState('');
+  const [formSeries, setFormSeries] = useState('');
   const [formPrice, setFormPrice] = useState(0);
   const [formCostPrice, setFormCostPrice] = useState(0);
   const [formQuantity, setFormQuantity] = useState(0);
@@ -78,6 +153,7 @@ export default function ProductListView({
   const [formSourceUrl, setFormSourceUrl] = useState('');
   const [formWarehouse, setFormWarehouse] = useState('คลังสินค้าหลัก A');
   const [formExpiryDate, setFormExpiryDate] = useState('');
+  const [formColor, setFormColor] = useState('');
 
   // Image Upload States
   const [imagePreview, setImagePreview] = useState('');
@@ -146,6 +222,7 @@ export default function ProductListView({
     setFormName('');
     setFormSku(`SKU-${Math.floor(100000 + Math.random() * 900000)}`);
     setFormCategory(mergedCategories[0]?.id || '');
+    setFormSeries('');
     setFormPrice(0);
     setFormCostPrice(0);
     setFormQuantity(0);
@@ -157,6 +234,7 @@ export default function ProductListView({
     setShowGallery(false);
     setFormWarehouse('คลังสินค้าหลัก A');
     setFormExpiryDate('');
+    setFormColor('');
     setIsModalOpen(true);
   };
 
@@ -166,6 +244,7 @@ export default function ProductListView({
     setFormName(product.name);
     setFormSku(product.sku);
     setFormCategory(product.category);
+    setFormSeries(product.series || '');
     setFormPrice(product.price);
     setFormCostPrice(product.costPrice);
     setFormQuantity(product.quantity);
@@ -177,6 +256,7 @@ export default function ProductListView({
     setShowGallery(false);
     setFormWarehouse(product.warehouse || 'คลังสินค้าหลัก A');
     setFormExpiryDate(product.expiryDate || '');
+    setFormColor(product.color || '');
     setIsModalOpen(true);
   };
 
@@ -189,6 +269,7 @@ export default function ProductListView({
       name: formName,
       sku: formSku,
       category: formCategory,
+      series: formSeries,
       price: Number(formCostPrice),
       costPrice: Number(formCostPrice),
       quantity: Number(formQuantity),
@@ -198,6 +279,7 @@ export default function ProductListView({
       sourceUrl: formSourceUrl,
       warehouse: formWarehouse,
       expiryDate: formExpiryDate,
+      color: formColor,
     };
 
     if (editingProduct) {
@@ -378,6 +460,24 @@ export default function ProductListView({
           <ShoppingCart className="h-3.5 w-3.5" />
           ระบบจัดซื้อและสั่งซื้อ (Purchasing)
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('cart')}
+          className={`pb-1.5 px-3 text-[11px] font-black tracking-wide font-sans transition-all border-b-2 relative -mb-[2px] cursor-pointer flex items-center gap-1.5 ${
+            activeSubTab === 'cart'
+              ? 'border-indigo-600 text-indigo-600 font-extrabold'
+              : 'border-transparent text-slate-400 hover:text-slate-600 font-medium'
+          }`}
+          id="btn-subtab-cart"
+        >
+          <ShoppingCart className="h-3.5 w-3.5 text-indigo-500 animate-pulse" />
+          ตะกร้าขอจัดซื้อ (Shopping Cart)
+          {cartItems.length > 0 && (
+            <span className="bg-rose-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-black">
+              {cartItems.length}
+            </span>
+          )}
+        </button>
       </div>
 
       {activeSubTab === 'categories' ? (
@@ -387,6 +487,7 @@ export default function ProductListView({
           onAddCategory={onAddCategory}
           onEditCategory={onEditCategory}
           onDeleteCategory={onDeleteCategory}
+          onEditProduct={onEditProduct}
         />
       ) : activeSubTab === 'ordering' ? (
         <OrderingSystemView
@@ -395,6 +496,17 @@ export default function ProductListView({
           onAdjustStock={onAdjustStock}
           preselectedProductId={preselectedProductId}
           onClearPreselectedProductId={() => setPreselectedProductId('')}
+          employees={employees}
+          jobProjects={jobProjects}
+        />
+      ) : activeSubTab === 'cart' ? (
+        <ShoppingCartView
+          cartItems={cartItems}
+          setCartItems={setCartItems}
+          employees={employees}
+          jobProjects={jobProjects}
+          addToast={addToast}
+          setActiveSubTab={setActiveSubTab}
         />
       ) : (
         <>
@@ -454,39 +566,66 @@ export default function ProductListView({
             </button>
           </div>
 
-          {/* Category Filter Buttons (Flat & Scrollable) */}
-          <div className="bg-slate-50/40 p-1.5 rounded-lg flex items-center gap-1.5 text-left overflow-x-auto scrollbar-none">
-            <span className="text-[9px] font-bold text-slate-400 font-sans uppercase tracking-wider flex items-center gap-0.5 flex-shrink-0 mr-1">
-              <Filter className="h-2.5 w-2.5 text-slate-400" /> หมวดหมู่:
-            </span>
-            <div className="flex gap-1 flex-shrink-0">
+          {/* Category Filter Cards Row (Flat & Scrollable) */}
+          <div className="bg-slate-50/40 p-2 rounded-xl flex items-center gap-2 text-left overflow-x-auto scrollbar-none border border-slate-100">
+            <div className="flex items-center gap-1 shrink-0 mr-1">
+              <Filter className="h-3.5 w-3.5 text-indigo-500" />
+              <span className="text-[10px] font-black text-slate-500 font-sans uppercase tracking-wider">หมวดหมู่:</span>
+            </div>
+            <div className="flex gap-2 flex-shrink-0">
               <button
-                onClick={() => setCategoryFilter('all')}
-                className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-all duration-200 cursor-pointer flex items-center gap-1 ${
+                onClick={() => {
+                  setCategoryFilter('all');
+                }}
+                className={`p-1 pr-3 rounded-lg border transition-all duration-200 cursor-pointer flex items-center gap-2 ${
                   categoryFilter === 'all'
-                    ? 'bg-indigo-600 border-indigo-600 text-white font-bold shadow-3xs'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    ? 'bg-indigo-600 border-indigo-600 text-white font-extrabold shadow-sm ring-2 ring-indigo-500/20'
+                    : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700 font-medium'
                 }`}
                 id="btn-cat-filter-all"
               >
-                ทั้งหมด ({products.length})
+                <div className="w-8 h-8 rounded-md bg-slate-100 border border-slate-200/50 flex items-center justify-center text-slate-500 shrink-0">
+                  <Layers className="h-4 w-4" />
+                </div>
+                <div className="text-left leading-tight">
+                  <div className="text-[10px] font-black">ทั้งหมด</div>
+                  <div className="text-[8.5px] text-slate-400 font-sans font-bold">{products.length} รายการ</div>
+                </div>
               </button>
+
               {mergedCategories.map((cat) => {
                 const count = products.filter((p) => p.category === cat.id).length;
                 const isSelected = categoryFilter === cat.id;
                 return (
                   <button
                     key={cat.id}
-                    onClick={() => setCategoryFilter(cat.id)}
-                    className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-all duration-200 cursor-pointer flex items-center gap-1 ${
+                    onClick={() => {
+                      setCategoryFilter(cat.id);
+                      setViewMode('grouped');
+                      setTimeout(() => {
+                        const element = document.getElementById(`category-group-${cat.id}`);
+                        if (element) {
+                          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                      }, 120);
+                    }}
+                    className={`p-1 pr-3 rounded-lg border transition-all duration-200 cursor-pointer flex items-center gap-2 ${
                       isSelected
-                        ? `${cat.color} border-current font-bold ring-1 ring-current`
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        ? `${cat.color} border-indigo-600 font-extrabold shadow-sm ring-2 ring-indigo-500/20`
+                        : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700 font-medium'
                     }`}
                     id={`btn-cat-filter-${cat.id}`}
                   >
-                    <span className={`w-1 h-1 rounded-full ${isSelected ? 'bg-current' : 'bg-slate-400'}`}></span>
-                    {cat.name.split(' (')[0]} ({count})
+                    <img
+                      src={cat.imageUrl || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'}
+                      alt={cat.name}
+                      className="w-8 h-8 object-cover rounded-md border border-slate-200/50 shrink-0"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="text-left leading-tight">
+                      <div className="text-[10px] font-black">{cat.name.split(' (')[0]}</div>
+                      <div className="text-[8.5px] text-slate-400 font-sans font-bold">{count} รายการพัสดุ</div>
+                    </div>
                   </button>
                 );
               })}
@@ -629,6 +768,12 @@ export default function ProductListView({
                       ) : (
                         <ChevronDown className="h-3 w-3 text-slate-400" />
                       )}
+                      <img
+                        src={group.category.imageUrl || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'}
+                        alt={group.category.name}
+                        className="w-5 h-5 object-cover rounded border border-slate-200"
+                        referrerPolicy="no-referrer"
+                      />
                       <span className={`inline-block px-1.5 py-0.2 text-[9px] font-black rounded border ${group.category.color}`}>
                         {group.category.name.split(' (')[0]}
                       </span>
@@ -662,130 +807,242 @@ export default function ProductListView({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-[11px]">
-                          {group.products.map((p) => {
-                            const isOutOfStock = p.quantity === 0;
-                            const isLowStock = p.quantity > 0 && p.quantity <= p.minAlert;
-                            
-                            let stockColor = 'bg-emerald-50 text-emerald-800 border-emerald-100';
-                            let stockLabel = 'ปลอดภัย';
-                            if (isOutOfStock) {
-                              stockColor = 'bg-rose-50 text-rose-800 border-rose-100 animate-pulse';
-                              stockLabel = 'หมดคลัง';
-                            } else if (isLowStock) {
-                              stockColor = 'bg-amber-50 text-amber-800 border-amber-100';
-                              stockLabel = 'เหลือน้อย';
+                          {(() => {
+                            const seriesList = group.category.series || [];
+                            const productsBySeries: { seriesName: string; products: Product[] }[] = [];
+
+                            // 1. Group the ones belonging to defined series
+                            seriesList.forEach((s) => {
+                              const seriesProducts = group.products.filter((p) => p.series === s);
+                              if (seriesProducts.length > 0) {
+                                productsBySeries.push({
+                                  seriesName: s,
+                                  products: seriesProducts,
+                                });
+                              }
+                            });
+
+                            // 2. Put remaining products (with no series or non-matching series) in a default group
+                            const categorizedProductIds = new Set(
+                              productsBySeries.flatMap((ps) => ps.products.map((p) => p.id))
+                            );
+                            const remainingProducts = group.products.filter(
+                              (p) => !categorizedProductIds.has(p.id)
+                            );
+                            if (remainingProducts.length > 0) {
+                              productsBySeries.push({
+                                seriesName: 'ทั่วไป / ไม่มี Series ย่อย',
+                                products: remainingProducts,
+                              });
                             }
 
-                            return (
-                              <tr key={p.id} className="hover:bg-slate-50/40 transition-colors group">
-                                {/* Name & Photo */}
-                                <td className="py-0.5 px-2">
-                                  <div className="flex items-center gap-1.5">
-                                    <img
-                                      src={p.image || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'}
-                                      alt={p.name}
-                                      className="w-6 h-6 object-cover rounded bg-slate-50 shrink-0"
-                                      referrerPolicy="no-referrer"
-                                    />
-                                    <div className="min-w-0">
-                                      <h4 className="font-bold text-slate-700 font-sans leading-none line-clamp-1 text-[11px]" title={p.name}>{p.name}</h4>
-                                      <div className="flex flex-wrap gap-1 items-center mt-0.5 leading-none">
-                                        <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-indigo-700 bg-indigo-50/50 rounded leading-none">
-                                          📍 {p.warehouse || 'A'}
-                                        </span>
-                                        {p.expiryDate && (
-                                          <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-rose-700 bg-rose-50/50 rounded leading-none">
-                                            📅 EXP: {new Date(p.expiryDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short' })}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
+                            const getSubSeriesColors = (name: string) => {
+                              if (name === 'ทั่วไป / ไม่มี Series ย่อย') {
+                                return {
+                                  bg: 'bg-slate-50/70 dark:bg-slate-900/30',
+                                  text: 'text-slate-600 dark:text-slate-400',
+                                  border: 'border-l-[5px] border-l-slate-400 dark:border-l-slate-500',
+                                  badgeBg: 'bg-slate-100 dark:bg-slate-800'
+                                };
+                              }
+                              let hash = 0;
+                              for (let i = 0; i < name.length; i++) {
+                                hash = name.charCodeAt(i) + ((hash << 5) - hash);
+                              }
+                              const themes = [
+                                { bg: 'bg-indigo-50/70 dark:bg-indigo-950/20', text: 'text-indigo-800 dark:text-indigo-300', border: 'border-l-[5px] border-l-indigo-600 dark:border-l-indigo-500', badgeBg: 'bg-indigo-100/50 dark:bg-indigo-950/40' },
+                                { bg: 'bg-teal-50/70 dark:bg-teal-950/20', text: 'text-teal-800 dark:text-teal-300', border: 'border-l-[5px] border-l-teal-600 dark:border-l-teal-500', badgeBg: 'bg-teal-100/50 dark:bg-teal-950/40' },
+                                { bg: 'bg-amber-50/70 dark:bg-amber-950/20', text: 'text-amber-800 dark:text-amber-300', border: 'border-l-[5px] border-l-amber-500 dark:border-l-amber-500', badgeBg: 'bg-amber-100/50 dark:bg-amber-950/40' },
+                                { bg: 'bg-pink-50/70 dark:bg-pink-950/20', text: 'text-pink-800 dark:text-pink-300', border: 'border-l-[5px] border-l-pink-500 dark:border-l-pink-500', badgeBg: 'bg-pink-100/50 dark:bg-pink-950/40' },
+                                { bg: 'bg-emerald-50/70 dark:bg-emerald-950/20', text: 'text-emerald-800 dark:text-emerald-300', border: 'border-l-[5px] border-l-emerald-600 dark:border-l-emerald-500', badgeBg: 'bg-emerald-100/50 dark:bg-emerald-950/40' },
+                                { bg: 'bg-sky-50/70 dark:bg-sky-950/20', text: 'text-sky-800 dark:text-sky-300', border: 'border-l-[5px] border-l-sky-500 dark:border-l-sky-500', badgeBg: 'bg-sky-100/50 dark:bg-sky-950/40' },
+                                { bg: 'bg-violet-50/70 dark:bg-violet-950/20', text: 'text-violet-800 dark:text-violet-300', border: 'border-l-[5px] border-l-violet-600 dark:border-l-violet-500', badgeBg: 'bg-violet-100/50 dark:bg-violet-950/40' }
+                              ];
+                              return themes[Math.abs(hash) % themes.length];
+                            };
 
-                                {/* SKU */}
-                                <td className="py-0.5 px-1.5">
-                                  <div className="text-[10px] font-mono font-bold text-slate-500 tracking-tight leading-none">{p.sku}</div>
-                                </td>
+                            return productsBySeries.map((ps) => {
+                              const colors = getSubSeriesColors(ps.seriesName);
+                              return (
+                                <React.Fragment key={ps.seriesName}>
+                                  {/* Series Divider Header Row */}
+                                  {ps.seriesName !== 'ทั่วไป / ไม่มี Series ย่อย' && (
+                                    <tr className={`${colors.bg} ${colors.text} ${colors.border} text-[10px] font-black font-sans border-y border-slate-100/50 transition-all shadow-3xs`}>
+                                      <td colSpan={5} className="py-2 px-3">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            {(() => {
+                                              const matchingSubSer = (group.category.subSeries || []).find((s) => s.name === ps.seriesName);
+                                              const subSerImg = matchingSubSer?.imageUrl;
+                                              return subSerImg ? (
+                                                <img
+                                                  src={subSerImg}
+                                                  alt={ps.seriesName}
+                                                  className="h-6 w-6 rounded object-cover border border-slate-200 dark:border-slate-800 shrink-0 shadow-3xs"
+                                                  referrerPolicy="no-referrer"
+                                                />
+                                              ) : (
+                                                <span className={`p-1 rounded ${colors.badgeBg} flex items-center justify-center`}>
+                                                  <Tag className="h-3 w-3 text-indigo-500 shrink-0" />
+                                                </span>
+                                              );
+                                            })()}
+                                            <div>
+                                              <span className="uppercase tracking-wide font-extrabold text-[11px]">Series: {ps.seriesName}</span>
+                                              <span className="ml-1.5 text-[8.5px] font-normal text-slate-400 dark:text-slate-500 font-sans">
+                                                ({ps.products.length} รายการ)
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
 
-                                {/* Cost */}
-                                <td className="py-0.5 px-1.5 text-right">
-                                  <div className="font-bold text-slate-700 font-sans text-[11px] leading-none">{formatCurrency(p.costPrice)}</div>
-                                </td>
+                                  {ps.products.map((p) => {
+                                    const isOutOfStock = p.quantity === 0;
+                                    const isLowStock = p.quantity > 0 && p.quantity <= p.minAlert;
 
-                                {/* Real-time quantity counter / adjusting buttons */}
-                                <td className="py-0.5 px-1.5">
-                                  <div className="flex items-center justify-center gap-1.5">
-                                    <div className="flex items-center gap-1.5 bg-slate-50 rounded p-0.5 border border-slate-100">
-                                      <button
-                                        onClick={() => handleQuickMinus(p)}
-                                        disabled={p.quantity <= 0}
-                                        className="text-slate-400 hover:text-rose-600 disabled:opacity-40 transition-colors p-0.5 rounded hover:bg-white cursor-pointer"
-                                        title="ลดสต็อก 1 ชิ้น"
-                                        id={`btn-quick-minus-item-grp-${p.id}`}
-                                      >
-                                        <MinusCircle className="h-3 w-3" />
-                                      </button>
-                                      <span className="font-black text-[10px] text-slate-700 w-5 text-center font-mono leading-none">
-                                        {p.quantity}
-                                      </span>
-                                      <button
-                                        onClick={() => handleQuickAdd(p)}
-                                        className="text-slate-400 hover:text-emerald-600 transition-colors p-0.5 rounded hover:bg-white cursor-pointer"
-                                        title="เพิ่มสต็อก 1 ชิ้น"
-                                        id={`btn-quick-plus-item-grp-${p.id}`}
-                                      >
-                                        <PlusCircle className="h-3 w-3" />
-                                      </button>
-                                    </div>
-                                    <div className={`text-[8.5px] font-bold px-1 rounded ${stockColor} shrink-0 leading-none`}>
-                                      {stockLabel} ({p.minAlert})
-                                    </div>
-                                  </div>
-                                </td>
+                                    let stockColor = 'bg-emerald-50 text-emerald-800 border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-300 dark:border-emerald-900';
+                                    let stockLabel = 'ปลอดภัย';
+                                    if (isOutOfStock) {
+                                      stockColor = 'bg-rose-50 text-rose-800 border-rose-100 animate-pulse dark:bg-rose-950/20 dark:text-rose-300 dark:border-rose-900';
+                                      stockLabel = 'หมดคลัง';
+                                    } else if (isLowStock) {
+                                      stockColor = 'bg-amber-50 text-amber-800 border-amber-100 dark:bg-amber-950/20 dark:text-amber-300 dark:border-amber-900';
+                                      stockLabel = 'เหลือน้อย';
+                                    }
 
-                                {/* CRUD Actions */}
-                                <td className="py-0.5 px-2 text-right">
-                                  <div className="flex items-center justify-end gap-1">
-                                    <button
-                                      onClick={() => {
-                                        setPreselectedProductId(p.id);
-                                        setActiveSubTab('ordering');
-                                      }}
-                                      className="px-1 py-0.2 text-[9px] font-black text-emerald-700 hover:bg-emerald-50 border border-emerald-100 rounded cursor-pointer flex items-center gap-0.5"
-                                      title="สร้างใบขอสั่งซื้อพัสดุ"
-                                      id={`btn-purchase-item-grp-${p.id}`}
-                                    >
-                                      <ShoppingCart className="h-2.5 w-2.5" /> สั่งซื้อ
-                                    </button>
-                                    <button
-                                      onClick={() => handleOpenAdjustDialog(p)}
-                                      className="px-1 py-0.2 text-[9px] font-black text-indigo-700 hover:bg-indigo-50 border border-indigo-100 rounded cursor-pointer"
-                                      id={`btn-adjust-details-item-grp-${p.id}`}
-                                    >
-                                      รับ/จ่าย
-                                    </button>
-                                    <button
-                                      onClick={() => handleOpenEditModal(p)}
-                                      className="p-0.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded cursor-pointer"
-                                      title="แก้ไข"
-                                      id={`btn-edit-item-grp-${p.id}`}
-                                    >
-                                      <Edit3 className="h-3 w-3" />
-                                    </button>
-                                    <button
-                                      onClick={() => onDeleteProduct(p.id)}
-                                      className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
-                                      title="ลบ"
-                                      id={`btn-delete-item-grp-${p.id}`}
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
+                                    return (
+                                      <tr key={p.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/30 transition-colors group">
+                                        {/* Name & Photo */}
+                                        <td className="py-0.5 px-2">
+                                          <div className="flex items-center gap-1.5">
+                                            <img
+                                              src={p.image || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'}
+                                              alt={p.name}
+                                              className="w-6 h-6 object-cover rounded bg-slate-50 dark:bg-slate-800 shrink-0"
+                                              referrerPolicy="no-referrer"
+                                            />
+                                            <div className="min-w-0">
+                                              {/* Redundant Sub-series badge inside grouped list is hidden to reduce complexity */}
+                                              <h4 className="font-bold text-slate-700 dark:text-slate-200 font-sans leading-none line-clamp-1 text-[11px]" title={p.name}>
+                                                {p.name}
+                                                {getColorDotAndBadge(p.color)}
+                                              </h4>
+                                              <div className="flex flex-wrap gap-1 items-center mt-0.5 leading-none">
+                                              <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 dark:text-indigo-400 rounded leading-none">
+                                                📍 {p.warehouse || 'A'}
+                                              </span>
+                                              {p.expiryDate && (
+                                                <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-rose-700 bg-rose-50/50 dark:bg-rose-950/30 dark:text-rose-400 rounded leading-none">
+                                                  📅 EXP: {new Date(p.expiryDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short' })}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </td>
+
+                                      {/* SKU */}
+                                      <td className="py-0.5 px-1.5">
+                                        <div className="text-[10px] font-mono font-bold text-slate-500 tracking-tight leading-none">
+                                          {p.sku}
+                                        </div>
+                                      </td>
+
+                                      {/* Cost */}
+                                      <td className="py-0.5 px-1.5 text-right">
+                                        <div className="font-bold text-slate-700 dark:text-slate-200 font-sans text-[11px] leading-none">
+                                          {formatCurrency(p.costPrice)}
+                                        </div>
+                                      </td>
+
+                                      {/* Real-time quantity counter / adjusting buttons */}
+                                      <td className="py-0.5 px-1.5">
+                                        <div className="flex items-center justify-center gap-1.5">
+                                          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 rounded p-0.5 border border-slate-100 dark:border-slate-700">
+                                            <button
+                                              onClick={() => handleQuickMinus(p)}
+                                              disabled={p.quantity <= 0}
+                                              className="text-slate-400 hover:text-rose-600 disabled:opacity-40 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
+                                              title="ลดสต็อก 1 ชิ้น"
+                                              id={`btn-quick-minus-item-grp-${p.id}`}
+                                            >
+                                              <MinusCircle className="h-3 w-3" />
+                                            </button>
+                                            <span className="font-black text-[10px] text-slate-700 dark:text-slate-200 w-5 text-center font-mono leading-none">
+                                              {p.quantity}
+                                            </span>
+                                            <button
+                                              onClick={() => handleQuickAdd(p)}
+                                              className="text-slate-400 hover:text-emerald-600 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
+                                              title="เพิ่มสต็อก 1 ชิ้น"
+                                              id={`btn-quick-plus-item-grp-${p.id}`}
+                                            >
+                                              <PlusCircle className="h-3 w-3" />
+                                            </button>
+                                          </div>
+                                          <div className={`text-[8.5px] font-bold px-1 rounded ${stockColor} shrink-0 leading-none`}>
+                                            {stockLabel} ({p.minAlert})
+                                          </div>
+                                        </div>
+                                      </td>
+
+                                      {/* CRUD Actions */}
+                                      <td className="py-0.5 px-2 text-right">
+                                        <div className="flex items-center justify-end gap-1">
+                                          <button
+                                            onClick={() => handleAddToCart(p)}
+                                            className="px-1.5 py-0.2 text-[9px] font-black text-indigo-700 dark:text-indigo-450 hover:bg-indigo-50 border border-indigo-100 rounded cursor-pointer flex items-center gap-0.5 active:scale-95 transition-all"
+                                            title="หยิบพัสดุลงในตะกร้าจัดซื้อ"
+                                            id={`btn-add-to-cart-item-grp-${p.id}`}
+                                          >
+                                            <ShoppingCart className="h-2.5 w-2.5 text-indigo-500" /> หยิบลงตะกร้า
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setPreselectedProductId(p.id);
+                                              setActiveSubTab('ordering');
+                                            }}
+                                            className="px-1 py-0.2 text-[9px] font-black text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/25 border border-emerald-100 dark:border-emerald-900 rounded cursor-pointer flex items-center gap-0.5"
+                                            title="สร้างใบขอสั่งซื้อพัสดุ"
+                                            id={`btn-purchase-item-grp-${p.id}`}
+                                          >
+                                            <ShoppingCart className="h-2.5 w-2.5" /> สั่งซื้อ
+                                          </button>
+                                          <button
+                                            onClick={() => handleOpenAdjustDialog(p)}
+                                            className="px-1 py-0.2 text-[9px] font-black text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/25 border border-indigo-100 dark:border-indigo-900 rounded cursor-pointer"
+                                            id={`btn-adjust-details-item-grp-${p.id}`}
+                                          >
+                                            รับ/จ่าย
+                                          </button>
+                                          <button
+                                            onClick={() => handleOpenEditModal(p)}
+                                            className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded cursor-pointer"
+                                            title="แก้ไข"
+                                            id={`btn-edit-item-grp-${p.id}`}
+                                          >
+                                            <Edit3 className="h-3 w-3" />
+                                          </button>
+                                          <button
+                                            onClick={() => onDeleteProduct(p.id)}
+                                            className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 rounded cursor-pointer"
+                                            title="ลบ"
+                                            id={`btn-delete-item-grp-${p.id}`}
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </React.Fragment>
                             );
-                          })}
+                          });
+                          })()}
                         </tbody>
                       </table>
                     </div>
@@ -839,7 +1096,15 @@ export default function ProductListView({
                             referrerPolicy="no-referrer"
                           />
                           <div className="min-w-0">
-                            <h4 className="font-bold text-slate-700 font-sans leading-none line-clamp-1 text-[11px]" title={p.name}>{p.name}</h4>
+                            {p.series && (
+                              <span className="block text-[8.5px] font-black text-indigo-600 dark:text-indigo-400 font-sans uppercase tracking-wide leading-none mb-0.5">
+                                🏷️ {p.series}
+                              </span>
+                            )}
+                            <h4 className="font-bold text-slate-700 font-sans leading-none line-clamp-1 text-[11px]" title={p.name}>
+                              {p.name}
+                              {getColorDotAndBadge(p.color)}
+                            </h4>
                             {p.expiryDate && (
                               <p className="text-[8.5px] text-rose-700 font-sans mt-0.5 leading-none">
                                 📅 EXP: {new Date(p.expiryDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short' })}
@@ -851,9 +1116,35 @@ export default function ProductListView({
 
                       {/* Category & SKU */}
                       <td className="py-0.5 px-1.5">
-                        <span className={`inline-block px-1 py-0.2 text-[8px] font-black rounded mb-0.5 border leading-none ${getCategoryBadgeClass(p.category)}`}>
-                          {getCategoryName(p.category).split(' (')[0]}
-                        </span>
+                        <div 
+                          className="flex flex-wrap items-center gap-1.5 mb-0.5 cursor-pointer group/cat hover:opacity-80" 
+                          title="กดเพื่อกรองกลุ่มนี้และเลื่อนลง" 
+                          onClick={() => {
+                            setCategoryFilter(p.category);
+                            setViewMode('grouped');
+                            setTimeout(() => {
+                              const element = document.getElementById(`category-group-${p.category}`);
+                              if (element) {
+                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }
+                            }, 120);
+                          }}
+                        >
+                          <img 
+                            src={mergedCategories.find(c => c.id === p.category)?.imageUrl || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'} 
+                            alt={getCategoryName(p.category)} 
+                            className="w-5 h-5 object-cover rounded border border-slate-200 group-hover/cat:ring-1 group-hover/cat:ring-indigo-500"
+                            referrerPolicy="no-referrer"
+                          />
+                          <span className={`inline-block px-1 py-0.2 text-[8px] font-black rounded border leading-none ${getCategoryBadgeClass(p.category)}`}>
+                            {getCategoryName(p.category).split(' (')[0]}
+                          </span>
+                          {p.series && (
+                            <span className="inline-block px-1 py-0.2 text-[8px] font-black rounded border bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-150 dark:border-indigo-850 leading-none">
+                              🏷️ {p.series}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] font-mono font-bold text-slate-500 tracking-tight leading-none">{p.sku}</div>
                       </td>
 
@@ -896,6 +1187,14 @@ export default function ProductListView({
                       {/* CRUD Actions */}
                       <td className="py-0.5 px-2 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleAddToCart(p)}
+                            className="px-1.5 py-0.2 text-[9px] font-black text-indigo-700 hover:bg-indigo-50 border border-indigo-100 rounded cursor-pointer flex items-center gap-0.5 active:scale-95 transition-all"
+                            title="หยิบพัสดุลงในตะกร้าจัดซื้อ"
+                            id={`btn-add-to-cart-item-${p.id}`}
+                          >
+                            <ShoppingCart className="h-2.5 w-2.5 text-indigo-500" /> หยิบลงตะกร้า
+                          </button>
                           <button
                             onClick={() => {
                               setPreselectedProductId(p.id);
@@ -995,12 +1294,15 @@ export default function ProductListView({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Category Selection */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 font-sans">หมวดหมู่กลุ่มสินค้า <span className="text-rose-500">*</span></label>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">หมวดหมู่กลุ่มสินค้า <span className="text-rose-500">*</span></label>
                   <select
                     required
-                    className="w-full px-3.5 py-2 border border-slate-200 bg-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
                     value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value)}
+                    onChange={(e) => {
+                      setFormCategory(e.target.value);
+                      setFormSeries(''); // Reset series when category changes
+                    }}
                   >
                     {mergedCategories.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -1010,15 +1312,73 @@ export default function ProductListView({
                   </select>
                 </div>
 
+                {/* Series Selection */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">Series ย่อย</label>
+                  {(() => {
+                    const selectedCat = mergedCategories.find((c) => c.id === formCategory);
+                    const listFromSeries = selectedCat?.series || [];
+                    const listFromSubSeries = (selectedCat?.subSeries || []).map((s) => s.name);
+                    const availableSeries = Array.from(new Set([...listFromSeries, ...listFromSubSeries])).filter(Boolean);
+                    
+                    if (availableSeries.length > 0) {
+                      return (
+                        <div className="space-y-1.5">
+                          <select
+                            className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
+                            value={formSeries}
+                            onChange={(e) => setFormSeries(e.target.value)}
+                          >
+                            <option value="">-- ทั่วไป / ไม่มี Series --</option>
+                            {availableSeries.map((s, idx) => (
+                              <option key={idx} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div>
+                          <input
+                            type="text"
+                            placeholder="ระบุชื่อ Series ย่อยเอง หรือเว้นว่างไว้ (เช่น 1 Pole)"
+                            className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
+                            value={formSeries}
+                            onChange={(e) => setFormSeries(e.target.value)}
+                          />
+                        </div>
+                      );
+                    }
+                  })()}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Cost price */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">ราคาทุนสินค้า (฿) <span className="text-rose-500">*</span></label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    placeholder="0"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
+                    value={formCostPrice}
+                    onChange={(e) => setFormCostPrice(Math.max(0, Number(e.target.value)))}
+                  />
+                </div>
+
                 {/* Minimum Alert level */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 font-sans">จำนวนแจ้งเตือนขั้นต่ำ (Min Alarm) <span className="text-rose-500">*</span></label>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">จำนวนแจ้งเตือนขั้นต่ำ (Min Alarm) <span className="text-rose-500">*</span></label>
                   <input
                     type="number"
                     min="1"
                     required
                     placeholder="เช่น 5"
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
                     value={formMinAlert}
                     onChange={(e) => setFormMinAlert(Math.max(1, Number(e.target.value)))}
                   />
@@ -1026,23 +1386,9 @@ export default function ProductListView({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Cost price */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 font-sans">ราคาทุนสินค้า (฿) <span className="text-rose-500">*</span></label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    placeholder="0"
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all"
-                    value={formCostPrice}
-                    onChange={(e) => setFormCostPrice(Math.max(0, Number(e.target.value)))}
-                  />
-                </div>
-
                 {/* Initial Stock level */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 font-sans">
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">
                     {editingProduct ? 'จำนวนคงเหลือปัจจุบัน' : 'จำนวนสต็อกเริ่มต้น'} <span className="text-rose-500">*</span>
                   </label>
                   <input
@@ -1050,20 +1396,18 @@ export default function ProductListView({
                     min="0"
                     required
                     placeholder="0"
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
                     value={formQuantity}
                     onChange={(e) => setFormQuantity(Math.max(0, Number(e.target.value)))}
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Warehouse Selection */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 font-sans">สถานที่จัดเก็บ / คลังสินค้า <span className="text-rose-500">*</span></label>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">สถานที่จัดเก็บ / คลังสินค้า <span className="text-rose-500">*</span></label>
                   <select
                     required
-                    className="w-full px-3.5 py-2 border border-slate-200 bg-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
                     value={formWarehouse}
                     onChange={(e) => setFormWarehouse(e.target.value)}
                   >
@@ -1072,16 +1416,60 @@ export default function ProductListView({
                     <option value="คลังสินค้าหน้าร้าน C">คลังสินค้าหน้าร้าน C</option>
                   </select>
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Expiry Date */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 font-sans">วันหมดอายุของสินค้า (Expiry Date)</label>
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">วันหมดอายุของสินค้า (Expiry Date)</label>
                   <input
                     type="date"
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all"
+                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
                     value={formExpiryDate}
                     onChange={(e) => setFormExpiryDate(e.target.value)}
                   />
+                </div>
+
+                {/* Color Selection */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">สีหลักของสินค้า (คลิกเพื่อเลือก/ยกเลิก)</label>
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    {PRODUCT_COLORS.map((colorObj) => {
+                      const isSelected = formColor === colorObj.name;
+                      return (
+                        <button
+                          key={colorObj.name}
+                          type="button"
+                          onClick={() => setFormColor(isSelected ? '' : colorObj.name)}
+                          className={`group relative w-7 h-7 rounded-full border transition-all flex items-center justify-center cursor-pointer ${
+                            isSelected 
+                              ? 'ring-2 ring-indigo-500 dark:ring-indigo-400 ring-offset-2 dark:ring-offset-slate-900 scale-110 shadow-sm' 
+                              : 'hover:scale-105 border-slate-200 dark:border-slate-700'
+                          }`}
+                          style={{
+                            background: colorObj.hex,
+                            borderColor: isSelected ? undefined : (colorObj.name === 'ขาว' ? '#CBD5E1' : 'transparent')
+                          }}
+                          title={colorObj.name}
+                        >
+                          {isSelected && (
+                            <span className={`text-[10px] font-black leading-none ${
+                              ['ขาว', 'เหลือง', 'เขียว-เหลือง'].includes(colorObj.name) ? 'text-slate-900' : 'text-white'
+                            }`}>
+                              ✓
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {formColor ? (
+                    <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                      สีปัจจุบัน: {formColor}
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-slate-400 italic">ยังไม่ได้ระบุสีสินค้า</div>
+                  )}
                 </div>
               </div>
 

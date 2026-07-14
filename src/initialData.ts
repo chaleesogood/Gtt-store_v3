@@ -6,24 +6,28 @@ export const INITIAL_CATEGORIES: Category[] = [
     name: 'อุปกรณ์อิเล็กทรอนิกส์ (Electronics)',
     description: 'โทรศัพท์ มือถือ คอมพิวเตอร์ และอุปกรณ์เสริมต่างๆ',
     color: 'bg-blue-100 text-blue-800 border-blue-200',
+    imageUrl: 'https://images.unsplash.com/photo-1498049794561-7780e7231661?w=300&auto=format&fit=crop&q=60',
   },
   {
     id: 'cat-2',
     name: 'เสื้อผ้าและแฟชั่น (Apparel)',
     description: 'เสื้อผ้า กระเป๋า รองเท้า เครื่องประดับ',
     color: 'bg-purple-100 text-purple-800 border-purple-200',
+    imageUrl: 'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=300&auto=format&fit=crop&q=60',
   },
   {
     id: 'cat-3',
     name: 'เครื่องใช้ในครัวเรือน (Household)',
     description: 'แก้วน้ำ อุปกรณ์ทำครัว ของตกแต่งบ้าน',
     color: 'bg-green-100 text-green-800 border-green-200',
+    imageUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=300&auto=format&fit=crop&q=60',
   },
   {
     id: 'cat-4',
     name: 'อาหารและเครื่องดื่ม (Food & Drinks)',
     description: 'ชา กาแฟ ขนมขบเคี้ยว ของสด และอาหารแห้ง',
     color: 'bg-amber-100 text-amber-800 border-amber-200',
+    imageUrl: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=300&auto=format&fit=crop&q=60',
   }
 ];
 

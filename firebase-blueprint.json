@@ -9,6 +9,7 @@
         "name": { "type": "string" },
         "sku": { "type": "string" },
         "category": { "type": "string" },
+        "series": { "type": "string" },
         "price": { "type": "number" },
         "costPrice": { "type": "number" },
         "quantity": { "type": "number" },
@@ -32,7 +33,8 @@
         "id": { "type": "string" },
         "name": { "type": "string" },
         "description": { "type": "string" },
-        "color": { "type": "string" }
+        "color": { "type": "string" },
+        "series": { "type": "array" }
       },
       "required": ["id", "name", "description", "color"]
     },

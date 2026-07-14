@@ -11,7 +11,9 @@ import JobAssignmentView from './components/JobAssignmentView';
 import DailyReportView from './components/DailyReportView';
 import Logo from './components/Logo';
 
-import { LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList } from 'lucide-react';
+import SettingsView from './components/SettingsView';
+import { CatalogView } from './components/CatalogView';
+import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs } from 'firebase/firestore';
 import { db, cleanUndefined } from './firebase';
 
@@ -56,6 +58,26 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  // Theme (Dark Mode) State
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark' || saved === 'light') return saved;
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+    return 'light';
+  });
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   // Sync products from Firestore (seed if empty)
   useEffect(() => {
@@ -947,6 +969,8 @@ export default function App() {
             onEditCategory={handleEditCategory}
             onDeleteCategory={handleDeleteCategory}
             addToast={addToast}
+            employees={employees}
+            jobProjects={jobProjects}
           />
         );
       case 'logs':
@@ -992,6 +1016,30 @@ export default function App() {
             onAddDailyReport={handleAddDailyReport}
             onEditDailyReport={handleEditDailyReport}
             onDeleteDailyReport={handleDeleteDailyReport}
+          />
+        );
+      case 'settings':
+        return (
+          <SettingsView
+            employees={employees}
+            onAddEmployee={handleAddEmployee}
+            onEditEmployee={handleEditEmployee}
+            onDeleteEmployee={handleDeleteEmployee}
+            jobProjects={jobProjects}
+            onAddJobProject={handleAddJobProject}
+            onEditJobProject={handleEditJobProject}
+            onDeleteJobProject={handleDeleteJobProject}
+            jobs={jobs}
+            onEditJob={handleEditJob}
+          />
+        );
+      case 'catalog':
+        return (
+          <CatalogView
+            products={products}
+            categories={categories}
+            jobProjects={jobProjects}
+            addToast={addToast}
           />
         );
 
@@ -1074,7 +1122,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 flex flex-col md:flex-row antialiased text-slate-800">
+    <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950 flex flex-col md:flex-row antialiased text-slate-800 dark:text-slate-100 transition-colors duration-300">
       
       {/* -------------------- SIDEBAR NAVIGATION (DESKTOP) -------------------- */}
       <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-slate-300 border-r border-slate-800 flex-shrink-0 z-20">
@@ -1111,13 +1159,25 @@ export default function App() {
           >
             <div className="flex items-center gap-3">
               <Package className="h-4.5 w-4.5 flex-shrink-0" />
-              จัดการสินค้า & กลุ่ม
+              จัดการสินค้า และจัดซื้อ
             </div>
             {outOfStockCount > 0 && (
               <span className="bg-rose-600 text-[10px] font-mono text-white font-bold h-5 px-1.5 rounded-full flex items-center justify-center animate-pulse">
                 {outOfStockCount} หมด
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => setCurrentTab('catalog')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+              currentTab === 'catalog'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
+                : 'hover:bg-slate-800/60 hover:text-slate-100 text-slate-400'
+            }`}
+          >
+            <BookOpen className="h-4.5 w-4.5 flex-shrink-0" />
+            แคตตาล็อกพัสดุ (Catalog)
           </button>
 
           <button
@@ -1142,6 +1202,19 @@ export default function App() {
           >
             <Briefcase className="h-4.5 w-4.5 flex-shrink-0" />
             จ่ายงาน & รายงานประจำวัน
+          </button>
+
+          <button
+            onClick={() => setCurrentTab('settings')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+              currentTab === 'settings'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
+                : 'hover:bg-slate-800/60 hover:text-slate-100 text-slate-400'
+            }`}
+            id="sidebar-settings-tab"
+          >
+            <Settings className="h-4.5 w-4.5 flex-shrink-0" />
+            ตั้งค่าโปรเจ็ค & พนักงาน
           </button>
 
           <button
@@ -1173,6 +1246,16 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Mobile Theme Toggle Button */}
+          <button
+            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-100 transition-all cursor-pointer"
+            title={theme === 'light' ? 'เปิดโหมดมืด (Dark Mode)' : 'เปิดโหมดสว่าง (Light Mode)'}
+            id="mobile-theme-toggle"
+          >
+            {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+          </button>
+
           {/* Notifications bell */}
           <button
             onClick={handleAlertBellClick}
@@ -1217,13 +1300,22 @@ export default function App() {
             >
               <div className="flex items-center gap-3">
                 <Package className="h-4.5 w-4.5" />
-                จัดการสินค้า & กลุ่ม
+                จัดการสินค้า และจัดซื้อ
               </div>
               {outOfStockCount > 0 && (
                 <span className="bg-rose-600 text-[9px] font-mono font-bold text-white h-4.5 px-1.5 rounded-full flex items-center justify-center">
                   {outOfStockCount} หมด
                 </span>
               )}
+            </button>
+            <button
+              onClick={() => { setCurrentTab('catalog'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
+                currentTab === 'catalog' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
+              }`}
+            >
+              <BookOpen className="h-4.5 w-4.5" />
+              แคตตาล็อกพัสดุ (Catalog)
             </button>
             <button
               onClick={() => { setCurrentTab('projects_bom'); setIsMobileMenuOpen(false); }}
@@ -1242,6 +1334,15 @@ export default function App() {
             >
               <Briefcase className="h-4.5 w-4.5" />
               จ่ายงาน & รายงานประจำวัน
+            </button>
+            <button
+              onClick={() => { setCurrentTab('settings'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
+                currentTab === 'settings' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
+              }`}
+            >
+              <Settings className="h-4.5 w-4.5" />
+              ตั้งค่าโปรเจ็ค & พนักงาน
             </button>
             <button
               onClick={() => { setCurrentTab('logs'); setIsMobileMenuOpen(false); }}
@@ -1297,14 +1398,24 @@ export default function App() {
         )}
 
         {/* TOP STATUS BAR (DESKTOP HEADER INSET) */}
-        <header className="hidden md:flex items-center justify-between pb-6 mb-4 border-b border-slate-200/60">
+        <header className="hidden md:flex items-center justify-between pb-6 mb-4 border-b border-slate-200/60 dark:border-slate-800">
           <div>
-            <h1 className="text-xl font-bold font-sans text-slate-800">ระบบจัดการคลังสินค้าอัจฉริยะ</h1>
-            <p className="text-xs text-slate-400 font-sans mt-0.5">คลังข้อมูลระบบบริหารสต็อกสินค้าแบบเรียลไทม์</p>
+            <h1 className="text-xl font-bold font-sans text-slate-800 dark:text-slate-100">ระบบจัดการคลังสินค้าอัจฉริยะ</h1>
+            <p className="text-xs text-slate-400 dark:text-slate-500 font-sans mt-0.5">คลังข้อมูลระบบบริหารสต็อกสินค้าแบบเรียลไทม์</p>
           </div>
 
           <div className="flex items-center gap-3 relative">
             
+            {/* Theme Toggle Button */}
+            <button
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+              className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-all cursor-pointer shadow-xs"
+              title={theme === 'light' ? 'เปิดโหมดมืด (Dark Mode)' : 'เปิดโหมดสว่าง (Light Mode)'}
+              id="theme-toggle"
+            >
+              {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            </button>
+
             {/* Bell Alert Notification Icon & Popover */}
             <button
               onClick={handleAlertBellClick}

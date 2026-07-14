@@ -3,6 +3,7 @@ export interface Product {
   name: string;
   sku: string; // Used as PART NUMBER & MODEL
   category: string;
+  series?: string; // Sub-series e.g. "1 Pole", "3 Pole"
   price: number; // Retail Price
   costPrice: number; // Cost price/Unit
   quantity: number;
@@ -17,6 +18,12 @@ export interface Product {
   updatedAt: string;
   warehouse?: string; // WAREHOUSE LOCATION
   expiryDate?: string; // EXPIRY DATE (YYYY-MM-DD)
+  color?: string; // Selected color name for this product
+}
+
+export interface SubSeries {
+  name: string;
+  imageUrl?: string;
 }
 
 export interface Category {
@@ -24,6 +31,9 @@ export interface Category {
   name: string;
   description: string;
   color: string; // Hex or tailwind class name
+  imageUrl?: string; // Main image URL
+  series?: string[]; // List of sub-series under this category
+  subSeries?: SubSeries[]; // Rich list of sub-series with name and image
 }
 
 export interface StockActivity {
@@ -128,9 +138,15 @@ export interface Job {
 export interface Employee {
   id: string;
   name: string;
-  role?: string;
+  nickname?: string; // ชื่อเล่น พนักงาน
+  email?: string;    // Email พนักงาน
+  department?: 'Accounting' | 'Electrical' | 'Assembly' | 'Machine Shop' | 'Design' | 'Welding' | 'Owner' | string; // แผนกงาน
+  orgLevel?: 'owner' | 'head' | 'team' | string; // ลำดับขั้น: เจ้าของบริษัท / หัวหน้าแผนก / ลูกทีม
+  role?: string;     // ตำแหน่งงาน
   phone?: string;
   createdAt: string;
+  imageUrl?: string; // รูปถ่ายพนักงาน
+  cardColor?: string; // สีพื้นหลังการ์ดสำหรับจัดรูปแบบ
 }
 
 export interface ProjectModule {
