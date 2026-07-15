@@ -394,15 +394,15 @@ export default function DashboardView({
                 {/* Legend & Count */}
                 <div className="grid grid-cols-3 gap-1 text-center text-[9px]">
                   <div className="p-1 bg-emerald-50/40 rounded-md border border-emerald-100/30">
-                    <span className="text-slate-450 font-sans block text-[8px]">ปลอดภัย</span>
+                    <span className="text-slate-400 font-sans block text-[8px]">ปลอดภัย</span>
                     <span className="font-extrabold text-emerald-700">{healthyCount} ชนิด</span>
                   </div>
                   <div className="p-1 bg-amber-50/40 rounded-md border border-amber-100/30">
-                    <span className="text-slate-450 font-sans block text-[8px]">ใกล้หมด</span>
+                    <span className="text-slate-400 font-sans block text-[8px]">ใกล้หมด</span>
                     <span className="font-extrabold text-amber-700">{lowCount} ชนิด</span>
                   </div>
                   <div className="p-1 bg-rose-50/40 rounded-md border border-rose-100/30">
-                    <span className="text-slate-450 font-sans block text-[8px]">หมดแล้ว</span>
+                    <span className="text-slate-400 font-sans block text-[8px]">หมดแล้ว</span>
                     <span className="font-extrabold text-rose-700">{outCount} ชนิด</span>
                   </div>
                 </div>

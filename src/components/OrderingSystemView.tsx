@@ -869,7 +869,7 @@ export default function OrderingSystemView({
         <form onSubmit={handleCreateOrder} className="bg-slate-50 p-2 rounded-lg border border-slate-200/60 text-[11px] font-sans space-y-2">
           <div className="flex items-center justify-between pb-1 border-b border-slate-200/60">
             <span className="font-black text-slate-700 flex items-center gap-1">
-              <Plus className="h-3.5 w-3.5 text-indigo-650" /> กรอกข้อมูลใบเสนอจัดซื้อพัสดุ
+              <Plus className="h-3.5 w-3.5 text-indigo-600" /> กรอกข้อมูลใบเสนอจัดซื้อพัสดุ
             </span>
             <button type="button" onClick={() => setIsFormOpen(false)} className="text-slate-400 hover:text-slate-600">
               <X className="h-3 w-3" />
@@ -1078,11 +1078,13 @@ export default function OrderingSystemView({
           </div>
 
           {/* Grouping Mode */}
-          <div className="flex bg-slate-200 p-0.5 rounded w-full sm:w-auto">
+          <div className="flex gap-1.5 w-full sm:w-auto">
             <button
               onClick={() => setViewMode('job')}
-              className={`px-2 py-0.5 rounded text-[9.5px] font-bold font-sans transition-all flex items-center gap-0.5 cursor-pointer ${
-                viewMode === 'job' ? 'bg-white text-indigo-700 font-black' : 'text-slate-500 hover:text-slate-800'
+              className={`px-2 py-0.5 rounded text-[9.5px] font-bold border font-sans transition-all flex items-center gap-0.5 cursor-pointer ${
+                viewMode === 'job'
+                  ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                  : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'
               }`}
             >
               <Briefcase className="h-2.5 w-2.5" />
@@ -1090,8 +1092,10 @@ export default function OrderingSystemView({
             </button>
             <button
               onClick={() => setViewMode('all')}
-              className={`px-2 py-0.5 rounded text-[9.5px] font-bold font-sans transition-all flex items-center gap-0.5 cursor-pointer ${
-                viewMode === 'all' ? 'bg-white text-indigo-700 font-black' : 'text-slate-500 hover:text-slate-800'
+              className={`px-2 py-0.5 rounded text-[9.5px] font-bold border font-sans transition-all flex items-center gap-0.5 cursor-pointer ${
+                viewMode === 'all'
+                  ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                  : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'
               }`}
             >
               <ShoppingCart className="h-2.5 w-2.5" />
@@ -1100,27 +1104,33 @@ export default function OrderingSystemView({
           </div>
 
           {/* Filter tabs */}
-          <div className="flex bg-slate-200 p-0.5 rounded w-full sm:w-auto">
+          <div className="flex gap-1.5 w-full sm:w-auto">
             <button
               onClick={() => setActiveStatusTab('active')}
-              className={`px-2 py-0.5 rounded text-[9.5px] font-bold font-sans transition-all cursor-pointer ${
-                activeStatusTab === 'active' ? 'bg-amber-500 text-white font-black' : 'text-slate-500 hover:text-slate-800'
+              className={`px-2 py-0.5 rounded text-[9.5px] font-bold border font-sans transition-all cursor-pointer ${
+                activeStatusTab === 'active'
+                  ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                  : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'
               }`}
             >
               กำลังดำเนินการ ({orders.filter(o => o.status !== 'received' && o.status !== 'cancelled').length})
             </button>
             <button
               onClick={() => setActiveStatusTab('received')}
-              className={`px-2 py-0.5 rounded text-[9.5px] font-bold font-sans transition-all cursor-pointer ${
-                activeStatusTab === 'received' ? 'bg-emerald-600 text-white font-black' : 'text-slate-500 hover:text-slate-800'
+              className={`px-2 py-0.5 rounded text-[9.5px] font-bold border font-sans transition-all cursor-pointer ${
+                activeStatusTab === 'received'
+                  ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                  : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'
               }`}
             >
               รับของแล้ว ({orders.filter(o => o.status === 'received').length})
             </button>
             <button
               onClick={() => setActiveStatusTab('all')}
-              className={`px-2 py-0.5 rounded text-[9.5px] font-bold font-sans transition-all cursor-pointer ${
-                activeStatusTab === 'all' ? 'bg-slate-700 text-white font-black' : 'text-slate-500 hover:text-slate-800'
+              className={`px-2 py-0.5 rounded text-[9.5px] font-bold border font-sans transition-all cursor-pointer ${
+                activeStatusTab === 'all'
+                  ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                  : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'
               }`}
             >
               ทั้งหมด ({orders.length})
@@ -1204,7 +1214,7 @@ export default function OrderingSystemView({
                                 {isCollapsed ? (
                                   <ChevronDown className="h-3 w-3 text-slate-400" />
                                 ) : (
-                                  <ChevronUp className="h-3 w-3 text-indigo-650" />
+                                  <ChevronUp className="h-3 w-3 text-indigo-600" />
                                 )}
                                 {group.jobNo ? `⚙️ JOB: ${group.jobNo}` : '📂 ทั่วไป / ไม่ระบุ Job No.'}
                               </span>
@@ -1273,7 +1283,7 @@ export default function OrderingSystemView({
                             <td className="py-0.5 px-1.5 text-slate-500 text-[10px]">
                               <div>ขอ: <strong className="text-slate-600">{order.requesterName}</strong></div>
                               {order.purchaserName && (
-                                <div className="text-indigo-650">ซื้อ: <strong>{order.purchaserName}</strong></div>
+                                <div className="text-indigo-600">ซื้อ: <strong>{order.purchaserName}</strong></div>
                               )}
                             </td>
 
@@ -1363,7 +1373,7 @@ export default function OrderingSystemView({
                       <td className="py-0.5 px-1.5 text-slate-500 text-[10px]">
                         <div>ขอ: <strong className="text-slate-600">{order.requesterName}</strong></div>
                         {order.purchaserName && (
-                          <div className="text-indigo-650">ซื้อ: <strong>{order.purchaserName}</strong></div>
+                          <div className="text-indigo-600">ซื้อ: <strong>{order.purchaserName}</strong></div>
                         )}
                       </td>
 
@@ -1909,7 +1919,7 @@ export default function OrderingSystemView({
           <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
               <h3 className="text-xs font-black text-slate-800 font-sans flex items-center gap-1">
-                <PackageCheck className="h-4 w-4 text-emerald-650" />
+                <PackageCheck className="h-4 w-4 text-emerald-600" />
                 <span>ยืนยันตรวจรับสินค้าเข้าคลังจริง</span>
               </h3>
               <button onClick={() => setIntakeOrder(null)} className="p-1 text-slate-400 hover:text-slate-600">

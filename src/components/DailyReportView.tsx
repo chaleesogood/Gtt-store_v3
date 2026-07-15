@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { DailyReport, Employee, Job } from '../types';
+import { DailyReport, Employee, Job, JobProject } from '../types';
+import Logo from './Logo';
 import { 
   FileText, Search, CheckCircle, Clock, User, Calendar, 
   AlertCircle, ThumbsUp, Check, Printer, X, ChevronRight, 
-  MessageSquare, Sparkles, ImageIcon, Filter
+  MessageSquare, Sparkles, ImageIcon, Filter, FolderGit2
 } from 'lucide-react';
 
 interface DailyReportViewProps {
@@ -13,6 +14,7 @@ interface DailyReportViewProps {
   onDeleteDailyReport: (id: string) => void;
   employees: Employee[];
   jobs: Job[];
+  jobProjects?: JobProject[];
 }
 
 export default function DailyReportView({
@@ -21,7 +23,8 @@ export default function DailyReportView({
   onEditDailyReport,
   onDeleteDailyReport,
   employees,
-  jobs
+  jobs,
+  jobProjects = []
 }: DailyReportViewProps) {
   // 1. Selected Date & Filtering States
   const [selectedReportDate, setSelectedReportDate] = useState(() => {
@@ -552,6 +555,7 @@ export default function DailyReportView({
                         const isStep1 = true; // Job assigned is Step 1 (always completed)
                         const isStep2 = job.status === 'in_progress' || job.status === 'completed'; // Step 2 (in progress or completed)
                         const isStep3 = job.status === 'completed'; // Step 3 (completed)
+                        const projMeta = jobProjects.find(p => p.jobNo === job.jobNo);
 
                         return (
                           <div 
@@ -573,8 +577,21 @@ export default function DailyReportView({
                                 </div>
                               )}
                               <div className="min-w-0 flex-grow">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className="text-[9px] font-black text-indigo-700 font-mono tracking-tight bg-indigo-50 border border-indigo-100 px-1.5 py-0.2 rounded">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Logo size={13} className="h-3.5 w-3.5 shrink-0" />
+                                  {projMeta?.projectImageUrl ? (
+                                    <img 
+                                      src={projMeta.projectImageUrl} 
+                                      alt={job.jobNo} 
+                                      className="h-5 w-5 rounded object-cover border border-slate-250 shrink-0 bg-white" 
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  ) : (
+                                    <div className="h-5 w-5 rounded bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                                      <FolderGit2 className="h-3 w-3 text-slate-400" />
+                                    </div>
+                                  )}
+                                  <span className="text-[11px] font-black text-indigo-700 font-mono tracking-tight bg-indigo-50 border border-indigo-150 px-2 py-0.5 rounded-md shrink-0">
                                     {job.jobNo}
                                   </span>
                                   <span className="text-xs font-black text-slate-800 truncate">
@@ -793,11 +810,14 @@ export default function DailyReportView({
                               <ImageIcon className="h-5 w-5 text-slate-400" />
                             </div>
                           )}
-                          <div className="min-w-0">
-                            <span className="text-[9px] font-black text-indigo-700 font-mono block">{job.jobNo}</span>
-                            <span className="text-xs font-bold text-slate-700 truncate block mt-0.5">มอดูล: {job.module}</span>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md inline-block mt-1 ${
-                              job.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                          <div className="min-w-0 flex-grow">
+                            <span className="text-[11px] font-black text-indigo-700 font-mono flex items-center gap-1.5 bg-indigo-50 border border-indigo-150 px-2 py-0.5 rounded-md w-fit">
+                              <Logo size={12} className="h-3 w-3" />
+                              {job.jobNo}
+                            </span>
+                            <span className="text-xs font-bold text-slate-700 truncate block mt-1.5">มอดูล: {job.module}</span>
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md inline-block mt-1 ${
+                              job.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100'
                             }`}>
                               {job.status === 'completed' ? 'เสร็จสิ้น' : 'กำลังทำ'}
                             </span>

@@ -297,153 +297,160 @@ function ProjectModulesManager({
               key={m.code}
               className="flex items-center justify-between p-1 py-1 px-1.5 hover:bg-slate-50/50 border-b border-slate-100 last:border-0 transition-colors group/mod relative"
             >
-              {editingIndex === idx ? (
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
-                  <div className="grid grid-cols-12 gap-1.5 flex-grow">
-                    <input
-                      type="text"
-                      placeholder="รหัสโมดูล"
-                      value={editingCode}
-                      onChange={(e) => setEditingCode(e.target.value)}
-                      className="col-span-4 px-2 py-1 bg-white border border-indigo-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                      autoFocus
-                    />
-                    <input
-                      type="text"
-                      placeholder="ชื่อโมดูล"
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      className="col-span-8 px-2 py-1 bg-white border border-indigo-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5 justify-end shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleSaveEdit(idx)}
-                      className="text-white bg-emerald-600 hover:bg-emerald-500 px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-0.5 transition-colors cursor-pointer"
-                      title="บันทึก"
-                    >
-                      <Check className="h-3.5 w-3.5 stroke-[3]" />
-                      <span>บันทึก</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingIndex(null)}
-                      className="text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-lg text-[10px] font-black flex items-center gap-0.5 transition-colors cursor-pointer"
-                      title="ยกเลิก"
-                    >
-                      <X className="h-3.5 w-3.5 stroke-[3]" />
-                      <span>ยกเลิก</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3 w-full">
-                  {/* Module Image section */}
-                  <div className="relative shrink-0 group/img">
-                    {m.imageUrl ? (
-                      <div className="relative h-12 w-12 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 shadow-2xs">
-                        <img 
-                          src={m.imageUrl} 
-                          alt={m.name} 
-                          className="h-full w-full object-cover"
-                        />
-                        {/* Remove Image overlay */}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteImage(m.code)}
-                          className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-white cursor-pointer"
-                          title="ลบรูปภาพโมดูล"
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-rose-200 hover:text-rose-400 stroke-[2.5]" />
-                        </button>
-                      </div>
-                    ) : (
-                      <label className="flex flex-col items-center justify-center h-12 w-12 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-indigo-50/50 hover:border-indigo-300 transition-all cursor-pointer relative">
-                        <Upload className="h-4 w-4 text-slate-400" />
-                        <span className="text-[8px] text-slate-400 font-bold mt-0.5">เพิ่มรูป</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              handleUploadImage(m.code, reader.result as string);
-                            };
-                            reader.readAsDataURL(file);
-                          }}
-                        />
-                      </label>
-                    )}
-                  </div>
-
-                  {/* Text details */}
-                  <div className="flex-grow min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-[10px] font-black text-indigo-700 font-mono rounded">
-                        {m.code}
-                      </span>
-                      <h5 className="text-xs font-black text-slate-800 truncate">
-                        {m.name}
-                      </h5>
+              <div className="flex items-center gap-3 w-full">
+                {/* Module Image section */}
+                <div className="relative shrink-0 group/img">
+                  {m.imageUrl ? (
+                    <div className="relative h-12 w-12 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 shadow-2xs">
+                      <img 
+                        src={m.imageUrl} 
+                        alt={m.name} 
+                        className="h-full w-full object-cover"
+                      />
+                      {/* Remove Image overlay */}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteImage(m.code)}
+                        className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-white cursor-pointer"
+                        title="ลบรูปภาพโมดูล"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-rose-200 hover:text-rose-400 stroke-[2.5]" />
+                      </button>
                     </div>
-                  </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center h-12 w-12 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-indigo-50/50 hover:border-indigo-300 transition-all cursor-pointer relative">
+                      <Upload className="h-4 w-4 text-slate-400" />
+                      <span className="text-[8px] text-slate-400 font-bold mt-0.5">เพิ่มรูป</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            handleUploadImage(m.code, reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
 
-                  {/* Actions column */}
-                  <div className="flex items-center gap-1">
-                    {/* Add/Replace Image via Preset (if no image) */}
-                    {!m.imageUrl && (
-                      <div className="hidden sm:flex items-center gap-1 mr-1">
-                        <button
-                          type="button"
-                          onClick={() => handleUploadImage(m.code, 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80')}
-                          className="text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 py-0.5 rounded cursor-pointer"
-                          title="จำลองรูปภาพตู้ไฟ"
-                        >
-                          +ตู้ไฟ
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleUploadImage(m.code, 'https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80')}
-                          className="text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 py-0.5 rounded cursor-pointer"
-                          title="จำลองรูปภาพแผงวงจร"
-                        >
-                          +บอร์ด
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Edit button */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingIndex(idx);
-                        setEditingCode(m.code);
-                        setEditingName(m.name);
-                      }}
-                      className="text-slate-400 hover:text-indigo-600 hover:bg-slate-100 p-1 rounded-lg transition-colors cursor-pointer"
-                      title="แก้ไขข้อมูลโมดูล"
-                    >
-                      <Edit3 className="h-3.5 w-3.5" />
-                    </button>
-
-                    {/* Delete button */}
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(m.code, m.name)}
-                      className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1 rounded-lg transition-colors cursor-pointer"
-                      title="ลบโมดูล"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                {/* Text details */}
+                <div className="flex-grow min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-[10px] font-black text-indigo-700 font-mono rounded">
+                      {m.code}
+                    </span>
+                    <h5 className="text-xs font-black text-slate-800 truncate">
+                      {m.name}
+                    </h5>
                   </div>
                 </div>
-              )}
+
+                {/* Actions column */}
+                <div className="flex items-center gap-1">
+                  {/* Add/Replace Image via Preset (if no image) */}
+                  {!m.imageUrl && (
+                    <div className="hidden sm:flex items-center gap-1 mr-1">
+                      <button
+                        type="button"
+                        onClick={() => handleUploadImage(m.code, 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80')}
+                        className="text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 py-0.5 rounded cursor-pointer"
+                        title="จำลองรูปภาพตู้ไฟ"
+                      >
+                        +ตู้ไฟ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleUploadImage(m.code, 'https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80')}
+                        className="text-[8px] bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-1 py-0.5 rounded cursor-pointer"
+                        title="จำลองรูปภาพแผงวงจร"
+                      >
+                        +บอร์ด
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Edit button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingIndex(idx);
+                      setEditingCode(m.code);
+                      setEditingName(m.name);
+                    }}
+                    className="text-slate-400 hover:text-indigo-600 hover:bg-slate-100 p-1 rounded-lg transition-colors cursor-pointer"
+                    title="แก้ไขข้อมูลโมดูล"
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                  </button>
+
+                  {/* Delete button */}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(m.code, m.name)}
+                    className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1 rounded-lg transition-colors cursor-pointer"
+                    title="ลบโมดูล"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Edit Module Popup Modal */}
+      {editingIndex !== null && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-100 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-sm w-full p-5 space-y-4 animate-in zoom-in-95 duration-200 text-left">
+            <div>
+              <h4 className="text-sm font-black text-slate-800">แก้ไขข้อมูลโมดูล</h4>
+              <p className="text-[10px] text-slate-400">โมดูลลำดับที่ {editingIndex + 1}</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10.5px] font-bold text-slate-500">รหัสโมดูล <span className="text-rose-500">*</span></label>
+              <input
+                type="text"
+                value={editingCode}
+                onChange={(e) => setEditingCode(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-indigo-500 text-xs font-bold text-slate-800"
+                placeholder="ระบุรหัสโมดูล"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10.5px] font-bold text-slate-500">ชื่อโมดูล <span className="text-rose-500">*</span></label>
+              <input
+                type="text"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-indigo-500 text-xs font-bold text-slate-800"
+                placeholder="ระบุชื่อโมดูล"
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setEditingIndex(null)}
+                className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200/80 transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveEdit(editingIndex)}
+                className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700 transition-colors cursor-pointer"
+              >
+                บันทึกการแก้ไข
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -522,7 +529,7 @@ export default function SettingsView({
   const [empDepartment, setEmpDepartment] = useState<string>('Electrical');
   const [empOrgLevel, setEmpOrgLevel] = useState<string>('team');
   const [empRole, setEmpRole] = useState('');
-  const [empCardColor, setEmpCardColor] = useState('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-100');
+  const [empCardColor, setEmpCardColor] = useState('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100');
 
   // Form Fields & States - Brands
   const [brandName, setBrandName] = useState('');
@@ -738,7 +745,7 @@ export default function SettingsView({
     setEmpDepartment('Electrical');
     setEmpOrgLevel('team');
     setEmpRole('');
-    setEmpCardColor('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-100');
+    setEmpCardColor('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100');
   };
 
   // Handle Employee Edit opens
@@ -752,7 +759,7 @@ export default function SettingsView({
     setEmpDepartment(emp.department || 'Electrical');
     setEmpOrgLevel(emp.orgLevel || 'team');
     setEmpRole(emp.role || '');
-    setEmpCardColor(emp.cardColor || 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-100');
+    setEmpCardColor(emp.cardColor || 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100');
     setIsEmpEditModalOpen(true);
   };
 
@@ -905,8 +912,8 @@ export default function SettingsView({
                 onClick={() => setSelectedYear('all')}
                 className={`px-3 py-1 text-xs font-black rounded-lg transition-all border cursor-pointer ${
                   selectedYear === 'all'
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                    : 'bg-slate-100 text-slate-700 border-slate-200/80 hover:bg-slate-200/80 hover:text-slate-900'
+                    ? 'bg-white text-black border-2 border-slate-400 shadow-sm'
+                    : 'bg-slate-200 text-slate-800 border-slate-300 hover:bg-slate-300'
                 }`}
               >
                 ทั้งหมด (Show All)
@@ -917,8 +924,8 @@ export default function SettingsView({
                   onClick={() => setSelectedYear(year)}
                   className={`px-3 py-1 text-xs font-black rounded-lg transition-all border cursor-pointer ${
                     selectedYear === year
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                      : 'bg-slate-100 text-slate-700 border-slate-200/80 hover:bg-slate-200/80 hover:text-slate-900'
+                      ? 'bg-white text-black border-2 border-slate-400 shadow-sm'
+                      : 'bg-slate-200 text-slate-800 border-slate-300 hover:bg-slate-300'
                   }`}
                 >
                   ปี {year}
@@ -932,7 +939,7 @@ export default function SettingsView({
             <div className="space-y-4">
               {/* Horizontal Job selection list (No horizontal scrollbar!) */}
               <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2 shadow-3xs">
-                <div className="text-[10px] font-black text-slate-450 font-sans uppercase tracking-wider">
+                <div className="text-[10px] font-black text-slate-400 font-sans uppercase tracking-wider">
                   เลือก Job No.
                 </div>
                 {sortedProjectsForSelectedYear.length === 0 ? (
@@ -947,8 +954,8 @@ export default function SettingsView({
                             onClick={() => setSelectedJobNo(proj.jobNo)}
                             className={`w-full px-2.5 py-1.5 text-[11px] font-mono font-black rounded-lg transition-all border cursor-pointer flex items-center justify-between gap-1.5 ${
                               isActive
-                                ? 'bg-indigo-650 text-white border-indigo-650 shadow-xs scale-102'
-                                : 'bg-slate-100 hover:bg-slate-200/85 text-slate-700 border-slate-200'
+                                ? 'bg-white text-black border-2 border-slate-400 shadow-md scale-102'
+                                : 'bg-slate-200 hover:bg-slate-300 text-slate-800 border-slate-300'
                             }`}
                           >
                             <span className="truncate">{proj.jobNo}</span>
@@ -1268,8 +1275,8 @@ export default function SettingsView({
                   onClick={() => setEmployeeSubTab('chart')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
                     employeeSubTab === 'chart'
-                      ? 'bg-white dark:bg-slate-700 text-indigo-650 dark:text-white shadow-3xs'
-                      : 'text-slate-500 hover:text-slate-850 dark:hover:text-slate-200'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-3xs'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
                   <Network className="h-3.5 w-3.5" />
@@ -1280,8 +1287,8 @@ export default function SettingsView({
                   onClick={() => setEmployeeSubTab('list')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
                     employeeSubTab === 'list'
-                      ? 'bg-white dark:bg-slate-700 text-indigo-650 dark:text-white shadow-3xs'
-                      : 'text-slate-500 hover:text-slate-850 dark:hover:text-slate-200'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-white shadow-3xs'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
                   <ClipboardList className="h-3.5 w-3.5" />
@@ -1299,7 +1306,7 @@ export default function SettingsView({
                   setEmpDepartment('Electrical');
                   setEmpOrgLevel('team');
                   setEmpRole('');
-                  setEmpCardColor('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-100');
+                  setEmpCardColor('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100');
                   setIsEmpAddModalOpen(true);
                 }}
                 className="flex items-center justify-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-indigo-600/15 transition-all cursor-pointer shrink-0"
@@ -1370,7 +1377,7 @@ export default function SettingsView({
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 font-sans truncate flex items-center gap-1">
                                   {emp.name}
-                                  {emp.nickname && <span className="text-indigo-650 dark:text-indigo-400">({emp.nickname})</span>}
+                                  {emp.nickname && <span className="text-indigo-600 dark:text-indigo-400">({emp.nickname})</span>}
                                 </h4>
                                 <span className="px-1.5 py-0.2 bg-purple-100 text-[8px] font-black text-purple-700 border border-purple-200 rounded leading-none flex items-center gap-0.5">
                                   <Crown className="h-2 w-2" /> Owner
@@ -1555,7 +1562,7 @@ export default function SettingsView({
                                               <a href={`tel:${emp.phone}`} className="hover:underline font-mono">{emp.phone}</a>
                                             </p>
                                           )}
-                                          <p className="font-extrabold text-indigo-650 bg-indigo-50/40 border border-indigo-100/50 px-1 py-0.2 rounded w-fit text-[8.5px] mt-1 inline-block">
+                                          <p className="font-extrabold text-indigo-600 bg-indigo-50/40 border border-indigo-100/50 px-1 py-0.2 rounded w-fit text-[8.5px] mt-1 inline-block">
                                             งานมอบหมาย: {assignedJobsCount} งาน
                                           </p>
                                         </div>
@@ -1660,7 +1667,7 @@ export default function SettingsView({
                                       </div>
 
                                       <div className="flex items-center gap-1 shrink-0">
-                                        <button onClick={() => openEmpEdit(emp)} className="p-0.5 text-slate-400 hover:text-indigo-650 hover:bg-slate-50 rounded" title="แก้ไข">
+                                        <button onClick={() => openEmpEdit(emp)} className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded" title="แก้ไข">
                                           <Edit3 className="h-2.5 w-2.5" />
                                         </button>
                                         <button
@@ -1728,10 +1735,10 @@ export default function SettingsView({
                             setEmpRole('');
                             setEmpDepartment(dept.id);
                             setEmpOrgLevel('team');
-                            setEmpCardColor('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-100');
+                            setEmpCardColor('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100');
                             setIsEmpAddModalOpen(true);
                           }}
-                          className="flex-1 py-1 bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-850 dark:hover:bg-indigo-950/40 border border-slate-200 dark:border-slate-700 hover:border-indigo-250 text-indigo-650 dark:text-indigo-400 font-extrabold text-[9.5px] rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                          className="flex-1 py-1 bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-indigo-950/40 border border-slate-200 dark:border-slate-700 hover:border-indigo-250 text-indigo-600 dark:text-indigo-400 font-extrabold text-[9.5px] rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
                         >
                           <Plus className="h-3 w-3" />
                           <span>เพิ่มลูกทีมแผนกนี้</span>
@@ -1784,7 +1791,7 @@ export default function SettingsView({
                     return (
                       <div
                         key={emp.id}
-                        className={`rounded-2xl border p-4 shadow-3xs flex flex-col gap-3 hover:border-slate-350 dark:hover:border-slate-700 transition-all ${
+                        className={`rounded-2xl border p-4 shadow-3xs flex flex-col gap-3 hover:border-slate-400 dark:hover:border-slate-700 transition-all ${
                           emp.cardColor || 'border-slate-200 bg-white dark:bg-slate-900'
                         }`}
                       >
@@ -1833,7 +1840,7 @@ export default function SettingsView({
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 font-sans truncate">
                                 {emp.name}
-                                {emp.nickname && <span className="text-indigo-650 dark:text-indigo-400 font-black ml-1">({emp.nickname})</span>}
+                                {emp.nickname && <span className="text-indigo-600 dark:text-indigo-400 font-black ml-1">({emp.nickname})</span>}
                               </h4>
                               
                               {/* Department Badge */}
@@ -1875,7 +1882,7 @@ export default function SettingsView({
                               ) : (
                                 <p className="italic text-slate-400">ยังไม่บันทึกเบอร์ติดต่อ</p>
                               )}
-                              <p className="font-extrabold text-indigo-650 bg-indigo-50/40 border border-indigo-100/50 px-1.5 py-0.5 rounded w-fit text-[9.5px]">
+                              <p className="font-extrabold text-indigo-600 bg-indigo-50/40 border border-indigo-100/50 px-1.5 py-0.5 rounded w-fit text-[9.5px]">
                                 งานค้างในมือ: {assignedJobsCount} งานมอบหมาย
                               </p>
                             </div>
@@ -1913,7 +1920,7 @@ export default function SettingsView({
                           <span className="text-[9px] text-slate-400 font-bold flex items-center gap-1"><Palette className="h-2.5 w-2.5" /> ปรับโทนสีการ์ด:</span>
                           <div className="flex items-center gap-1">
                             {[
-                              { name: 'Slate', value: 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-100' },
+                              { name: 'Slate', value: 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100' },
                               { name: 'Indigo', value: 'border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/20 text-indigo-950 dark:text-indigo-200' },
                               { name: 'Emerald', value: 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20 text-emerald-950 dark:text-emerald-200' },
                               { name: 'Amber', value: 'border-amber-200 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/20 text-amber-950 dark:text-amber-200' },
@@ -2037,7 +2044,7 @@ export default function SettingsView({
                     value={projImageUrl}
                     onChange={(e) => setProjImageUrl(e.target.value)}
                     placeholder="ป้อน URL หรือ เว้นว่างเพื่อแนบรูปทีหลัง..."
-                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[10.5px] font-mono text-slate-850 focus:outline-hidden"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[10.5px] font-mono text-slate-800 focus:outline-hidden"
                   />
                 </div>
 
@@ -2586,7 +2593,7 @@ export default function SettingsView({
                 >
                   <div className="flex flex-col items-center space-y-3 w-full">
                     {/* Logo Box */}
-                    <div className="h-16 w-16 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-100 dark:border-slate-850 flex items-center justify-center overflow-hidden shrink-0">
+                    <div className="h-16 w-16 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-center overflow-hidden shrink-0">
                       {brand.logoUrl ? (
                         <img 
                           src={brand.logoUrl} 
@@ -2612,7 +2619,7 @@ export default function SettingsView({
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center justify-center gap-1.5 mt-4 pt-3 border-t border-slate-50 dark:border-slate-850 w-full opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                  <div className="flex items-center justify-center gap-1.5 mt-4 pt-3 border-t border-slate-50 dark:border-slate-800 w-full opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                     <button
                       type="button"
                       onClick={() => {
@@ -2698,7 +2705,7 @@ export default function SettingsView({
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-500 block">อัปโหลดไฟล์ Logo แบรนด์</label>
                   <div className="flex items-center gap-3">
-                    <div className="h-16 w-16 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-850 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+                    <div className="h-16 w-16 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
                       {brandLogo ? (
                         <img 
                           src={brandLogo} 
@@ -2841,7 +2848,7 @@ export default function SettingsView({
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-500 block">อัปโหลดไฟล์ Logo แบรนด์</label>
                   <div className="flex items-center gap-3">
-                    <div className="h-16 w-16 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-850 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+                    <div className="h-16 w-16 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
                       {brandLogo ? (
                         <img 
                           src={brandLogo} 

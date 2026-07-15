@@ -1132,6 +1132,7 @@ export default function App() {
             jobProjects={jobProjects}
             addToast={addToast}
             brands={brands}
+            boms={boms}
           />
         );
 

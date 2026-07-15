@@ -33,9 +33,10 @@ interface CatalogViewProps {
   jobProjects?: JobProject[];
   addToast?: (type: 'success' | 'warning' | 'info', title: string, message: string) => void;
   brands?: Brand[];
+  boms?: Bom[];
 }
 
-export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, jobProjects = [], addToast, brands = [] }) => {
+export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, jobProjects = [], addToast, brands = [], boms = [] }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
@@ -50,6 +51,11 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
   const [bomDescription, setBomDescription] = useState<string>('');
   const [requiredQuantity, setRequiredQuantity] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  const hasExistingBom = useMemo(() => {
+    if (!selectedJobNo) return false;
+    return boms.some(b => b.jobNo === selectedJobNo && b.status !== 'completed' && b.status !== 'cancelled');
+  }, [boms, selectedJobNo]);
 
   const handleOpenPdf = (pdfUrl?: string) => {
     if (!pdfUrl) return;
@@ -146,34 +152,81 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
 
     setIsSubmitting(true);
     try {
-      const bomId = `bom-${Math.random().toString(36).substring(2, 9)}`;
-      const newBom: Bom = {
-        id: bomId,
-        name: bomName || `BOM-${selectedJobNo || 'GENERIC'}`,
-        description: bomDescription || 'สร้างใบงาน BOM จากระบบแคตตาล็อกสินค้า',
-        items: checkedItems.map(item => ({
-          productId: item.product.id,
-          productName: item.product.name,
-          quantity: item.quantity,
-          unit: item.product.unit || 'ชิ้น',
-          brand: item.product.brand || '',
-          priceUnit: item.product.price || 0,
-          remark: item.remark || '',
-          group: item.group || 'ทั่วไป'
-        })),
-        jobNo: selectedJobNo || '',
-        status: 'pending',
-        requiredQuantity: requiredQuantity,
-        stockDeducted: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+      // Look for an existing BOM with the same jobNo that is not completed or cancelled
+      // Prefer pending status if multiple exist
+      const existingBom = selectedJobNo
+        ? (boms.find(b => b.jobNo === selectedJobNo && b.status === 'pending') || boms.find(b => b.jobNo === selectedJobNo && b.status !== 'completed' && b.status !== 'cancelled'))
+        : null;
 
-      await setDoc(doc(db, 'boms', bomId), cleanUndefined(newBom));
+      if (existingBom) {
+        const mergedItems = [...existingBom.items];
+        checkedItems.forEach(item => {
+          const existingItemIndex = mergedItems.findIndex(existingItem => existingItem.productId === item.product.id);
+          
+          if (existingItemIndex > -1) {
+            // Already exists, sum up the quantity
+            mergedItems[existingItemIndex] = {
+              ...mergedItems[existingItemIndex],
+              quantity: mergedItems[existingItemIndex].quantity + item.quantity,
+              remark: [mergedItems[existingItemIndex].remark, item.remark].filter(Boolean).join('; ')
+            };
+          } else {
+            // New item, append
+            mergedItems.push({
+              productId: item.product.id,
+              productName: item.product.name,
+              quantity: item.quantity,
+              unit: item.product.unit || 'ชิ้น',
+              brand: item.product.brand || '',
+              priceUnit: item.product.price || 0,
+              remark: item.remark || '',
+              group: item.group || 'ทั่วไป'
+            });
+          }
+        });
 
-      if (addToast) {
-        addToast('success', 'สร้าง BOM สำเร็จ', `ได้สร้าง BOM สำหรับ Job No: ${selectedJobNo || 'พัสดุทั่วไป'} และส่งไปยัง BOM & Assembly Workspace แล้ว`);
+        const updatedBom: Bom = {
+          ...existingBom,
+          items: mergedItems,
+          updatedAt: new Date().toISOString()
+        };
+
+        await setDoc(doc(db, 'boms', existingBom.id), cleanUndefined(updatedBom));
+
+        if (addToast) {
+          addToast('success', 'รวมข้อมูล BOM สำเร็จ', `ได้รวบรวมและเพิ่มพัสดุเข้ากับ BOM เดิมของ Job No: ${selectedJobNo} เรียบร้อยแล้ว (ไม่สร้างใบงานใหม่)`);
+        }
+      } else {
+        const bomId = `bom-${Math.random().toString(36).substring(2, 9)}`;
+        const newBom: Bom = {
+          id: bomId,
+          name: bomName || `BOM-${selectedJobNo || 'GENERIC'}`,
+          description: bomDescription || 'สร้างใบงาน BOM จากระบบแคตตาล็อกสินค้า',
+          items: checkedItems.map(item => ({
+            productId: item.product.id,
+            productName: item.product.name,
+            quantity: item.quantity,
+            unit: item.product.unit || 'ชิ้น',
+            brand: item.product.brand || '',
+            priceUnit: item.product.price || 0,
+            remark: item.remark || '',
+            group: item.group || 'ทั่วไป'
+          })),
+          jobNo: selectedJobNo || '',
+          status: 'pending',
+          requiredQuantity: requiredQuantity,
+          stockDeducted: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        await setDoc(doc(db, 'boms', bomId), cleanUndefined(newBom));
+
+        if (addToast) {
+          addToast('success', 'สร้าง BOM สำเร็จ', `ได้สร้าง BOM สำหรับ Job No: ${selectedJobNo || 'พัสดุทั่วไป'} และส่งไปยัง BOM & Assembly Workspace แล้ว`);
+        }
       }
+
       setCart([]);
       setIsCartOpen(false);
       setBomName('');
@@ -181,7 +234,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
       setSelectedJobNo('');
       setRequiredQuantity(1);
     } catch (err) {
-      console.error("Error creating BOM: ", err);
+      console.error("Error creating/updating BOM: ", err);
       if (addToast) {
         addToast('warning', 'เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกข้อมูล BOM ได้ กรุณาลองใหม่อีกครั้ง');
       } else {
@@ -282,7 +335,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
             </div>
 
             {/* In Stock toggle switch */}
-            <label className="flex items-center gap-2.5 py-1 px-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-850 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-900 transition-all select-none">
+            <label className="flex items-center gap-2.5 py-1 px-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-900 transition-all select-none">
               <input
                 type="checkbox"
                 checked={inStockOnly}
@@ -305,7 +358,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                   className={`w-full px-3 py-2 rounded-xl text-left text-xs transition-all cursor-pointer flex items-center justify-between font-sans ${
                     selectedCategory === 'all'
                       ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-extrabold border-l-4 border-indigo-600 pl-2'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
                   }`}
                 >
                   <span className="truncate">ทั้งหมด (All Products)</span>
@@ -322,7 +375,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                       className={`w-full px-3 py-2 rounded-xl text-left text-xs transition-all cursor-pointer flex items-center justify-between font-sans ${
                         selectedCategory === cat.id
                           ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-extrabold border-l-4 border-indigo-600 pl-2'
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
                       }`}
                     >
                       <span className="truncate">{cat.name.split(' (')[0]}</span>
@@ -365,7 +418,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
               <input
                 type="text"
                 placeholder="ค้นหาตามชื่อสินค้า, รหัส SKU/Part Number, แบรนด์, รายละเอียดผลิตภัณฑ์..."
-                className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400"
+                className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -374,7 +427,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -390,8 +443,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                 onClick={() => setIsCartOpen(true)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                   cart.length > 0 
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-650/15 animate-pulse'
-                    : 'bg-slate-50 dark:bg-slate-950 hover:bg-slate-150 text-slate-600 dark:text-slate-350 border border-slate-200 dark:border-slate-800'
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/15 animate-pulse'
+                    : 'bg-slate-50 dark:bg-slate-950 hover:bg-slate-150 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800'
                 }`}
               >
                 <ClipboardList className="h-4 w-4" />
@@ -431,9 +484,9 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
           <div className="space-y-6">
             {filteredProducts.length === 0 ? (
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center shadow-3xs">
-                <Boxes className="h-10 w-10 text-slate-350 dark:text-slate-600 mx-auto mb-3" />
+                <Boxes className="h-10 w-10 text-slate-400 dark:text-slate-600 mx-auto mb-3" />
                 <h4 className="text-sm font-black text-slate-800 dark:text-slate-100 font-sans">ไม่พบรายการพัสดุในแคตตาล็อก</h4>
-                <p className="text-xs text-slate-450 dark:text-slate-500 font-sans max-w-sm mx-auto mt-1">
+                <p className="text-xs text-slate-400 dark:text-slate-500 font-sans max-w-sm mx-auto mt-1">
                   กรุณาลองปรับเปลี่ยนตัวเลือก หมวดหมู่สินค้า คำค้นหา หรือแบรนด์พัสดุในแถบเครื่องมือ
                 </p>
               </div>
@@ -523,7 +576,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                                 <div className="flex items-center gap-1 text-[9px] text-slate-400 font-sans">
                                   <span>SKU: {prod.sku || 'N/A'}</span>
                                   <span>•</span>
-                                  <span className="font-extrabold text-slate-500 dark:text-slate-350 truncate max-w-[50px]">{prod.brand}</span>
+                                  <span className="font-extrabold text-slate-500 dark:text-slate-400 truncate max-w-[50px]">{prod.brand}</span>
                                 </div>
                                 <div className="text-[10px] font-sans font-extrabold text-indigo-600 dark:text-indigo-400">
                                   ฿{prod.price.toLocaleString()}
@@ -618,7 +671,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                   {selectedProduct.image ? (
                     <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
-                    <Boxes className="h-10 w-10 text-slate-350 dark:text-slate-700" />
+                    <Boxes className="h-10 w-10 text-slate-400 dark:text-slate-700" />
                   )}
                 </div>
                 <div className="space-y-1.5 min-w-0 flex-1">
@@ -645,13 +698,13 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                     {selectedProduct.name}
                   </h3>
                   <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-bold flex items-center gap-1">
-                    <Barcode className="h-3 w-3 text-slate-400" /> MODEL / SKU: <span className="text-slate-650 dark:text-slate-300 font-extrabold">{selectedProduct.sku || 'N/A'}</span>
+                    <Barcode className="h-3 w-3 text-slate-400" /> MODEL / SKU: <span className="text-slate-600 dark:text-slate-300 font-extrabold">{selectedProduct.sku || 'N/A'}</span>
                   </div>
                 </div>
               </div>
 
               {/* Technical Grid */}
-              <div className="grid grid-cols-2 gap-2 bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-150 dark:border-slate-850">
+              <div className="grid grid-cols-2 gap-2 bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-150 dark:border-slate-800">
                 <div className="space-y-0.5">
                   <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 block font-sans">หมวดหมู่สินค้า</span>
                   <span className="text-[11px] font-extrabold text-slate-700 dark:text-slate-300 font-sans">
@@ -687,7 +740,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
               {/* Description Detail Block */}
               <div className="space-y-1">
                 <h5 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest font-sans">รายละเอียด / คุณสมบัติผลิตภัณฑ์</h5>
-                <p className="text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/20 p-3 rounded-xl border border-slate-150 dark:border-slate-850 leading-relaxed font-sans font-medium whitespace-pre-wrap">
+                <p className="text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/20 p-3 rounded-xl border border-slate-150 dark:border-slate-800 leading-relaxed font-sans font-medium whitespace-pre-wrap">
                   {selectedProduct.description || 'ไม่มีคำอธิบายคุณสมบัติพัสดุชิ้นนี้'}
                 </p>
               </div>
@@ -720,7 +773,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                   href={selectedProduct.sourceUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 bg-slate-100 border border-slate-200 hover:bg-slate-200/80 text-slate-650 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 font-sans"
+                  className="px-3 py-1.5 bg-slate-100 border border-slate-200 hover:bg-slate-200/80 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 font-sans"
                 >
                   <ExternalLink className="h-3 w-3" /> ลิงก์คุณลักษณะเสริม
                 </a>
@@ -754,14 +807,14 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                     <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">
                       ชุดเตรียมส่งออกประกอบ BOM & Assembly
                     </h3>
-                    <p className="text-[10px] text-slate-450 dark:text-slate-500 font-bold leading-none mt-0.5">
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold leading-none mt-0.5">
                       เลือกรายการพัสดุ ป้อนจำนวน และผูกกับ Job No ของโครงการ
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setIsCartOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full cursor-pointer transition-all"
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full cursor-pointer transition-all"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -771,10 +824,10 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
               <div className="flex-1 overflow-y-auto p-5 space-y-5 text-left">
                 
                 {/* PROJECT ASSIGNMENT & CONFIG CARD */}
-                <div className="bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-850 space-y-4">
-                  <div className="flex items-center gap-2 border-b border-slate-200/60 dark:border-slate-850 pb-2">
+                <div className="bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-200/60 dark:border-slate-800 pb-2">
                     <div className="w-1.5 h-3 bg-indigo-600 rounded-full" />
-                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-350 uppercase tracking-wider">
+                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-400 uppercase tracking-wider">
                       ข้อมูลเป้าหมายโครงการ (Project Setup)
                     </span>
                   </div>
@@ -798,6 +851,11 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                           </option>
                         ))}
                       </select>
+                      {hasExistingBom && (
+                        <div className="mt-1 px-2.5 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-lg text-[9.5px] text-amber-700 dark:text-amber-450 font-bold leading-relaxed">
+                          ⚠️ ตรวจพบใบงาน BOM สำหรับ Job No: {selectedJobNo} ในระบบแล้ว ระบบจะเพิ่มรายการที่เลือกเข้าไปในใบงานเดิมโดยอัตโนมัติ (ไม่สร้างใบงานใหม่ซ้ำ)
+                        </div>
+                      )}
                     </div>
 
                     {/* Assembly Multiplier Qty */}
@@ -810,7 +868,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                         min="1"
                         value={requiredQuantity}
                         onChange={(e) => setRequiredQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans font-bold text-slate-850 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans font-bold text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                       />
                     </div>
                   </div>
@@ -825,7 +883,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                       placeholder="ระบุชื่อเรียกชุดประกอบ BOM เช่น ชุดตู้คุมหลักบ่อบำบัดน้ำเสีย"
                       value={bomName}
                       onChange={(e) => setBomName(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans font-bold text-slate-850 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans font-bold text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                       required
                     />
                   </div>
@@ -840,7 +898,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                       value={bomDescription}
                       onChange={(e) => setBomDescription(e.target.value)}
                       rows={2}
-                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-850 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 resize-none"
+                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 resize-none"
                     />
                   </div>
                 </div>
@@ -851,14 +909,14 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                     <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest font-sans">
                       รายการพัสดุและเช็คลิสต์ตรวจความถูกต้อง ({cart.length} รายการ)
                     </span>
-                    <span className="text-[10px] font-bold text-slate-450 dark:text-slate-400">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-400">
                       * ติ๊กเพื่ออนุมัติส่งต่อ
                     </span>
                   </div>
 
                   {cart.length === 0 ? (
                     <div className="bg-slate-50 dark:bg-slate-950/20 p-8 text-center rounded-2xl border border-slate-150 border-dashed dark:border-slate-800">
-                      <Boxes className="h-8 w-8 text-slate-350 dark:text-slate-650 mx-auto mb-2" />
+                      <Boxes className="h-8 w-8 text-slate-400 dark:text-slate-600 mx-auto mb-2" />
                       <p className="text-xs text-slate-500 font-sans font-bold">ยังไม่ได้เลือกสินค้าใดๆ จากแคตตาล็อก</p>
                       <p className="text-[10px] text-slate-400 font-sans mt-0.5">กรุณากดปุ่ม "+ เลือกจัดชุด BOM" ในรายการสินค้าด้านข้าง</p>
                     </div>
@@ -872,7 +930,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                             className={`p-3.5 rounded-2xl border transition-all flex flex-col gap-2.5 ${
                               item.checked 
                                 ? 'bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-900/60 shadow-3xs' 
-                                : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-150 dark:border-slate-850 opacity-60'
+                                : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-150 dark:border-slate-800 opacity-60'
                             }`}
                           >
                             <div className="flex items-start gap-3">
@@ -910,10 +968,10 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
 
                             {/* Quantity Adjuster, Group Tag Selector & Remarks */}
                             {item.checked && (
-                              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 border-t border-slate-100 dark:border-slate-850 pt-2.5 mt-0.5">
+                              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 border-t border-slate-100 dark:border-slate-800 pt-2.5 mt-0.5">
                                 
                                 {/* Stepper Column */}
-                                <div className="sm:col-span-4 flex items-center justify-between bg-slate-50 dark:bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-150 dark:border-slate-850">
+                                <div className="sm:col-span-4 flex items-center justify-between bg-slate-50 dark:bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-150 dark:border-slate-800">
                                   <span className="text-[10px] font-sans font-bold text-slate-500">จำนวน:</span>
                                   <div className="flex items-center gap-2">
                                     <button
@@ -939,7 +997,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                                   <select
                                     value={item.group}
                                     onChange={(e) => updateCartItemField(item.product.id, 'group', e.target.value)}
-                                    className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-xl text-[11px] font-sans font-bold text-slate-700 dark:text-slate-300 focus:outline-hidden"
+                                    className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-[11px] font-sans font-bold text-slate-700 dark:text-slate-300 focus:outline-hidden"
                                   >
                                     <option value="ทั่วไป">กลุ่มทั่วไป (Default)</option>
                                     <option value="Electrical">ระบบไฟฟ้า (Electrical)</option>
@@ -952,7 +1010,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
 
                                 {/* Pricing summary / Subtotal Column */}
                                 <div className="sm:col-span-4 flex items-center justify-end text-right text-[11px] font-sans">
-                                  <span className="text-slate-450 mr-1 font-bold">รวม:</span>
+                                  <span className="text-slate-400 mr-1 font-bold">รวม:</span>
                                   <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">
                                     ฿{subtotal.toLocaleString()}
                                   </span>
@@ -965,7 +1023,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                                     placeholder="ใส่หมายเหตุ (เช่น ระบุตำแหน่งประกอบพิเศษ, สี, หรือขนาดกระแสไฟ)"
                                     value={item.remark}
                                     onChange={(e) => updateCartItemField(item.product.id, 'remark', e.target.value)}
-                                    className="w-full px-2.5 py-1 bg-slate-50/50 dark:bg-slate-950 border border-slate-150 dark:border-slate-850 rounded-xl text-[10px] text-slate-650 dark:text-slate-350 placeholder:text-slate-400 font-sans focus:outline-hidden"
+                                    className="w-full px-2.5 py-1 bg-slate-50/50 dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-xl text-[10px] text-slate-600 dark:text-slate-400 placeholder:text-slate-400 font-sans focus:outline-hidden"
                                   />
                                 </div>
 
@@ -993,7 +1051,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                 </div>
 
                 <div className="flex justify-between items-center text-sm font-sans font-black">
-                  <span className="text-slate-850 dark:text-slate-100">มูลค่ารวมคาดการณ์ (Total Value):</span>
+                  <span className="text-slate-800 dark:text-slate-100">มูลค่ารวมคาดการณ์ (Total Value):</span>
                   <span className="font-mono text-base text-indigo-600 dark:text-indigo-400">
                     ฿{cart.filter(item => item.checked).reduce((acc, curr) => acc + (curr.product.price * curr.quantity), 0).toLocaleString()}
                   </span>
@@ -1002,7 +1060,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                 <div className="flex gap-2.5 pt-1.5">
                   <button
                     onClick={() => setIsCartOpen(false)}
-                    className="flex-1 py-2.5 bg-slate-100 border border-slate-250 dark:border-slate-800 dark:bg-slate-800 hover:bg-slate-200 text-slate-650 dark:text-slate-300 rounded-2xl text-xs font-black tracking-wide font-sans cursor-pointer text-center"
+                    className="flex-1 py-2.5 bg-slate-100 border border-slate-250 dark:border-slate-800 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-2xl text-xs font-black tracking-wide font-sans cursor-pointer text-center"
                   >
                     เลือกพัสดุเพิ่ม
                   </button>
@@ -1010,7 +1068,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                   <button
                     onClick={handleCreateBomSubmit}
                     disabled={isSubmitting || !selectedJobNo || cart.filter(item => item.checked).length === 0}
-                    className="flex-1 py-2.5 bg-emerald-650 hover:bg-emerald-500 disabled:bg-slate-200 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-600 text-white rounded-2xl text-xs font-black tracking-wide font-sans shadow-lg shadow-emerald-600/15 cursor-pointer disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 disabled:dark:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-600 text-white rounded-2xl text-xs font-black tracking-wide font-sans shadow-lg shadow-emerald-600/15 cursor-pointer disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-1.5"
                   >
                     {isSubmitting ? (
                       <>
@@ -1020,7 +1078,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                     ) : (
                       <>
                         <Check className="h-4 w-4" />
-                        <span>ยืนยันและส่งไป BOM Workspace</span>
+                        <span>{hasExistingBom ? 'บันทึกรวมเข้ากับ BOM เดิม' : 'ยืนยันและส่งไป BOM Workspace'}</span>
                       </>
                     )}
                   </button>

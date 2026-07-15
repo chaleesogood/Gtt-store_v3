@@ -38,6 +38,12 @@ export default function CategoryView({
   const [imageUrl, setImageUrl] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  // Editing Category Popup States
+  const [editCatName, setEditCatName] = useState('');
+  const [editCatDescription, setEditCatDescription] = useState('');
+  const [editCatColor, setEditCatColor] = useState(PRESET_COLORS[0].value);
+  const [editCatImageUrl, setEditCatImageUrl] = useState('');
+
   // Series (Sub-categories) State
   const [expandedSeriesCatId, setExpandedSeriesCatId] = useState<string | null>(null);
   const [seriesInput, setSeriesInput] = useState('');
@@ -185,12 +191,7 @@ export default function CategoryView({
     e.preventDefault();
     if (!name.trim()) return;
 
-    if (isEditing) {
-      onEditCategory(isEditing, { name, description, color, imageUrl });
-      setIsEditing(null);
-    } else {
-      onAddCategory({ name, description, color, imageUrl });
-    }
+    onAddCategory({ name, description, color, imageUrl });
 
     // Reset Form
     setName('');
@@ -201,18 +202,32 @@ export default function CategoryView({
 
   const handleEditClick = (cat: Category) => {
     setIsEditing(cat.id);
-    setName(cat.name);
-    setDescription(cat.description || '');
-    setColor(cat.color);
-    setImageUrl(cat.imageUrl || '');
+    setEditCatName(cat.name);
+    setEditCatDescription(cat.description || '');
+    setEditCatColor(cat.color);
+    setEditCatImageUrl(cat.imageUrl || '');
   };
 
   const handleCancelEdit = () => {
     setIsEditing(null);
-    setName('');
-    setDescription('');
-    setColor(PRESET_COLORS[0].value);
-    setImageUrl('');
+    setEditCatName('');
+    setEditCatDescription('');
+    setEditCatColor(PRESET_COLORS[0].value);
+    setEditCatImageUrl('');
+  };
+
+  const handleSaveEditCategory = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!isEditing || !editCatName.trim()) return;
+
+    onEditCategory(isEditing, {
+      name: editCatName,
+      description: editCatDescription,
+      color: editCatColor,
+      imageUrl: editCatImageUrl,
+    });
+
+    handleCancelEdit();
   };
 
   return (
@@ -224,10 +239,10 @@ export default function CategoryView({
           <Layers className="h-4.5 w-4.5 text-indigo-600" />
           <div>
             <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 font-sans">
-              {isEditing ? 'แก้ไขหมวดหมู่สินค้า' : 'เพิ่มหมวดหมู่สินค้าใหม่'}
+              เพิ่มหมวดหมู่สินค้าใหม่
             </h3>
             <p className="text-[10px] text-slate-400 dark:text-slate-500 font-sans mt-0.5">
-              {isEditing ? 'ปรับปรุงรายละเอียดและลักษณะการแสดงผลของหมวดหมู่สินค้า' : 'สร้างหมวดหมู่ใหม่เพื่อจัดหมวดหมู่พัสดุและตั้งค่ากลุ่ม Series ย่อย'}
+              สร้างหมวดหมู่ใหม่เพื่อจัดหมวดหมู่พัสดุและตั้งค่ากลุ่ม Series ย่อย
             </p>
           </div>
         </div>
@@ -243,7 +258,7 @@ export default function CategoryView({
                 type="text"
                 required
                 placeholder="ระบุชื่อกลุ่มสินค้า (เช่น อุปกรณ์ไฟฟ้า, อะไหล่สำรอง, แคตตาล็อกสายไฟ...)"
-                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-850 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-450"
+                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-400"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 id="input-category-name"
@@ -258,7 +273,7 @@ export default function CategoryView({
               <textarea
                 placeholder="ระบุคำอธิบายย่อๆ เกี่ยวกับรายการสินค้าที่จัดอยู่ในหมวดนี้..."
                 rows={2}
-                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-850 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-455 resize-none"
+                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-400 resize-none"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 id="input-category-desc"
@@ -277,7 +292,7 @@ export default function CategoryView({
                   <input
                     type="text"
                     placeholder="URL รูปภาพกลุ่มพัสดุ..."
-                    className="w-full pl-3 pr-8 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-850 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-455"
+                    className="w-full pl-3 pr-8 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-400"
                     value={imageUrl}
                     onChange={(e) => setImageUrl(e.target.value)}
                     id="input-category-image"
@@ -286,7 +301,7 @@ export default function CategoryView({
                     <button
                       type="button"
                       onClick={() => setImageUrl('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -294,7 +309,7 @@ export default function CategoryView({
                 </div>
                 
                 {/* File Upload button & Base64 Converter */}
-                <label className="cursor-pointer p-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-850 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-850 flex items-center justify-center shrink-0 transition-all h-[34px] w-[34px] border-dashed" title="อัปโหลดรูปภาพ">
+                <label className="cursor-pointer p-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center shrink-0 transition-all h-[34px] w-[34px] border-dashed" title="อัปโหลดรูปภาพ">
                   <Upload className="h-4 w-4 text-slate-500" />
                   <input
                     type="file"
@@ -338,7 +353,7 @@ export default function CategoryView({
                       className={`py-1 px-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer text-center truncate ${
                         isSelected
                           ? 'bg-indigo-600 border-indigo-600 text-white font-black shadow-xs'
-                          : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                          : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
                       }`}
                       id={`btn-preset-color-${idx}`}
                     >
@@ -352,22 +367,13 @@ export default function CategoryView({
 
           {/* Action Buttons */}
           <div className="col-span-full flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 font-sans">
-            {isEditing && (
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                className="px-3 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-200/80 dark:hover:bg-slate-700 transition-all cursor-pointer"
-              >
-                ยกเลิกการแก้ไข
-              </button>
-            )}
             <button
               type="submit"
               className="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1 active:scale-95 shadow-md shadow-indigo-600/15"
               id="btn-submit-category-form"
             >
               <Plus className="h-3.5 w-3.5" />
-              {isEditing ? 'บันทึกหมวดหมู่' : 'สร้างหมวดหมู่ใหม่'}
+              สร้างหมวดหมู่ใหม่
             </button>
           </div>
         </form>
@@ -408,7 +414,7 @@ export default function CategoryView({
                   </div>
 
                   {/* Summary Stats Horizontal Row (Extremely compact horizontal layout) */}
-                  <div className="flex items-center justify-between text-[11px] font-sans border-t border-slate-100 dark:border-slate-850 pt-2 text-slate-500 dark:text-slate-400">
+                  <div className="flex items-center justify-between text-[11px] font-sans border-t border-slate-100 dark:border-slate-800 pt-2 text-slate-500 dark:text-slate-400">
                     <div>
                       สินค้า: <span className="font-mono font-black text-slate-700 dark:text-slate-200">{productCount}</span> รายการ
                     </div>
@@ -419,11 +425,11 @@ export default function CategoryView({
 
                   {/* Sub-series Summary Preview Pill List */}
                   {((cat.subSeries && cat.subSeries.length > 0) || (cat.series && cat.series.length > 0)) && !isSeriesExpanded && (
-                    <div className="space-y-1 pt-1 border-t border-slate-100/50 dark:border-slate-850/50">
+                    <div className="space-y-1 pt-1 border-t border-slate-100/50 dark:border-slate-800/50">
                       <div className="text-[8.5px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                         Series ย่อย ({cat.series?.length || 0}):
                       </div>
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-col gap-1.5 items-start">
                         {Array.from(new Set([
                           ...(cat.series || []),
                           ...(cat.subSeries || []).map((s) => s.name)
@@ -433,17 +439,17 @@ export default function CategoryView({
                           return (
                             <span 
                               key={i} 
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[8.5px] font-black bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-150/40 dark:border-indigo-800/40 rounded shadow-3xs"
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[8.5px] font-black bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-150/40 dark:border-indigo-800/40 rounded shadow-3xs"
                             >
                               {imageUrlToUse && (
                                 <img 
                                   src={imageUrlToUse} 
                                   alt={serName} 
-                                  className="w-3 h-3 object-cover rounded-sm bg-slate-100 dark:bg-slate-900 border border-slate-200/55 shrink-0" 
+                                  className="w-3.5 h-3.5 object-cover rounded-sm bg-slate-100 dark:bg-slate-900 border border-slate-200/55 shrink-0" 
                                   referrerPolicy="no-referrer"
                                 />
                               )}
-                              <span className="truncate max-w-[70px]">{serName}</span>
+                              <span className="truncate">{serName}</span>
                             </span>
                           );
                         })}
@@ -460,7 +466,7 @@ export default function CategoryView({
                   {/* Expanded Series Control Section */}
                   {isSeriesExpanded && (
                     <div className="pt-3 border-t border-dashed border-slate-200 dark:border-slate-800 space-y-3 animate-in fade-in duration-200">
-                      <div className="flex items-center gap-1.5 pb-1 border-b border-slate-100 dark:border-slate-850">
+                      <div className="flex items-center gap-1.5 pb-1 border-b border-slate-100 dark:border-slate-800">
                         <Tag className="h-3.5 w-3.5 text-indigo-500" />
                         <span className="text-xs font-black text-slate-800 dark:text-slate-200 font-sans">
                           จัดการ Series ย่อยสำหรับ "{cat.name.split(' (')[0]}"
@@ -479,126 +485,19 @@ export default function CategoryView({
                           cat.series.map((ser, i) => {
                             const subSerObj = (cat.subSeries || []).find((s) => s.name === ser);
                             const imageUrlToUse = subSerObj?.imageUrl || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120';
-                            const isEditingThis = editingSeriesName && editingSeriesName.catId === cat.id && editingSeriesName.oldName === ser;
-
-                            if (isEditingThis) {
-                              return (
-                                <div
-                                  key={i}
-                                  className="p-3 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/10 border border-indigo-200 dark:border-indigo-900 space-y-2 text-left"
-                                >
-                                  <div className="text-[10px] font-black text-indigo-700 dark:text-indigo-400">
-                                    กำลังแก้ไข: "{ser}"
-                                  </div>
-                                  <div className="grid grid-cols-1 gap-2">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                      <div className="space-y-1">
-                                        <label className="text-[9px] font-black text-slate-500 block">ชื่อ Series ใหม่</label>
-                                        <input
-                                          type="text"
-                                          className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100"
-                                          value={editSeriesNameInput}
-                                          onChange={(e) => setEditSeriesNameInput(e.target.value)}
-                                        />
-                                      </div>
-                                      <div className="space-y-1">
-                                        <label className="text-[9px] font-black text-slate-500 block">รูปภาพของ Series</label>
-                                        <div className="flex items-center gap-1.5">
-                                          <input
-                                            type="text"
-                                            placeholder="URL รูปภาพ..."
-                                            className="flex-grow px-2.5 py-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100"
-                                            value={editSeriesImageInput}
-                                            onChange={(e) => setEditSeriesImageInput(e.target.value)}
-                                          />
-                                          <label className="cursor-pointer p-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center shrink-0 border-dashed" title="อัปโหลดรูปภาพ">
-                                            <Upload className="h-3.5 w-3.5 text-slate-500" />
-                                            <input
-                                              type="file"
-                                              accept="image/*"
-                                              className="hidden"
-                                              onChange={(e) => {
-                                                const file = e.target.files?.[0];
-                                                if (file) {
-                                                  const reader = new FileReader();
-                                                  reader.onloadend = () => {
-                                                    setEditSeriesImageInput(reader.result as string);
-                                                  };
-                                                  reader.readAsDataURL(file);
-                                                }
-                                              }}
-                                            />
-                                          </label>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <label className="text-[9px] font-black text-slate-500 block">คู่มือเทคนิค (Manual PDF URL หรืออัปโหลด) <span className="text-[8px] font-normal text-slate-400 dark:text-slate-500">(แนะนำ &lt; 500KB)</span></label>
-                                      <div className="flex items-center gap-1.5">
-                                        <input
-                                          type="text"
-                                          placeholder="URL คู่มือ PDF หรือไฟล์ Base64..."
-                                          className="flex-grow px-2.5 py-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100"
-                                          value={editSeriesPdfInput}
-                                          onChange={(e) => setEditSeriesPdfInput(e.target.value)}
-                                        />
-                                        <label className="cursor-pointer p-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center shrink-0 border-dashed" title="อัปโหลดไฟล์ PDF คู่มือ">
-                                          <Upload className="h-3.5 w-3.5 text-slate-500" />
-                                          <input
-                                            type="file"
-                                            accept="application/pdf"
-                                            className="hidden"
-                                            onChange={(e) => {
-                                              const file = e.target.files?.[0];
-                                              if (file) {
-                                                if (file.size > 500 * 1024) {
-                                                  alert('แนะนำไฟล์ PDF ขนาดไม่เกิน 500KB เพื่อประหยัดพื้นที่คลาวด์');
-                                                }
-                                                const reader = new FileReader();
-                                                reader.onloadend = () => {
-                                                  setEditSeriesPdfInput(reader.result as string);
-                                                };
-                                                reader.readAsDataURL(file);
-                                              }
-                                            }}
-                                          />
-                                        </label>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex gap-1.5 justify-end pt-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => setEditingSeriesName(null)}
-                                      className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-[10px] font-bold cursor-pointer hover:bg-slate-200/80 dark:hover:bg-slate-850 transition-all"
-                                    >
-                                      ยกเลิก
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSaveEditSeries(cat.id)}
-                                      className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black cursor-pointer transition-all"
-                                    >
-                                      บันทึกการแก้ไข
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            }
-
                             return (
                               <div
                                 key={i}
-                                className="flex items-center gap-3 p-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-850/60 shadow-3xs hover:border-slate-300 dark:hover:border-slate-750 transition-all"
+                                className="flex items-center gap-3 p-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-800/60 shadow-3xs hover:border-slate-300 dark:hover:border-slate-750 transition-all"
                               >
                                 <img
                                   src={imageUrlToUse}
                                   alt={ser}
-                                  className="w-10 h-10 object-cover rounded-lg bg-slate-100 dark:bg-slate-900 shrink-0 border border-slate-200 dark:border-slate-850"
+                                  className="w-10 h-10 object-cover rounded-lg bg-slate-100 dark:bg-slate-900 shrink-0 border border-slate-200 dark:border-slate-800"
                                   referrerPolicy="no-referrer"
                                 />
                                 <div className="min-w-0 flex-grow">
-                                  <div className="text-xs font-black text-slate-850 dark:text-slate-100 truncate leading-tight font-sans flex items-center gap-1.5" title={ser}>
+                                  <div className="text-xs font-black text-slate-800 dark:text-slate-100 truncate leading-tight font-sans flex items-center gap-1.5" title={ser}>
                                     <span>{ser}</span>
                                     {subSerObj?.pdfUrl && (
                                       <span className="inline-flex items-center gap-0.5 px-1 py-0.2 text-[8px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded shrink-0">
@@ -632,7 +531,7 @@ export default function CategoryView({
                                   <button
                                     type="button"
                                     onClick={() => handleRemoveSeries(cat.id, ser)}
-                                    className="p-1.5 text-slate-500 hover:text-rose-650 dark:text-slate-400 dark:hover:text-rose-450 transition-colors cursor-pointer rounded-lg hover:bg-white dark:hover:bg-slate-900"
+                                    className="p-1.5 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-450 transition-colors cursor-pointer rounded-lg hover:bg-white dark:hover:bg-slate-900"
                                     title="ลบ Series ย่อย"
                                   >
                                     <X className="h-3.5 w-3.5" />
@@ -645,8 +544,8 @@ export default function CategoryView({
                       </div>
 
                       {/* Add Sub-series compact inline section */}
-                      <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850/80 p-3 rounded-xl space-y-2.5">
-                        <span className="text-[10px] font-black text-slate-650 dark:text-slate-350 block">เพิ่ม Series ย่อยใหม่</span>
+                      <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-3 rounded-xl space-y-2.5">
+                        <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 block">เพิ่ม Series ย่อยใหม่</span>
                         <div className="grid grid-cols-1 gap-2">
                           <input
                             type="text"
@@ -741,7 +640,7 @@ export default function CategoryView({
                           <button
                             type="button"
                             onClick={() => handleAddSeries(cat.id)}
-                            className="px-3.5 py-1 bg-indigo-650 hover:bg-indigo-700 text-white font-black rounded-lg text-[10px] cursor-pointer transition-all active:scale-95 flex items-center gap-0.5"
+                            className="px-3.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-lg text-[10px] cursor-pointer transition-all active:scale-95 flex items-center gap-0.5"
                           >
                             <Plus className="h-3 w-3" /> เพิ่มเข้ากลุ่ม
                           </button>
@@ -752,7 +651,7 @@ export default function CategoryView({
                 </div>
 
                 {/* Card Action footer */}
-                <div className="px-4 py-2 bg-slate-50 dark:bg-slate-950/80 border-t border-slate-100 dark:border-slate-850 flex items-center justify-between font-sans">
+                <div className="px-4 py-2 bg-slate-50 dark:bg-slate-950/80 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between font-sans">
                   {/* Left toggle button */}
                   <button
                     onClick={() => {
@@ -762,8 +661,8 @@ export default function CategoryView({
                     }}
                     className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all cursor-pointer flex items-center gap-1 shadow-3xs ${
                       isSeriesExpanded 
-                        ? 'bg-indigo-650 text-white shadow-xs' 
-                        : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400'
+                        ? 'bg-indigo-600 text-white shadow-xs' 
+                        : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400'
                     }`}
                     title="จัดการ Series ย่อย"
                     id={`btn-manage-series-${cat.id}`}
@@ -777,7 +676,7 @@ export default function CategoryView({
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => handleEditClick(cat)}
-                      className="p-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-550 dark:text-slate-400 rounded-lg shadow-3xs transition-all cursor-pointer"
+                      className="p-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 text-slate-500 dark:text-slate-400 rounded-lg shadow-3xs transition-all cursor-pointer"
                       title="แก้ไขหมวดหมู่"
                       id={`btn-edit-category-${cat.id}`}
                     >
@@ -785,7 +684,7 @@ export default function CategoryView({
                     </button>
                     <button
                       onClick={() => setConfirmDeleteId(cat.id)}
-                      className="p-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:text-rose-600 dark:hover:text-rose-450 text-slate-550 dark:text-slate-400 rounded-lg shadow-3xs transition-all cursor-pointer"
+                      className="p-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:text-rose-600 dark:hover:text-rose-450 text-slate-500 dark:text-slate-400 rounded-lg shadow-3xs transition-all cursor-pointer"
                       title="ลบหมวดหมู่"
                       id={`btn-delete-category-${cat.id}`}
                     >
@@ -861,9 +760,230 @@ export default function CategoryView({
                   onDeleteCategory(categoryToDelete.id);
                   setConfirmDeleteId(null);
                 }}
-                className="py-1 px-3 text-[10px] font-black text-white bg-rose-650 hover:bg-rose-700 rounded shadow-sm cursor-pointer text-center"
+                className="py-1 px-3 text-[10px] font-black text-white bg-rose-600 hover:bg-rose-700 rounded shadow-sm cursor-pointer text-center"
               >
                 ยืนยันลบ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Category Popup Modal */}
+      {isEditing && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-100 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-2xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 duration-200 text-left">
+            <div>
+              <h4 className="text-sm font-black text-slate-800 dark:text-slate-100">แก้ไขหมวดหมู่สินค้า</h4>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">ปรับปรุงรายละเอียดและลักษณะการแสดงผลของหมวดหมู่สินค้า</p>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10.5px] font-black text-slate-500 dark:text-slate-400 block">ชื่อกลุ่มสินค้า <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans font-bold text-slate-800 dark:text-slate-100"
+                  value={editCatName}
+                  onChange={(e) => setEditCatName(e.target.value)}
+                  placeholder="ระบุชื่อกลุ่มสินค้า"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10.5px] font-black text-slate-500 dark:text-slate-400 block">รายละเอียดหมวดหมู่</label>
+                <textarea
+                  placeholder="ระบุคำอธิบายย่อๆ..."
+                  rows={2}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100 resize-none"
+                  value={editCatDescription}
+                  onChange={(e) => setEditCatDescription(e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-[10.5px] font-black text-slate-500 dark:text-slate-400 block">รูปภาพหมวดหมู่ (URL หรืออัปโหลด)</label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="URL รูปภาพ..."
+                    className="flex-grow px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100"
+                    value={editCatImageUrl}
+                    onChange={(e) => setEditCatImageUrl(e.target.value)}
+                  />
+                  <label className="cursor-pointer p-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center shrink-0 border-dashed" title="อัปโหลดรูปภาพ">
+                    <Upload className="h-4 w-4 text-slate-500" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setEditCatImageUrl(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {editCatImageUrl && (
+                  <div className="mt-1 flex justify-end">
+                    <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shrink-0">
+                      <img src={editCatImageUrl} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="space-y-1.5">
+                <label className="text-[10.5px] font-black text-slate-500 dark:text-slate-400 block">ธีมสีการ์ดแสดงผล</label>
+                <div className="grid grid-cols-4 gap-1">
+                  {PRESET_COLORS.map((col, idx) => {
+                    const isSelected = editCatColor === col.value;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setEditCatColor(col.value)}
+                        className={`py-1 px-1 text-[9px] font-bold rounded-lg border transition-all cursor-pointer text-center truncate ${
+                          isSelected
+                            ? 'bg-indigo-600 border-indigo-600 text-white font-black shadow-xs'
+                            : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                        }`}
+                      >
+                        {col.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-200/80 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveEditCategory()}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700 transition-colors cursor-pointer"
+              >
+                บันทึกการแก้ไข
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Series Popup Modal */}
+      {editingSeriesName && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-100 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 duration-200 text-left">
+            <div>
+              <h4 className="text-sm font-black text-slate-800">แก้ไขข้อมูล Series ย่อย</h4>
+              <p className="text-[10px] text-slate-400">กลุ่มหมวดหมู่รหัส {editingSeriesName.catId}</p>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10.5px] font-black text-slate-500 block">ชื่อ Series ใหม่ <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans font-bold text-slate-800"
+                  value={editSeriesNameInput}
+                  onChange={(e) => setEditSeriesNameInput(e.target.value)}
+                  placeholder="เช่น 3 Pole, Standard"
+                />
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-[10.5px] font-black text-slate-500 block">รูปภาพของ Series (URL หรืออัปโหลด)</label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="URL รูปภาพ..."
+                    className="flex-grow px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800"
+                    value={editSeriesImageInput}
+                    onChange={(e) => setEditSeriesImageInput(e.target.value)}
+                  />
+                  <label className="cursor-pointer p-2 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 flex items-center justify-center shrink-0 border-dashed" title="อัปโหลดรูปภาพ">
+                    <Upload className="h-4 w-4 text-slate-500" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setEditSeriesImageInput(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-[10.5px] font-black text-slate-500 block">คู่มือเทคนิค (Manual PDF URL หรืออัปโหลด)</label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="URL คู่มือ PDF หรือไฟล์ Base64..."
+                    className="flex-grow px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800"
+                    value={editSeriesPdfInput}
+                    onChange={(e) => setEditSeriesPdfInput(e.target.value)}
+                  />
+                  <label className="cursor-pointer p-2 bg-slate-100 border border-slate-200 rounded-xl hover:bg-slate-200 flex items-center justify-center shrink-0 border-dashed" title="อัปโหลดไฟล์ PDF คู่มือ">
+                    <Upload className="h-4 w-4 text-slate-500" />
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 500 * 1024) {
+                            alert('แนะนำไฟล์ PDF ขนาดไม่เกิน 500KB เพื่อประหยัดพื้นที่คลาวด์');
+                          }
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setEditSeriesPdfInput(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setEditingSeriesName(null)}
+                className="px-3.5 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200/80 transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveEditSeries(editingSeriesName.catId)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700 transition-colors cursor-pointer"
+              >
+                บันทึกการแก้ไข
               </button>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Product, Bom, BomItem, Category, JobProject, ProductOrder, normalizeModules } from '../types';
+import Logo from './Logo';
 import { 
   FileSpreadsheet, 
   Plus, 
@@ -421,19 +422,7 @@ function ProjectModulesManager({ proj, onEditJobProject, addToast }: ProjectModu
                       <span className="font-mono text-[9px] font-bold px-1 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded">
                         {m.code}
                       </span>
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          className="w-full px-1.5 py-0.2 border border-indigo-300 rounded text-[11px] focus:outline-none"
-                          onBlur={() => handleUpdateModule(m.code)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleUpdateModule(m.code)}
-                          autoFocus
-                        />
-                      ) : (
-                        <div className="text-[11px] font-bold text-slate-800 truncate leading-none mt-0.5">{m.name}</div>
-                      )}
+                      <div className="text-[11px] font-bold text-slate-800 truncate leading-none mt-0.5">{m.name}</div>
                     </div>
                   </div>
 
@@ -462,6 +451,48 @@ function ProjectModulesManager({ proj, onEditJobProject, addToast }: ProjectModu
           </div>
         )}
       </div>
+
+      {/* Edit Module Popup Modal */}
+      {editingCode && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-100 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-sm w-full p-5 space-y-4 animate-in zoom-in-95 duration-200 text-left">
+            <div>
+              <h4 className="text-sm font-black text-slate-800">แก้ไขชื่อโมดูล</h4>
+              <p className="text-[10px] text-slate-400">โมดูลรหัส {editingCode}</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10.5px] font-bold text-slate-500">ชื่อโมดูลใหม่ <span className="text-rose-500">*</span></label>
+              <input
+                type="text"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-indigo-500 text-xs font-bold text-slate-800"
+                placeholder="ระบุชื่อโมดูล"
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingCode(null);
+                  setEditingName('');
+                }}
+                className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200/80 transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => handleUpdateModule(editingCode)}
+                className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700 transition-colors cursor-pointer"
+              >
+                บันทึกการแก้ไข
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1072,7 +1103,7 @@ export default function ProjectBomView({
       {/* Title Header Workspace (Flat & Compact) */}
       <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
         <div className="flex items-center gap-1.5">
-          <Boxes className="h-4.5 w-4.5 text-indigo-650" />
+          <Boxes className="h-4.5 w-4.5 text-indigo-600" />
           <h2 className="text-xs font-black text-slate-800 uppercase tracking-wider">
             สูตรชิ้นส่วนประกอบพัสดุ (BOM & Assembly Workspace)
           </h2>
@@ -1172,19 +1203,40 @@ export default function ProjectBomView({
               filteredBoms.map(bom => {
                 const isActive = activeBom?.id === bom.id;
                 const financials = getBomFinancials(bom);
+                const matchingProject = jobProjects?.find(p => p.jobNo === bom.jobNo);
                 return (
                   <button
                     key={bom.id}
                     onClick={() => setSelectedBom(bom)}
-                    className={`px-2 py-1 rounded border text-[10.5px] font-sans font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`px-3 py-1.5 rounded-xl border text-[11px] font-sans font-bold shrink-0 transition-all cursor-pointer flex items-center gap-2 ${
                       isActive 
-                        ? 'bg-indigo-50 border-indigo-300 text-indigo-800' 
-                        : 'bg-slate-100 border-slate-200/80 hover:bg-slate-200/80 hover:text-slate-900 text-slate-600'
+                        ? 'bg-white border-2 border-slate-500 text-black font-extrabold shadow-md scale-102' 
+                        : 'bg-slate-200 border-slate-300 hover:bg-slate-300 text-slate-800'
                     }`}
                   >
-                    <span className="font-mono text-[9px] px-1 bg-slate-100 rounded text-slate-500 font-extrabold">{bom.jobNo || 'NO JOB'}</span>
+                    {/* Brand Logo & Job Image */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Logo size={15} className="h-4 w-4 shrink-0" />
+                      {matchingProject?.projectImageUrl ? (
+                        <img 
+                          src={matchingProject.projectImageUrl} 
+                          alt={bom.jobNo} 
+                          className="w-6 h-6 object-cover rounded-md border border-slate-300 shrink-0 bg-white" 
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-6 h-6 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                          <FolderGit2 className="h-3 w-3 text-slate-400" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Increased Job No size */}
+                    <span className="font-mono text-[11px] font-black px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900 rounded text-indigo-700 dark:text-indigo-400 shrink-0">
+                      {bom.jobNo || 'NO JOB'}
+                    </span>
                     <span className="truncate max-w-[120px]">{bom.name}</span>
-                    <span className="text-[8px] font-mono font-bold text-indigo-600">฿{financials.totalCost.toLocaleString('th-TH')}</span>
+                    <span className="text-[9.5px] font-mono font-black text-indigo-600">฿{financials.totalCost.toLocaleString('th-TH')}</span>
                   </button>
                 );
               })
@@ -1213,7 +1265,7 @@ export default function ProjectBomView({
                   <div className="flex items-center gap-1 shrink-0 ml-auto">
                     <button
                       onClick={handleOpenEditModal}
-                      className="p-0.5 text-slate-500 hover:text-indigo-650 hover:bg-slate-200/80 rounded border border-slate-200/60 bg-slate-100"
+                      className="p-0.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-200/80 rounded border border-slate-200/60 bg-slate-100"
                       title="แก้ไขสูตรประกอบ"
                     >
                       <Edit3 className="h-3.5 w-3.5" />
@@ -1239,7 +1291,7 @@ export default function ProjectBomView({
                     )}
                     <button
                       onClick={() => handleDeleteBom(activeBom)}
-                      className="p-0.5 text-slate-400 hover:text-rose-650 hover:bg-slate-200/80 rounded border border-slate-200/60 bg-slate-100"
+                      className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-slate-200/80 rounded border border-slate-200/60 bg-slate-100"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -1631,12 +1683,30 @@ export default function ProjectBomView({
                     <div
                       key={p.id}
                       onClick={() => setSelectedProj(p)}
-                      className={`p-1.5 rounded border transition-colors cursor-pointer text-left ${
-                        isSelected ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-100 border-slate-150 hover:bg-slate-200/50'
+                      className={`p-2.5 rounded-xl border transition-all cursor-pointer text-left space-y-2 ${
+                        isSelected 
+                          ? 'bg-indigo-50 border-indigo-200 shadow-xs' 
+                          : 'bg-slate-100 border-slate-150 hover:bg-slate-200/50'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-1.5">
-                        <span className="font-mono text-[9px] font-black px-1.5 bg-slate-100 border text-slate-600 rounded">{p.jobNo}</span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {p.projectImageUrl ? (
+                            <img 
+                              src={p.projectImageUrl} 
+                              alt={p.jobNo} 
+                              className="w-6 h-6 object-cover rounded border border-slate-300 shrink-0 bg-white" 
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded bg-slate-200 border border-slate-300 flex items-center justify-center shrink-0">
+                              <FolderGit2 className="h-3 w-3 text-slate-400" />
+                            </div>
+                          )}
+                          <span className="font-mono text-[11px] font-black px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-md shrink-0">
+                            {p.jobNo}
+                          </span>
+                        </div>
                         <div className="flex items-center gap-0.5">
                           <button
                             onClick={(e) => {
@@ -1663,7 +1733,7 @@ export default function ProjectBomView({
                           </button>
                         </div>
                       </div>
-                      <div className="font-extrabold text-slate-800 mt-1 line-clamp-1">{p.projectName}</div>
+                      <div className="font-extrabold text-slate-800 line-clamp-1">{p.projectName}</div>
                       <div className="text-[10px] text-slate-400 font-bold truncate">หน่วยงาน: {p.customer} | ปี: {p.year || '-'}</div>
                     </div>
                   );
@@ -1673,12 +1743,62 @@ export default function ProjectBomView({
           </div>
 
           {/* Project modules content details */}
-          <div className="lg:col-span-7 bg-slate-50/20 p-2.5 rounded-lg border border-slate-100 text-left">
+          <div className="lg:col-span-7 bg-slate-50/20 p-2.5 rounded-xl border border-slate-100 text-left">
             {selectedProj ? (
-              <div className="space-y-3 text-left">
-                <div className="border-b border-slate-150 pb-1.5">
-                  <span className="text-[9px] font-black text-indigo-700 uppercase block">กำลังดูโครงสร้างระบบโครงการ:</span>
-                  <h3 className="font-black text-slate-800 text-[11.5px] mt-0.5">{selectedProj.projectName}</h3>
+              <div className="space-y-3.5 text-left">
+                <div className="border-b border-slate-150 pb-2.5 flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-100">
+                  {/* Brand Logo & Job Image */}
+                  <div className="relative shrink-0">
+                    {selectedProj.projectImageUrl ? (
+                      <img 
+                        src={selectedProj.projectImageUrl} 
+                        alt={selectedProj.projectName} 
+                        className="w-11 h-11 object-cover rounded-lg border border-slate-200 bg-white" 
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center bg-slate-50">
+                        <FolderGit2 className="h-5 w-5 text-slate-400" />
+                      </div>
+                    )}
+                    <div className="absolute -bottom-1 -right-1 bg-white p-0.5 rounded-full border shadow-3xs">
+                      <Logo size={14} className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-[11px] font-black px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-indigo-700 rounded-md">
+                        {selectedProj.jobNo}
+                      </span>
+                      <span className="text-[9.5px] text-slate-400 font-bold">ปี {selectedProj.year || '-'}</span>
+                    </div>
+                    <h3 className="font-black text-slate-800 text-[11.5px] mt-1 leading-snug truncate">{selectedProj.projectName}</h3>
+                    <p className="text-[9.5px] text-slate-400 font-semibold truncate leading-none mt-0.5">ลูกค้า/หน่วยงาน: {selectedProj.customer}</p>
+                  </div>
+
+                  <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                    <label className="cursor-pointer px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[9px] font-bold text-slate-600 transition-colors flex items-center gap-1">
+                      <Upload className="h-2.5 w-2.5 text-slate-400" />
+                      <span>อัปโหลดรูปภาพ</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onloadend = async () => {
+                            if (onEditJobProject) {
+                              await onEditJobProject(selectedProj.id, { projectImageUrl: reader.result as string });
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                  </div>
                 </div>
                 <ProjectModulesManager
                   proj={selectedProj}
@@ -1838,7 +1958,7 @@ export default function ProjectBomView({
             </div>
             <form onSubmit={handleSubmitQuickRequisition} className="space-y-3 text-[11px] font-sans">
               <div className="space-y-1">
-                <label className="font-bold text-slate-650">ชื่อพัสดุที่จะสั่ง:</label>
+                <label className="font-bold text-slate-600">ชื่อพัสดุที่จะสั่ง:</label>
                 <div className="text-slate-900 font-extrabold text-xs">
                   {reqItemIndex !== null && activeBom?.items[reqItemIndex]?.productName}
                 </div>
@@ -1921,7 +2041,7 @@ export default function ProjectBomView({
               </div>
               <div className="grid grid-cols-2 gap-2 text-[10.5px]">
                 <div>ผู้ขอซื้อ: <strong className="text-slate-800">{viewingOrder.requesterName}</strong></div>
-                <div>สถานะจัดซื้อ: <strong className="text-indigo-650">{getOrderThaiLabel(viewingOrder.status)}</strong></div>
+                <div>สถานะจัดซื้อ: <strong className="text-indigo-600">{getOrderThaiLabel(viewingOrder.status)}</strong></div>
                 <div>จำนวน: <strong className="text-slate-800">{viewingOrder.quantity} {viewingOrder.unit || 'ชิ้น'}</strong></div>
                 <div>ราคาประเมิน: <strong className="text-slate-800">฿{viewingOrder.totalPrice?.toLocaleString('th-TH') || '-'}</strong></div>
               </div>
@@ -1946,7 +2066,7 @@ export default function ProjectBomView({
             <form onSubmit={handleAddProjectSubmit} className="space-y-3 text-[11px] font-sans">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-650">รหัส Job No. *</label>
+                  <label className="font-bold text-slate-600">รหัส Job No. *</label>
                   <input
                     type="text"
                     required
@@ -2008,7 +2128,7 @@ export default function ProjectBomView({
             <form onSubmit={handleEditProjectSubmit} className="space-y-3 text-[11px] font-sans">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-650">รหัส Job No. *</label>
+                  <label className="font-bold text-slate-600">รหัส Job No. *</label>
                   <input
                     type="text"
                     required

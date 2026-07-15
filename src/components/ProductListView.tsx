@@ -585,8 +585,8 @@ export default function ProductListView({
                 }}
                 className={`p-1 pr-3 rounded-lg border transition-all duration-200 cursor-pointer flex items-center gap-2 ${
                   categoryFilter === 'all'
-                    ? 'bg-indigo-600 border-indigo-600 text-white font-extrabold shadow-sm ring-2 ring-indigo-500/20'
-                    : 'bg-slate-100 border-slate-200/85 hover:bg-slate-200/80 text-slate-700 font-medium'
+                    ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                    : 'bg-slate-200 border-slate-300 hover:bg-slate-300 text-slate-800 font-medium'
                 }`}
                 id="btn-cat-filter-all"
               >
@@ -595,7 +595,7 @@ export default function ProductListView({
                 </div>
                 <div className="text-left leading-tight">
                   <div className="text-[10px] font-black">ทั้งหมด</div>
-                  <div className="text-[8.5px] text-slate-400 font-sans font-bold">{products.length} รายการ</div>
+                  <div className="text-[8.5px] text-slate-500 font-sans font-bold">{products.length} รายการ</div>
                 </div>
               </button>
 
@@ -617,8 +617,8 @@ export default function ProductListView({
                     }}
                     className={`p-1 pr-3 rounded-lg border transition-all duration-200 cursor-pointer flex items-center gap-2 ${
                       isSelected
-                        ? `${cat.color} border-indigo-600 font-extrabold shadow-sm ring-2 ring-indigo-500/20`
-                        : 'bg-slate-100 border-slate-200/85 hover:bg-slate-200/80 text-slate-700 font-medium'
+                        ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                        : 'bg-slate-200 border-slate-300 hover:bg-slate-300 text-slate-800 font-medium'
                     }`}
                     id={`btn-cat-filter-${cat.id}`}
                   >
@@ -630,7 +630,7 @@ export default function ProductListView({
                     />
                     <div className="text-left leading-tight">
                       <div className="text-[10px] font-black">{cat.name.split(' (')[0]}</div>
-                      <div className="text-[8.5px] text-slate-400 font-sans font-bold">{count} รายการพัสดุ</div>
+                      <div className="text-[8.5px] text-slate-500 font-sans font-bold">{count} รายการพัสดุ</div>
                     </div>
                   </button>
                 );
@@ -645,8 +645,8 @@ export default function ProductListView({
                 onClick={() => onSetStatusFilter('all')}
                 className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-all cursor-pointer ${
                   statusFilter === 'all'
-                    ? 'bg-indigo-50 border-indigo-150 text-indigo-700'
-                    : 'bg-slate-100 border-slate-200/80 text-slate-600 hover:bg-slate-200/70'
+                    ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                    : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'
                 }`}
                 id="btn-filter-status-all"
               >
@@ -656,8 +656,8 @@ export default function ProductListView({
                 onClick={() => onSetStatusFilter('low')}
                 className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-all cursor-pointer ${
                   statusFilter === 'low'
-                    ? 'bg-amber-50 border-amber-150 text-amber-700'
-                    : 'bg-slate-100 border-slate-200/80 text-slate-600 hover:bg-slate-200/70'
+                    ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                    : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'
                 }`}
                 id="btn-filter-status-low"
               >
@@ -667,8 +667,8 @@ export default function ProductListView({
                 onClick={() => onSetStatusFilter('out')}
                 className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-all cursor-pointer ${
                   statusFilter === 'out'
-                    ? 'bg-rose-50 border-rose-150 text-rose-700'
-                    : 'bg-slate-100 border-slate-200/80 text-slate-600 hover:bg-slate-200/70'
+                    ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                    : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'
                 }`}
                 id="btn-filter-status-out"
               >
@@ -677,13 +677,13 @@ export default function ProductListView({
             </div>
 
             {/* View Layout Toggle */}
-            <div className="flex items-center bg-slate-100/60 p-0.5 rounded border border-slate-200/20">
+            <div className="flex items-center bg-slate-100 p-0.5 rounded gap-1">
               <button
                 onClick={() => setViewMode('grouped')}
-                className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer flex items-center gap-1 ${
+                className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-all cursor-pointer flex items-center gap-1 ${
                   viewMode === 'grouped'
-                    ? 'bg-white text-indigo-700 shadow-3xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                    : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'
                 }`}
                 id="btn-viewmode-grouped"
                 type="button"
@@ -693,10 +693,10 @@ export default function ProductListView({
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all cursor-pointer flex items-center gap-1 ${
+                className={`px-2 py-0.5 text-[10px] font-bold rounded border transition-all cursor-pointer flex items-center gap-1 ${
                   viewMode === 'list'
-                    ? 'bg-white text-indigo-700 shadow-3xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-white border-2 border-slate-400 text-black font-extrabold shadow-sm'
+                    : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'
                 }`}
                 id="btn-viewmode-list"
                 type="button"

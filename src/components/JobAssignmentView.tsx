@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Job, Employee, JobProject, DailyReport, normalizeModules } from '../types';
+import Logo from './Logo';
 import { 
   Briefcase, 
   User, 
@@ -534,22 +535,25 @@ export default function JobAssignmentView({
                               
                               <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
                                 
-                                {/* Project Thumbnail Image */}
-                                {projMeta?.projectImageUrl ? (
-                                  <img 
-                                    src={projMeta.projectImageUrl} 
-                                    alt={group.jobNo} 
-                                    className="h-5 w-5 rounded-md object-cover border border-slate-250/70 shrink-0 shadow-4xs" 
-                                    referrerPolicy="no-referrer"
-                                  />
-                                ) : (
-                                  <div className="h-5 w-5 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
-                                    <FolderGit2 className="h-3 w-3 text-slate-400" />
-                                  </div>
-                                )}
+                                {/* Logo & Project Image */}
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <Logo size={14} className="h-3.5 w-3.5 shrink-0" />
+                                  {projMeta?.projectImageUrl ? (
+                                    <img 
+                                      src={projMeta.projectImageUrl} 
+                                      alt={group.jobNo} 
+                                      className="h-6.5 w-6.5 rounded-lg object-cover border border-slate-250 shrink-0 shadow-2xs" 
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  ) : (
+                                    <div className="h-6.5 w-6.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+                                      <FolderGit2 className="h-3.5 w-3.5 text-slate-400" />
+                                    </div>
+                                  )}
+                                </div>
 
                                 {/* Job No */}
-                                <span className="text-[9.5px] font-black text-indigo-700 font-mono tracking-wide px-1.5 py-0.5 bg-indigo-50 border border-indigo-100/60 rounded-md shrink-0">
+                                <span className="text-[11px] font-black text-indigo-700 font-mono tracking-wide px-2 py-0.5 bg-indigo-50 border border-indigo-150 rounded-md shrink-0">
                                   {group.jobNo}
                                 </span>
                                 
@@ -836,6 +840,7 @@ export default function JobAssignmentView({
             onDeleteDailyReport={onDeleteDailyReport}
             employees={employees}
             jobs={jobs}
+            jobProjects={jobProjects}
           />
         </div>
       )}
