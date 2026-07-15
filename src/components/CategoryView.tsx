@@ -356,7 +356,7 @@ export default function CategoryView({
               <button
                 type="button"
                 onClick={handleCancelEdit}
-                className="px-3 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all cursor-pointer"
+                className="px-3 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-200/80 dark:hover:bg-slate-700 transition-all cursor-pointer"
               >
                 ยกเลิกการแก้ไข
               </button>
@@ -373,8 +373,8 @@ export default function CategoryView({
         </form>
       </div>
 
-      {/* Categories Cards Grid - Intuitive & Clean UI/UX */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Categories Cards Grid - Horizontal layout and super compact to reduce vertical space */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {[...categories]
           .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true, sensitivity: 'base' }))
           .map((cat) => {
@@ -385,74 +385,74 @@ export default function CategoryView({
             return (
               <div 
                 key={cat.id} 
-                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs hover:shadow-md transition-all flex flex-col justify-between overflow-hidden group"
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-3xs hover:shadow-sm transition-all flex flex-col justify-between overflow-hidden group"
               >
                 {/* Card Main Body */}
-                <div className="p-4 sm:p-5 space-y-4">
+                <div className="p-3.5 space-y-2.5">
                   {/* Category Banner/Header */}
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-2.5">
                     <img 
                       src={cat.imageUrl || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'} 
                       alt={cat.name} 
-                      className="w-14 h-14 object-cover rounded-xl border border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-950 shadow-3xs"
+                      className="w-10 h-10 object-cover rounded-xl border border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-950 shadow-3xs"
                       referrerPolicy="no-referrer"
                     />
-                    <div className="min-w-0 space-y-1">
-                      <span className={`inline-block px-2.5 py-0.5 text-[10px] font-black rounded-lg border leading-none ${cat.color}`}>
+                    <div className="min-w-0 space-y-0.5">
+                      <span className={`inline-block px-2 py-0.5 text-[9.5px] font-black rounded-lg border leading-none ${cat.color}`}>
                         {cat.name}
                       </span>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-sans italic leading-relaxed line-clamp-2">
+                      <p className="text-[10.5px] text-slate-500 dark:text-slate-400 font-sans italic leading-tight line-clamp-1">
                         {cat.description || 'ไม่มีคำอธิบายสำหรับหมวดหมู่นี้'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Summary Stats Grid */}
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-850">
-                    <div className="bg-slate-50 dark:bg-slate-950/40 p-2 rounded-xl border border-slate-100 dark:border-slate-850 text-center">
-                      <div className="text-[10px] font-bold text-slate-400 font-sans uppercase">จำนวนสินค้า</div>
-                      <div className="text-sm font-black text-slate-700 dark:text-slate-200 font-mono mt-0.5">
-                        {productCount} <span className="text-[10px] font-bold text-slate-400">รายการ</span>
-                      </div>
+                  {/* Summary Stats Horizontal Row (Extremely compact horizontal layout) */}
+                  <div className="flex items-center justify-between text-[11px] font-sans border-t border-slate-100 dark:border-slate-850 pt-2 text-slate-500 dark:text-slate-400">
+                    <div>
+                      สินค้า: <span className="font-mono font-black text-slate-700 dark:text-slate-200">{productCount}</span> รายการ
                     </div>
-                    <div className="bg-slate-50 dark:bg-slate-950/40 p-2 rounded-xl border border-slate-100 dark:border-slate-850 text-center">
-                      <div className="text-[10px] font-bold text-slate-400 font-sans uppercase">สต็อกรวมในกลุ่ม</div>
-                      <div className="text-sm font-black text-indigo-600 dark:text-indigo-400 font-mono mt-0.5">
-                        {totalStock} <span className="text-[10px] font-bold text-slate-400">ชิ้น</span>
-                      </div>
+                    <div>
+                      สต็อกรวม: <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">{totalStock}</span> ชิ้น
                     </div>
                   </div>
 
                   {/* Sub-series Summary Preview Pill List */}
                   {((cat.subSeries && cat.subSeries.length > 0) || (cat.series && cat.series.length > 0)) && !isSeriesExpanded && (
-                    <div className="space-y-1.5 pt-1">
-                      <div className="text-[9px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-wider">
-                        Series ย่อยที่มี ({cat.series?.length || 0}):
+                    <div className="space-y-1 pt-1 border-t border-slate-100/50 dark:border-slate-850/50">
+                      <div className="text-[8.5px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                        Series ย่อย ({cat.series?.length || 0}):
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {Array.from(new Set([
                           ...(cat.series || []),
                           ...(cat.subSeries || []).map((s) => s.name)
-                        ])).map((serName, i) => {
+                        ])).slice(0, 5).map((serName, i) => {
                           const subSerObj = (cat.subSeries || []).find((s) => s.name === serName);
                           const imageUrlToUse = subSerObj?.imageUrl;
                           return (
                             <span 
                               key={i} 
-                              className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-black bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-150/40 dark:border-indigo-800/40 rounded-md shadow-3xs"
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[8.5px] font-black bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-150/40 dark:border-indigo-800/40 rounded shadow-3xs"
                             >
                               {imageUrlToUse && (
                                 <img 
                                   src={imageUrlToUse} 
                                   alt={serName} 
-                                  className="w-3.5 h-3.5 object-cover rounded-sm bg-slate-100 dark:bg-slate-900 border border-slate-200/55 shrink-0" 
+                                  className="w-3 h-3 object-cover rounded-sm bg-slate-100 dark:bg-slate-900 border border-slate-200/55 shrink-0" 
                                   referrerPolicy="no-referrer"
                                 />
                               )}
-                              <span>{serName}</span>
+                              <span className="truncate max-w-[70px]">{serName}</span>
                             </span>
                           );
                         })}
+                        {Array.from(new Set([
+                          ...(cat.series || []),
+                          ...(cat.subSeries || []).map((s) => s.name)
+                        ])).length > 5 && (
+                          <span className="text-[8.5px] font-bold text-slate-400">...</span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -570,7 +570,7 @@ export default function CategoryView({
                                     <button
                                       type="button"
                                       onClick={() => setEditingSeriesName(null)}
-                                      className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 rounded-lg text-[10px] font-bold cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-850 transition-all"
+                                      className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-[10px] font-bold cursor-pointer hover:bg-slate-200/80 dark:hover:bg-slate-850 transition-all"
                                     >
                                       ยกเลิก
                                     </button>

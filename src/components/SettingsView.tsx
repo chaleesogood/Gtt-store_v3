@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Job, Employee, JobProject, normalizeModules, Brand } from '../types';
 import { 
   FolderGit2, 
@@ -534,9 +534,70 @@ export default function SettingsView({
 
   const [employeeSubTab, setEmployeeSubTab] = useState<'chart' | 'list'>('chart');
 
-  // Filter project names & search
+  // Year and Job No filters for Job Directory
+  const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [selectedJobNo, setSelectedJobNo] = useState<string | null>(null);
+
+  const didInitYear = React.useRef(false);
+
+  // Extract unique years from jobProjects
+  const uniqueYears = useMemo(() => {
+    const years = jobProjects.map(p => p.year).filter(Boolean);
+    return Array.from(new Set(years)).sort().reverse();
+  }, [jobProjects]);
+
+  // Set selectedYear to the latest year by default when entering/mounting
+  useEffect(() => {
+    if (uniqueYears.length > 0 && !didInitYear.current) {
+      setSelectedYear(uniqueYears[0]);
+      didInitYear.current = true;
+    }
+  }, [uniqueYears]);
+
+  // Sort and filter projects specifically for the selected year
+  const sortedProjectsForSelectedYear = useMemo(() => {
+    const filtered = jobProjects.filter(p => {
+      if (selectedYear !== 'all' && p.year !== selectedYear) return false;
+      if (projSearch) {
+        const search = projSearch.toLowerCase();
+        return (
+          p.jobNo.toLowerCase().includes(search) ||
+          p.customer.toLowerCase().includes(search) ||
+          p.projectName.toLowerCase().includes(search)
+        );
+      }
+      return true;
+    });
+
+    // Sort by the first 5 digits of jobNo (ascending - smaller first)
+    return [...filtered].sort((a, b) => {
+      const aPrefix = a.jobNo.slice(0, 5).replace(/\D/g, '');
+      const bPrefix = b.jobNo.slice(0, 5).replace(/\D/g, '');
+      const aNum = parseInt(aPrefix, 10);
+      const bNum = parseInt(bPrefix, 10);
+      
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+         return aNum - bNum;
+      }
+      return a.jobNo.localeCompare(b.jobNo, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [jobProjects, selectedYear, projSearch]);
+
+  // Automatically select the first Job No when the selected year changes
+  useEffect(() => {
+    if (selectedYear !== 'all' && sortedProjectsForSelectedYear.length > 0) {
+      if (!sortedProjectsForSelectedYear.some(p => p.jobNo === selectedJobNo)) {
+        setSelectedJobNo(sortedProjectsForSelectedYear[0].jobNo);
+      }
+    } else if (selectedYear === 'all') {
+      setSelectedJobNo(null);
+    }
+  }, [selectedYear, sortedProjectsForSelectedYear]);
+
+  // Filter project names & search (original list)
   const filteredProjects = useMemo(() => {
     return jobProjects.filter(p => {
+      if (selectedYear !== 'all' && p.year !== selectedYear) return false;
       const search = projSearch.toLowerCase();
       return (
         p.jobNo.toLowerCase().includes(search) ||
@@ -545,7 +606,7 @@ export default function SettingsView({
         (p.year || '').includes(search)
       );
     });
-  }, [jobProjects, projSearch]);
+  }, [jobProjects, projSearch, selectedYear]);
 
   // Filter employees & search
   const filteredEmployees = useMemo(() => {
@@ -834,40 +895,108 @@ export default function SettingsView({
             )}
           </div>
 
-          {/* Projects Table & List */}
-          {filteredProjects.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-150 p-10 text-center">
-              <FolderGit2 className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-              <h4 className="text-xs font-bold text-slate-700">ไม่พบคลังข้อมูลโปรเจกต์</h4>
-              <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
-                ยังไม่มีการบันทึกโปรเจกต์ที่ตรงกับการค้นหาของคุณ
-              </p>
+          {/* Year Filter Buttons / ซ่อน แสดง ตามปี */}
+          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-3xs">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-[10px] font-black text-slate-500 font-sans uppercase tracking-wider">แสดงตามปีโครงการ:</span>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {filteredProjects.map(proj => {
-                const associatedTasks = jobs.filter(j => j.jobNo === proj.jobNo);
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setSelectedYear('all')}
+                className={`px-3 py-1 text-xs font-black rounded-lg transition-all border cursor-pointer ${
+                  selectedYear === 'all'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-slate-100 text-slate-700 border-slate-200/80 hover:bg-slate-200/80 hover:text-slate-900'
+                }`}
+              >
+                ทั้งหมด (Show All)
+              </button>
+              {uniqueYears.map((year) => (
+                <button
+                  key={year}
+                  onClick={() => setSelectedYear(year)}
+                  className={`px-3 py-1 text-xs font-black rounded-lg transition-all border cursor-pointer ${
+                    selectedYear === year
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                      : 'bg-slate-100 text-slate-700 border-slate-200/80 hover:bg-slate-200/80 hover:text-slate-900'
+                  }`}
+                >
+                  ปี {year}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Projects Table & List */}
+          {selectedYear !== 'all' ? (
+            <div className="space-y-4">
+              {/* Horizontal Job selection list (No horizontal scrollbar!) */}
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2 shadow-3xs">
+                <div className="text-[10px] font-black text-slate-450 font-sans uppercase tracking-wider">
+                  เลือก Job No.
+                </div>
+                {sortedProjectsForSelectedYear.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">ไม่พบรหัสโครงการที่ตรงตามตัวเลือก</p>
+                ) : (
+                  <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-2.5 space-y-2">
+                    {sortedProjectsForSelectedYear.map((proj) => {
+                      const isActive = selectedJobNo === proj.jobNo;
+                      return (
+                        <div key={proj.id} className="break-inside-avoid">
+                          <button
+                            onClick={() => setSelectedJobNo(proj.jobNo)}
+                            className={`w-full px-2.5 py-1.5 text-[11px] font-mono font-black rounded-lg transition-all border cursor-pointer flex items-center justify-between gap-1.5 ${
+                              isActive
+                                ? 'bg-indigo-650 text-white border-indigo-650 shadow-xs scale-102'
+                                : 'bg-slate-100 hover:bg-slate-200/85 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            <span className="truncate">{proj.jobNo}</span>
+                            {proj.projectImageUrl ? (
+                              <img 
+                                src={proj.projectImageUrl} 
+                                alt={proj.jobNo} 
+                                className="w-5 h-5 object-cover rounded border border-slate-250/50 shrink-0 bg-white" 
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-5 h-5 rounded border border-dashed border-slate-300 shrink-0 flex items-center justify-center bg-slate-50">
+                                <FolderGit2 className="h-2.5 w-2.5 text-slate-400" />
+                              </div>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Display selected project card & its modules below */}
+              {(() => {
+                const activeProjObj = sortedProjectsForSelectedYear.find(p => p.jobNo === selectedJobNo) || sortedProjectsForSelectedYear[0];
+                if (!activeProjObj) return null;
+
+                const associatedTasks = jobs.filter(j => j.jobNo === activeProjObj.jobNo);
                 const completedTasks = associatedTasks.filter(j => j.status === 'completed').length;
 
                 return (
-                  <div key={proj.id} className="bg-white rounded-2xl border border-slate-200/70 p-4 shadow-3xs hover:border-slate-300 transition-all">
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-4 animate-in fade-in duration-150">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3.5 border-b border-slate-100">
                       
-                      {/* Left Block: Image & Basic Info */}
-                      <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                        {/* Project main picture with upload option */}
-                        <div className="relative group/proj rounded-lg overflow-hidden border border-slate-250 w-12 h-12 bg-slate-50 flex items-center justify-center shrink-0">
-                          {proj.projectImageUrl ? (
+                      {/* Left: Image & Info */}
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="relative group/proj rounded-lg overflow-hidden border border-slate-200 w-12 h-12 bg-slate-50 flex items-center justify-center shrink-0">
+                          {activeProjObj.projectImageUrl ? (
                             <>
-                              <img src={proj.projectImageUrl} alt={proj.projectName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              <img src={activeProjObj.projectImageUrl} alt={activeProjObj.projectName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/proj:opacity-100 flex items-center justify-center transition-all">
-                                <Camera className="h-4.5 w-4.5 text-white" />
+                                <Camera className="h-4 w-4 text-white" />
                               </div>
                             </>
                           ) : (
-                            <div className="text-center text-[9px] text-slate-400 font-bold flex flex-col items-center">
-                              <Camera className="h-4 w-4 text-slate-300 mb-0.5" />
-                              <span>ใส่รูป</span>
+                            <div className="text-center text-[8px] text-slate-400 font-bold flex flex-col items-center">
+                              <Camera className="h-4 w-4 text-slate-300" />
                             </div>
                           )}
                           <input
@@ -879,7 +1008,7 @@ export default function SettingsView({
                               if (!file) return;
                               const reader = new FileReader();
                               reader.onloadend = () => {
-                                onEditJobProject(proj.id, { projectImageUrl: reader.result as string });
+                                onEditJobProject(activeProjObj.id, { projectImageUrl: reader.result as string });
                               };
                               reader.readAsDataURL(file);
                             }}
@@ -895,32 +1024,175 @@ export default function SettingsView({
                           />
                         </div>
 
-                        {/* Title details */}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-[10.5px] font-mono font-black text-indigo-700 rounded-md">
-                              {proj.jobNo}
+                        <div className="min-w-0 flex-1 leading-normal">
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-[11px] font-mono font-black text-indigo-700 rounded">
+                              {activeProjObj.jobNo}
                             </span>
-                            <span className="px-1.5 py-0.5 bg-slate-100 text-[10px] font-mono text-slate-600 rounded">
-                              ปี {proj.year}
+                            <span className="text-[10px] font-mono text-slate-400 font-bold">
+                              ปี {activeProjObj.year}
                             </span>
                           </div>
                           
-                          <h4 className="text-xs font-black text-slate-800 font-sans mt-1.5 truncate">
-                            ลูกค้า: <span className="text-slate-600 font-bold">{proj.customer}</span> — โครงการ: <span className="font-bold text-slate-700">{proj.projectName}</span>
+                          <h4 className="text-[11.5px] font-black text-slate-800 font-sans mt-0.5 truncate leading-tight">
+                            ลูกค้า: <span className="text-slate-500">{activeProjObj.customer}</span>
                           </h4>
+                          <p className="text-[10px] text-slate-400 font-sans truncate leading-tight mt-0.2">
+                            โครงการ: <span className="font-bold text-slate-600">{activeProjObj.projectName}</span>
+                          </p>
                         </div>
                       </div>
 
-                      {/* Micro stats and controls */}
-                      <div className="flex items-center justify-between lg:justify-end gap-6 border-t lg:border-t-0 border-slate-100 pt-3 lg:pt-0">
-                        <div className="text-left lg:text-right">
-                          <span className="text-[9px] text-slate-400 font-black uppercase font-sans">ความคืบหน้าโครงการ</span>
-                          <p className="text-xs font-black text-slate-700 font-mono mt-0.5">
+                      {/* Right: Micro stats & controls */}
+                      <div className="flex items-center justify-between md:justify-end gap-5 border-t md:border-t-0 border-slate-100 pt-3 md:pt-0">
+                        <div className="text-left md:text-right">
+                          <span className="text-[8px] text-slate-400 font-black uppercase font-sans">ความคืบหน้า</span>
+                          <p className="text-[10px] font-black text-slate-700 font-mono">
                             {associatedTasks.length > 0 ? (
-                              <span>สำเร็จ {completedTasks}/{associatedTasks.length} มอดูล ({Math.round((completedTasks/associatedTasks.length)*100)}%)</span>
+                              <span>สำเร็จ {completedTasks}/{associatedTasks.length} ({Math.round((completedTasks/associatedTasks.length)*100)}%)</span>
                             ) : (
-                              <span className="text-slate-400 font-normal italic">ยังไม่มีการมอบงานในโปรเจ็กต์</span>
+                              <span className="text-slate-400 font-normal italic text-[9px]">ไม่มีงานมอบหมาย</span>
+                            )}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => openProjEdit(activeProjObj)}
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer"
+                            title="แก้ไขข้อมูลรหัสโปรเจกต์"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (associatedTasks.length > 0) {
+                                alert(`ไม่สามารถลบรหัสงาน ${activeProjObj.jobNo} ได้ เนื่องจากยังมีโมดูลย่อยและใบสั่งงานในระบบอ้างอิงอยู่จำนวน ${associatedTasks.length} รายการ`);
+                                return;
+                              }
+                              if (confirm(`ยืนยันการลบโครงการ ${activeProjObj.jobNo} หรือไม่?`)) {
+                                onDeleteJobProject(activeProjObj.id);
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-md cursor-pointer"
+                            title="ลบโครงการ"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Modules list section */}
+                    <div className="space-y-2">
+                      <div className="text-[11.5px] font-black text-slate-600 dark:text-slate-400 font-sans flex items-center gap-1.5">
+                        <Layers className="h-3.5 w-3.5 text-indigo-500" />
+                        <span>จัดการโมดูล (Modules Manager) ของ {activeProjObj.jobNo}:</span>
+                      </div>
+                      <ProjectModulesManager 
+                        proj={activeProjObj}
+                        onEditJobProject={onEditJobProject}
+                        jobs={jobs}
+                        onEditJob={onEditJob}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : (
+            /* Show original grid list when 'all' is selected */
+            filteredProjects.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-150 p-10 text-center">
+                <FolderGit2 className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+                <h4 className="text-xs font-bold text-slate-700">ไม่พบคลังข้อมูลโปรเจกต์</h4>
+                <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
+                  ยังไม่มีการบันทึกโปรเจกต์ที่ตรงกับการค้นหาของคุณ
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                {filteredProjects.map(proj => {
+                  const associatedTasks = jobs.filter(j => j.jobNo === proj.jobNo);
+                  const completedTasks = associatedTasks.filter(j => j.status === 'completed').length;
+
+                  return (
+                    <div key={proj.id} className="bg-white rounded-xl border border-slate-200 p-3 shadow-3xs hover:border-slate-300 transition-all">
+                      <div className="flex items-center gap-2.5 pb-2.5 border-b border-slate-100">
+                        
+                        {/* Left Block: Image & Basic Info */}
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {/* Project main picture with upload option */}
+                          <div className="relative group/proj rounded-lg overflow-hidden border border-slate-200 w-10 h-10 bg-slate-50 flex items-center justify-center shrink-0">
+                            {proj.projectImageUrl ? (
+                              <>
+                                <img src={proj.projectImageUrl} alt={proj.projectName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/proj:opacity-100 flex items-center justify-center transition-all">
+                                  <Camera className="h-3.5 w-3.5 text-white" />
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-center text-[8px] text-slate-400 font-bold flex flex-col items-center">
+                                <Camera className="h-3.5 w-3.5 text-slate-300" />
+                              </div>
+                            )}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  onEditJobProject(proj.id, { projectImageUrl: reader.result as string });
+                                };
+                                reader.readAsDataURL(file);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                const sibling = e.currentTarget.previousSibling as HTMLInputElement;
+                                sibling?.click();
+                              }}
+                              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                            />
+                          </div>
+
+                          {/* Title details */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="px-1.5 py-0.2 bg-indigo-50 border border-indigo-150 text-[9.5px] font-mono font-black text-indigo-700 rounded">
+                                {proj.jobNo}
+                              </span>
+                              <span className="text-[9px] font-mono text-slate-400 font-bold">
+                                ปี {proj.year}
+                              </span>
+                            </div>
+                            
+                            <h4 className="text-[10.5px] font-black text-slate-800 font-sans mt-0.5 truncate leading-tight">
+                              ลูกค้า: <span className="text-slate-500">{proj.customer}</span>
+                            </h4>
+                            <p className="text-[9.5px] text-slate-400 font-sans truncate leading-tight mt-0.2">
+                              โครงการ: <span className="font-bold text-slate-600">{proj.projectName}</span>
+                            </p>
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* Micro stats and controls */}
+                      <div className="flex items-center justify-between gap-2.5 pt-2 border-slate-100">
+                        <div className="text-left">
+                          <span className="text-[8px] text-slate-400 font-black uppercase font-sans">ความคืบหน้า</span>
+                          <p className="text-[10px] font-black text-slate-700 font-mono">
+                            {associatedTasks.length > 0 ? (
+                              <span>สำเร็จ {completedTasks}/{associatedTasks.length} ({Math.round((completedTasks/associatedTasks.length)*100)}%)</span>
+                            ) : (
+                              <span className="text-slate-400 font-normal italic text-[9px]">ไม่มีงานมอบหมาย</span>
                             )}
                           </p>
                         </div>
@@ -929,10 +1201,10 @@ export default function SettingsView({
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             onClick={() => openProjEdit(proj)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 border border-slate-200/60 rounded-lg cursor-pointer"
+                            className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 border border-slate-200 rounded-md cursor-pointer"
                             title="แก้ไขข้อมูลรหัสโปรเจกต์"
                           >
-                            <Edit3 className="h-4 w-4" />
+                            <Edit3 className="h-3 w-3" />
                           </button>
                           <button
                             onClick={() => {
@@ -944,29 +1216,28 @@ export default function SettingsView({
                                 onDeleteJobProject(proj.id);
                               }
                             }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200/60 rounded-lg cursor-pointer"
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-md cursor-pointer"
                             title="ลบโครงการ"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3 w-3" />
                           </button>
                         </div>
                       </div>
 
+                      {/* Expandable Module Manager Inside Each Project Card */}
+                      <div className="border-t border-slate-100 mt-2 pt-2">
+                        <ProjectModulesManager 
+                          proj={proj}
+                          onEditJobProject={onEditJobProject}
+                          jobs={jobs}
+                          onEditJob={onEditJob}
+                        />
+                      </div>
                     </div>
-
-                    {/* Expandable Module Manager Inside Each Project Card */}
-                    <div className="border-t border-slate-100 mt-3 pt-3">
-                      <ProjectModulesManager 
-                        proj={proj}
-                        onEditJobProject={onEditJobProject}
-                        jobs={jobs}
-                        onEditJob={onEditJob}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )
           )}
 
         </div>
@@ -1460,7 +1731,7 @@ export default function SettingsView({
                             setEmpCardColor('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-100');
                             setIsEmpAddModalOpen(true);
                           }}
-                          className="flex-1 py-1 bg-white hover:bg-indigo-50 dark:bg-slate-850 dark:hover:bg-indigo-950/40 border border-slate-200 dark:border-slate-700 hover:border-indigo-250 text-indigo-650 dark:text-indigo-400 font-extrabold text-[9.5px] rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                          className="flex-1 py-1 bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-850 dark:hover:bg-indigo-950/40 border border-slate-200 dark:border-slate-700 hover:border-indigo-250 text-indigo-650 dark:text-indigo-400 font-extrabold text-[9.5px] rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
                         >
                           <Plus className="h-3 w-3" />
                           <span>เพิ่มลูกทีมแผนกนี้</span>

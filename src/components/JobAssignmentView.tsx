@@ -936,7 +936,7 @@ export default function JobAssignmentView({
                                     className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
                                       taskModule === moduleStr || taskModule === m.name
                                         ? 'bg-indigo-600 text-white border border-indigo-600' 
-                                        : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+                                        : 'bg-slate-100 hover:bg-slate-200/85 text-slate-600 border border-slate-200'
                                     }`}
                                   >
                                     {m.code} - {m.name}
@@ -1189,7 +1189,7 @@ export default function JobAssignmentView({
                                   className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
                                     taskModule === moduleStr || taskModule === m.name
                                       ? 'bg-indigo-600 text-white border border-indigo-600' 
-                                      : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+                                      : 'bg-slate-100 hover:bg-slate-200/85 text-slate-600 border border-slate-200'
                                   }`}
                                 >
                                   {m.code} - {m.name}

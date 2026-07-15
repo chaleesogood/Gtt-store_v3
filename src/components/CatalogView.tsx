@@ -261,7 +261,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
         </div>
         <button
           onClick={handlePrintCatalog}
-          className="px-5 py-2.5 bg-white text-slate-900 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl text-xs font-black tracking-wide font-sans shadow-lg transition-all active:scale-95 flex items-center gap-2 shrink-0 cursor-pointer"
+          className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/80 text-slate-900 border border-slate-200 hover:border-slate-300 rounded-2xl text-xs font-black tracking-wide font-sans shadow-lg transition-all active:scale-95 flex items-center gap-2 shrink-0 cursor-pointer"
         >
           <Printer className="h-4 w-4 text-slate-700" />
           พิมพ์เป็น PDF แคตตาล็อก
@@ -484,8 +484,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                       </span>
                     </div>
 
-                    {/* PRODUCT LIST AS COMPACT LIST ROWS - SINGLE COLUMN VERTICAL STACK */}
-                    <div className="grid grid-cols-1 gap-3">
+                    {/* PRODUCT LIST AS COMPACT ROW GRID - 2/3 COLUMNS TO REDUCE VERTICAL HEIGHT */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
                       {groupedProductsBySeries[seriesName].map((prod) => {
                         const inStock = prod.quantity > 0;
                         const isLowStock = !inStock || prod.quantity <= (prod.minAlert || 5);
@@ -495,79 +495,46 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                           <div
                             key={prod.id}
                             onClick={() => setSelectedProduct(prod)}
-                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-2xl shadow-3xs flex flex-col sm:flex-row items-stretch justify-between cursor-pointer hover:shadow-xs hover:translate-y-[-1px] transition-all group relative animate-in fade-in duration-155 overflow-hidden"
+                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-xl shadow-3xs flex flex-row items-center justify-between cursor-pointer hover:shadow-xs hover:translate-y-[-1px] transition-all group relative animate-in fade-in duration-155 overflow-hidden p-2 gap-2"
                           >
-                            {/* Left: Image & Info */}
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center flex-1 min-w-0">
-                              {/* Product preview base64 / default icon */}
-                              <div className="w-full sm:w-28 h-32 sm:h-auto sm:self-stretch bg-slate-50 dark:bg-slate-950 border-b sm:border-b-0 sm:border-r border-slate-150 dark:border-slate-800 shrink-0 flex items-center justify-center relative">
+                            {/* Left: Image & Info (Horizontal inline) */}
+                            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                              {/* Product preview square icon */}
+                              <div className="w-11 h-11 bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-lg shrink-0 flex items-center justify-center relative overflow-hidden">
                                 {prod.image ? (
                                   <img src={prod.image} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                 ) : (
-                                  <Boxes className="h-8 w-8 text-slate-300 dark:text-slate-700" />
+                                  <Boxes className="h-5 w-5 text-slate-300 dark:text-slate-700" />
                                 )}
-                                {(() => {
-                                  const bMatch = brands.find(b => b.name === prod.brand);
-                                  if (bMatch?.logoUrl) {
-                                    return (
-                                      <div className="absolute top-2 left-2 h-7 w-7 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/50 dark:border-slate-800/80 p-0.5 flex items-center justify-center shadow-3xs">
-                                        <img src={bMatch.logoUrl} alt={prod.brand} className="max-h-full max-w-full object-contain" referrerPolicy="no-referrer" />
-                                      </div>
-                                    );
-                                  }
-                                  return (
-                                    <span className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-slate-900/60 dark:bg-slate-950/80 text-[8px] text-white rounded font-mono font-bold uppercase">
-                                      {prod.brand || 'No Brand'}
-                                    </span>
-                                  );
-                                })()}
                               </div>
 
                               {/* Product Details */}
-                              <div className="flex-1 min-w-0 text-left space-y-1 p-4">
+                              <div className="flex-1 min-w-0 text-left space-y-0.5">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <h5 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors font-sans">
+                                  <h5 className="text-[11.5px] font-black text-slate-800 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors font-sans">
                                     {prod.name}
                                   </h5>
-                                  <span className="font-mono text-[9px] font-bold text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950 px-1.5 py-0.2 rounded border border-slate-150 dark:border-slate-850 flex items-center gap-0.5">
-                                    <Barcode className="h-2.5 w-2.5 text-slate-400" /> SKU: {prod.sku || 'N/A'}
-                                  </span>
                                   {prod.series && (
-                                    <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20 px-1.5 py-0.2 rounded-md">
+                                    <span className="text-[8px] font-bold text-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20 px-1 py-0.2 rounded">
                                       {prod.series}
                                     </span>
                                   )}
-                                  {(() => {
-                                    const bMatch = brands.find(b => b.name === prod.brand);
-                                    if (bMatch) {
-                                      return (
-                                        <span className="inline-flex items-center gap-1 bg-white dark:bg-slate-950 px-1.5 py-0.5 rounded-md border border-slate-150 dark:border-slate-800 text-[10px] font-black leading-none shrink-0 text-slate-700 dark:text-slate-300">
-                                          {bMatch.logoUrl ? (
-                                            <img src={bMatch.logoUrl} alt={prod.brand} className="h-8 object-contain" referrerPolicy="no-referrer" />
-                                          ) : (
-                                            <span>🏷️ {prod.brand}</span>
-                                          )}
-                                        </span>
-                                      );
-                                    }
-                                    return null;
-                                  })()}
                                 </div>
-
-                                <p className="text-[10px] text-slate-450 dark:text-slate-500 line-clamp-1 leading-normal font-sans font-medium">
-                                  {prod.description || 'ไม่มีคำอธิบายเพิ่มเติมเกี่ยวกับพัสดุชิ้นนี้'}
-                                </p>
-
-                                <div className="text-[10.5px] font-sans font-bold text-slate-500 dark:text-slate-400">
-                                  ราคาแนะนำ: <span className="font-mono font-extrabold text-indigo-600 dark:text-indigo-400">฿{prod.price.toLocaleString()}</span>
+                                <div className="flex items-center gap-1 text-[9px] text-slate-400 font-sans">
+                                  <span>SKU: {prod.sku || 'N/A'}</span>
+                                  <span>•</span>
+                                  <span className="font-extrabold text-slate-500 dark:text-slate-350 truncate max-w-[50px]">{prod.brand}</span>
+                                </div>
+                                <div className="text-[10px] font-sans font-extrabold text-indigo-600 dark:text-indigo-400">
+                                  ฿{prod.price.toLocaleString()}
                                 </div>
                               </div>
                             </div>
 
-                            {/* Right: Stock Status & BOM Picker Action */}
-                            <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 w-full sm:w-auto shrink-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800 p-4 pt-0 sm:pt-4 sm:pl-0 self-stretch sm:self-center">
+                            {/* Right: Stock Status & BOM Picker Action (Horizontal inline) */}
+                            <div className="flex flex-col items-end gap-1.5 shrink-0 min-w-[95px]">
                               {/* Stock status indicator */}
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold font-sans flex items-center gap-1 ${
+                              <span className={`px-1.5 py-0.2 rounded-full text-[8.5px] font-extrabold font-sans flex items-center gap-0.5 ${
                                 !inStock
                                   ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-100 dark:border-rose-900/40'
                                   : isLowStock
@@ -575,45 +542,36 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                                   : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40'
                               }`}>
                                 <span className={`w-1 h-1 rounded-full ${!inStock ? 'bg-rose-500' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                                {!inStock ? 'สินค้าหมด' : `คงเหลือ ${prod.quantity} ${prod.unit || 'ชิ้น'}`}
+                                {!inStock ? 'หมด' : `${prod.quantity} ${prod.unit || 'ชิ้น'}`}
                               </span>
 
                               {/* Cart Controls */}
-                              <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                                 {cartItem ? (
-                                  <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-200/50 dark:border-slate-800">
+                                  <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200/50 dark:border-slate-800 scale-90">
                                     <button
                                       onClick={(e) => updateCartQty(prod.id, cartItem.quantity - 1, e)}
-                                      className="w-6 h-6 rounded-lg bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 flex items-center justify-center font-bold text-xs active:scale-90 cursor-pointer"
-                                      title="ลดจำนวน"
+                                      className="w-5 h-5 rounded bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 flex items-center justify-center font-bold text-[10px] active:scale-90 cursor-pointer"
                                     >
                                       -
                                     </button>
-                                    <span className="font-mono text-xs font-black text-indigo-650 dark:text-indigo-400 min-w-[20px] text-center">
+                                    <span className="font-mono text-[10px] font-black text-indigo-600 dark:text-indigo-400 min-w-[14px] text-center">
                                       {cartItem.quantity}
                                     </span>
                                     <button
                                       onClick={(e) => updateCartQty(prod.id, cartItem.quantity + 1, e)}
-                                      className="w-6 h-6 rounded-lg bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 flex items-center justify-center font-bold text-xs active:scale-90 cursor-pointer"
-                                      title="เพิ่มจำนวน"
+                                      className="w-5 h-5 rounded bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 flex items-center justify-center font-bold text-[10px] active:scale-90 cursor-pointer"
                                     >
                                       +
-                                    </button>
-                                    <button
-                                      onClick={(e) => removeCartItem(prod.id, e)}
-                                      className="w-6 h-6 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400 flex items-center justify-center cursor-pointer ml-1"
-                                      title="ลบออกจากรายการ"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
                                     </button>
                                   </div>
                                 ) : (
                                   <button
                                     onClick={(e) => addToCart(prod, e)}
-                                    className="px-3.5 py-1.5 bg-indigo-650 hover:bg-indigo-500 hover:scale-103 active:scale-97 text-white font-black text-[10px] rounded-xl shadow-md shadow-indigo-600/15 transition-all flex items-center gap-1.5 cursor-pointer"
+                                    className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-[9px] rounded-lg shadow-sm shadow-indigo-600/10 transition-all flex items-center gap-1 cursor-pointer"
                                   >
-                                    <ShoppingCart className="h-3.5 w-3.5" />
-                                    <span>เลือกจัดชุด BOM</span>
+                                    <ShoppingCart className="h-3 w-3" />
+                                    <span>จัดชุด BOM</span>
                                   </button>
                                 )}
                               </div>
@@ -762,7 +720,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                   href={selectedProduct.sourceUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 font-sans"
+                  className="px-3 py-1.5 bg-slate-100 border border-slate-200 hover:bg-slate-200/80 text-slate-650 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 font-sans"
                 >
                   <ExternalLink className="h-3 w-3" /> ลิงก์คุณลักษณะเสริม
                 </a>
@@ -815,7 +773,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                 {/* PROJECT ASSIGNMENT & CONFIG CARD */}
                 <div className="bg-slate-50 dark:bg-slate-950/40 p-4 rounded-2xl border border-slate-200 dark:border-slate-850 space-y-4">
                   <div className="flex items-center gap-2 border-b border-slate-200/60 dark:border-slate-850 pb-2">
-                    <div className="w-1.5 h-3 bg-indigo-650 rounded-full" />
+                    <div className="w-1.5 h-3 bg-indigo-600 rounded-full" />
                     <span className="text-[11px] font-black text-slate-700 dark:text-slate-350 uppercase tracking-wider">
                       ข้อมูลเป้าหมายโครงการ (Project Setup)
                     </span>
@@ -1044,7 +1002,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                 <div className="flex gap-2.5 pt-1.5">
                   <button
                     onClick={() => setIsCartOpen(false)}
-                    className="flex-1 py-2.5 bg-white border border-slate-250 dark:border-slate-800 dark:bg-slate-900 hover:bg-slate-50 text-slate-650 dark:text-slate-300 rounded-2xl text-xs font-black tracking-wide font-sans cursor-pointer text-center"
+                    className="flex-1 py-2.5 bg-slate-100 border border-slate-250 dark:border-slate-800 dark:bg-slate-800 hover:bg-slate-200 text-slate-650 dark:text-slate-300 rounded-2xl text-xs font-black tracking-wide font-sans cursor-pointer text-center"
                   >
                     เลือกพัสดุเพิ่ม
                   </button>

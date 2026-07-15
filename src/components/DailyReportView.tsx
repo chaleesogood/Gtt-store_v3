@@ -672,7 +672,7 @@ export default function DailyReportView({
 
                       <button
                         onClick={() => handlePrintOrDownloadPDF(rep)}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 transition-colors cursor-pointer"
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 transition-colors cursor-pointer"
                         title="สั่งพิมพ์รายงาน PDF"
                       >
                         <Printer className="h-3.5 w-3.5" />

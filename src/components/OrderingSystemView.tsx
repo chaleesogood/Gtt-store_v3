@@ -1134,7 +1134,7 @@ export default function OrderingSystemView({
             <ArrowUpDown className="h-3 w-3" /> เรียงตาม:
           </span>
           <select
-            className="bg-white border border-slate-200 px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-600 focus:outline-none cursor-pointer"
+            className="bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-600 focus:outline-none cursor-pointer"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
           >
@@ -1144,7 +1144,7 @@ export default function OrderingSystemView({
           </select>
           <button
             onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-indigo-600 transition-colors flex items-center justify-center cursor-pointer"
+            className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 text-indigo-600 transition-colors flex items-center justify-center cursor-pointer"
             title={sortOrder === 'asc' ? 'เรียงจากน้อยไปมาก' : 'เรียงจากมากไปน้อย'}
           >
             {sortOrder === 'asc' ? (

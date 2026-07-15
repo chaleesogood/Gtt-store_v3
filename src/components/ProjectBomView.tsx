@@ -1179,7 +1179,7 @@ export default function ProjectBomView({
                     className={`px-2 py-1 rounded border text-[10.5px] font-sans font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5 ${
                       isActive 
                         ? 'bg-indigo-50 border-indigo-300 text-indigo-800' 
-                        : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-600'
+                        : 'bg-slate-100 border-slate-200/80 hover:bg-slate-200/80 hover:text-slate-900 text-slate-600'
                     }`}
                   >
                     <span className="font-mono text-[9px] px-1 bg-slate-100 rounded text-slate-500 font-extrabold">{bom.jobNo || 'NO JOB'}</span>
@@ -1213,14 +1213,14 @@ export default function ProjectBomView({
                   <div className="flex items-center gap-1 shrink-0 ml-auto">
                     <button
                       onClick={handleOpenEditModal}
-                      className="p-0.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded border border-slate-200/60 bg-white"
+                      className="p-0.5 text-slate-500 hover:text-indigo-650 hover:bg-slate-200/80 rounded border border-slate-200/60 bg-slate-100"
                       title="แก้ไขสูตรประกอบ"
                     >
                       <Edit3 className="h-3.5 w-3.5" />
                     </button>
                     <button
                       onClick={() => handleCopyBom(activeBom)}
-                      className="px-1.5 py-0.5 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded font-bold text-[9.5px] bg-white flex items-center gap-0.5"
+                      className="px-1.5 py-0.5 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded font-bold text-[9.5px] bg-slate-100 flex items-center gap-0.5"
                     >
                       <Copy className="h-2.5 w-2.5" />
                       <span>คัดลอก BOM</span>
@@ -1239,7 +1239,7 @@ export default function ProjectBomView({
                     )}
                     <button
                       onClick={() => handleDeleteBom(activeBom)}
-                      className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-white rounded border border-slate-200/60 bg-white"
+                      className="p-0.5 text-slate-400 hover:text-rose-650 hover:bg-slate-200/80 rounded border border-slate-200/60 bg-slate-100"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -1632,7 +1632,7 @@ export default function ProjectBomView({
                       key={p.id}
                       onClick={() => setSelectedProj(p)}
                       className={`p-1.5 rounded border transition-colors cursor-pointer text-left ${
-                        isSelected ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-150 hover:bg-slate-50/50'
+                        isSelected ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-100 border-slate-150 hover:bg-slate-200/50'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-1.5">
