@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Product, Category, Employee, JobProject } from '../types';
+import { Product, Category, Employee, JobProject, Brand } from '../types';
 import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag } from 'lucide-react';
 import CategoryView from './CategoryView';
 import OrderingSystemView from './OrderingSystemView';
@@ -21,6 +21,7 @@ interface ProductListViewProps {
   addToast: (type: 'success' | 'warning' | 'info', title: string, message: string) => void;
   employees: Employee[];
   jobProjects: JobProject[];
+  brands?: Brand[];
 }
 
 // Curated stock photos for quick selection
@@ -82,6 +83,7 @@ export default function ProductListView({
   addToast,
   employees,
   jobProjects,
+  brands = []
 }: ProductListViewProps) {
   // Filters & Search
   const [activeSubTab, setActiveSubTab] = useState<'products' | 'categories' | 'ordering' | 'cart'>('products');
@@ -154,6 +156,7 @@ export default function ProductListView({
   const [formWarehouse, setFormWarehouse] = useState('คลังสินค้าหลัก A');
   const [formExpiryDate, setFormExpiryDate] = useState('');
   const [formColor, setFormColor] = useState('');
+  const [formBrand, setFormBrand] = useState('');
 
   // Image Upload States
   const [imagePreview, setImagePreview] = useState('');
@@ -235,6 +238,7 @@ export default function ProductListView({
     setFormWarehouse('คลังสินค้าหลัก A');
     setFormExpiryDate('');
     setFormColor('');
+    setFormBrand('');
     setIsModalOpen(true);
   };
 
@@ -257,6 +261,7 @@ export default function ProductListView({
     setFormWarehouse(product.warehouse || 'คลังสินค้าหลัก A');
     setFormExpiryDate(product.expiryDate || '');
     setFormColor(product.color || '');
+    setFormBrand(product.brand || '');
     setIsModalOpen(true);
   };
 
@@ -280,6 +285,7 @@ export default function ProductListView({
       warehouse: formWarehouse,
       expiryDate: formExpiryDate,
       color: formColor,
+      brand: formBrand,
     };
 
     if (editingProduct) {
@@ -916,12 +922,12 @@ export default function ProductListView({
                                     return (
                                       <tr key={p.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/30 transition-colors group">
                                         {/* Name & Photo */}
-                                        <td className="py-0.5 px-2">
-                                          <div className="flex items-center gap-1.5">
+                                        <td className="py-1 px-2">
+                                          <div className="flex items-center gap-2">
                                             <img
                                               src={p.image || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'}
                                               alt={p.name}
-                                              className="w-6 h-6 object-cover rounded bg-slate-50 dark:bg-slate-800 shrink-0"
+                                              className="w-12 h-12 object-cover rounded-lg bg-slate-50 dark:bg-slate-800 shrink-0 border border-slate-200/60 dark:border-slate-800"
                                               referrerPolicy="no-referrer"
                                             />
                                             <div className="min-w-0">
@@ -931,15 +937,30 @@ export default function ProductListView({
                                                 {getColorDotAndBadge(p.color)}
                                               </h4>
                                               <div className="flex flex-wrap gap-1 items-center mt-0.5 leading-none">
-                                              <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 dark:text-indigo-400 rounded leading-none">
-                                                📍 {p.warehouse || 'A'}
-                                              </span>
-                                              {p.expiryDate && (
-                                                <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-rose-700 bg-rose-50/50 dark:bg-rose-950/30 dark:text-rose-400 rounded leading-none">
-                                                  📅 EXP: {new Date(p.expiryDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short' })}
+                                                <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 dark:text-indigo-400 rounded leading-none">
+                                                  📍 {p.warehouse || 'A'}
                                                 </span>
-                                              )}
-                                            </div>
+                                                {(() => {
+                                                  const bMatch = brands.find(b => b.name === p.brand);
+                                                  if (bMatch) {
+                                                    return (
+                                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-black text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-md leading-none shrink-0 border border-slate-200/50 dark:border-slate-700/50">
+                                                        {bMatch.logoUrl ? (
+                                                          <img src={bMatch.logoUrl} alt={p.brand} className="h-4 object-contain" referrerPolicy="no-referrer" />
+                                                        ) : (
+                                                          <span>🏷️ {p.brand}</span>
+                                                        )}
+                                                      </span>
+                                                    );
+                                                  }
+                                                  return null;
+                                                })()}
+                                                {p.expiryDate && (
+                                                  <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-rose-700 bg-rose-50/50 dark:bg-rose-950/30 dark:text-rose-400 rounded leading-none">
+                                                    📅 EXP: {new Date(p.expiryDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short' })}
+                                                  </span>
+                                                )}
+                                              </div>
                                           </div>
                                         </div>
                                       </td>
@@ -1087,12 +1108,12 @@ export default function ProductListView({
                   return (
                     <tr key={p.id} className="hover:bg-slate-50/40 transition-colors group">
                       {/* Name & Photo */}
-                      <td className="py-0.5 px-2">
-                        <div className="flex items-center gap-1.5">
+                      <td className="py-1 px-2">
+                        <div className="flex items-center gap-2">
                           <img
                             src={p.image || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'}
                             alt={p.name}
-                            className="w-6 h-6 object-cover rounded bg-slate-50 shrink-0"
+                            className="w-12 h-12 object-cover rounded-lg bg-slate-50 dark:bg-slate-800 shrink-0 border border-slate-200/60 dark:border-slate-800"
                             referrerPolicy="no-referrer"
                           />
                           <div className="min-w-0">
@@ -1101,15 +1122,32 @@ export default function ProductListView({
                                 🏷️ {p.series}
                               </span>
                             )}
-                            <h4 className="font-bold text-slate-700 font-sans leading-none line-clamp-1 text-[11px]" title={p.name}>
+                            <h4 className="font-bold text-slate-700 dark:text-slate-200 font-sans leading-none line-clamp-1 text-[11px]" title={p.name}>
                               {p.name}
                               {getColorDotAndBadge(p.color)}
                             </h4>
-                            {p.expiryDate && (
-                              <p className="text-[8.5px] text-rose-700 font-sans mt-0.5 leading-none">
-                                📅 EXP: {new Date(p.expiryDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short' })}
-                              </p>
-                            )}
+                            <div className="flex flex-wrap gap-1 items-center mt-0.5 leading-none">
+                              {(() => {
+                                const bMatch = brands.find(b => b.name === p.brand);
+                                if (bMatch) {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-black text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-md leading-none shrink-0 border border-slate-200/50 dark:border-slate-700/50">
+                                      {bMatch.logoUrl ? (
+                                        <img src={bMatch.logoUrl} alt={p.brand} className="h-4 object-contain" referrerPolicy="no-referrer" />
+                                      ) : (
+                                        <span>🏷️ {p.brand}</span>
+                                      )}
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
+                              {p.expiryDate && (
+                                <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-rose-700 bg-rose-50/50 dark:bg-rose-950/30 dark:text-rose-400 rounded leading-none">
+                                  📅 EXP: {new Date(p.expiryDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short' })}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -1353,6 +1391,43 @@ export default function ProductListView({
                     }
                   })()}
                 </div>
+              </div>
+
+              {/* Brand Selection */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans flex items-center gap-1">
+                  <Tag className="h-3 w-3 text-indigo-500" />
+                  <span>แบรนด์สินค้า (Brand)</span>
+                </label>
+                <select
+                  className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
+                  value={formBrand}
+                  onChange={(e) => setFormBrand(e.target.value)}
+                >
+                  <option value="">-- ไม่ระบุแบรนด์สินค้า / ทั่วไป --</option>
+                  {brands.map((b) => (
+                    <option key={b.id} value={b.name}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                {formBrand && (
+                  <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                    <span>แบรนด์ที่เลือก:</span>
+                    {(() => {
+                      const bMatch = brands.find(b => b.name === formBrand);
+                      if (bMatch?.logoUrl) {
+                        return (
+                          <div className="h-5 bg-white dark:bg-slate-950 px-1.5 py-0.5 rounded border border-slate-200/60 dark:border-slate-800 flex items-center gap-1 shrink-0">
+                            <img src={bMatch.logoUrl} alt={formBrand} className="h-full object-contain" referrerPolicy="no-referrer" />
+                            <span>{formBrand}</span>
+                          </div>
+                        );
+                      }
+                      return <span className="text-slate-700 dark:text-slate-300 font-black">{formBrand}</span>;
+                    })()}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

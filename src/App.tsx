@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport } from './types';
+import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_ACTIVITIES } from './initialData';
 import Toast, { ToastMessage } from './components/Toast';
 import DashboardView from './components/DashboardView';
@@ -28,6 +28,7 @@ export default function App() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [jobProjects, setJobProjects] = useState<JobProject[]>([]);
   const [dailyReports, setDailyReports] = useState<DailyReport[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
 
 
   // Auth / Admin state
@@ -283,6 +284,26 @@ export default function App() {
       checkFirestoreQuotaError(error);
       const saved = localStorage.getItem('stock_manager_employees_list');
       setEmployees(saved ? JSON.parse(saved) : []);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync brands from Firestore
+  useEffect(() => {
+    const q = query(collection(db, 'brands'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: Brand[] = [];
+      snapshot.forEach((document) => {
+        list.push({ id: document.id, ...document.data() } as Brand);
+      });
+      list.sort((a, b) => a.name.localeCompare(b.name, 'th'));
+      setBrands(list);
+      localStorage.setItem('stock_manager_brands_list', JSON.stringify(list));
+    }, (error) => {
+      console.error("Firestore brands sync error:", error);
+      checkFirestoreQuotaError(error);
+      const saved = localStorage.getItem('stock_manager_brands_list');
+      setBrands(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
   }, []);
@@ -786,6 +807,71 @@ export default function App() {
     }
   };
 
+  // -------------------- BRANDS WORKFLOWS --------------------
+
+  const handleAddBrand = async (newBrandData: Omit<Brand, 'id' | 'createdAt'>) => {
+    const brandId = `brand-${Math.random().toString(36).substring(2, 9)}`;
+    const brand: Brand = {
+      ...newBrandData,
+      id: brandId,
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedBrands = [...brands, brand];
+    setBrands(updatedBrands);
+    localStorage.setItem('stock_manager_brands_list', JSON.stringify(updatedBrands));
+
+    try {
+      await setDoc(doc(db, 'brands', brand.id), cleanUndefined(brand));
+      addToast('success', 'เพิ่มแบรนด์สินค้าสำเร็จ', `แบรนด์ "${brand.name}" ถูกเพิ่มเข้าสู่ระบบแล้ว`);
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถเพิ่มแบรนด์ได้: ${error.message}`);
+    }
+  };
+
+  const handleEditBrand = async (id: string, updatedFields: Partial<Brand>) => {
+    const updatedBrands = brands.map((br) =>
+      br.id === id ? { ...br, ...updatedFields } : br
+    );
+    setBrands(updatedBrands);
+    localStorage.setItem('stock_manager_brands_list', JSON.stringify(updatedBrands));
+
+    try {
+      const brandRef = doc(db, 'brands', id);
+      const cleanFields: Record<string, any> = {};
+      Object.entries(updatedFields).forEach(([key, val]) => {
+        if (val !== undefined) {
+          cleanFields[key] = val;
+        }
+      });
+      await updateDoc(brandRef, cleanFields);
+      addToast('success', 'ปรับปรุงข้อมูลแบรนด์สำเร็จ', 'ข้อมูลของแบรนด์ได้รับการปรับปรุงในระบบแล้ว');
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถปรับปรุงแบรนด์ได้: ${error.message}`);
+    }
+  };
+
+  const handleDeleteBrand = async (id: string) => {
+    const brandToDelete = brands.find((b) => b.id === id);
+    if (!brandToDelete) return;
+
+    const updatedBrands = brands.filter((br) => br.id !== id);
+    setBrands(updatedBrands);
+    localStorage.setItem('stock_manager_brands_list', JSON.stringify(updatedBrands));
+
+    try {
+      await deleteDoc(doc(db, 'brands', id));
+      addToast('info', 'ลบแบรนด์สินค้าสำเร็จ', `แบรนด์ "${brandToDelete.name}" ถูกนำออกจากระบบแล้ว`);
+    } catch (error: any) {
+      console.error(error);
+      setBrands(brands);
+      localStorage.setItem('stock_manager_brands_list', JSON.stringify(brands));
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถลบแบรนด์ได้: ${error.message}`);
+    }
+  };
+
   // -------------------- JOB PROJECTS WORKFLOWS --------------------
 
   const handleAddJobProject = async (newProjData: Omit<JobProject, 'id' | 'createdAt'>) => {
@@ -971,6 +1057,7 @@ export default function App() {
             addToast={addToast}
             employees={employees}
             jobProjects={jobProjects}
+            brands={brands}
           />
         );
       case 'logs':
@@ -1031,6 +1118,10 @@ export default function App() {
             onDeleteJobProject={handleDeleteJobProject}
             jobs={jobs}
             onEditJob={handleEditJob}
+            brands={brands}
+            onAddBrand={handleAddBrand}
+            onEditBrand={handleEditBrand}
+            onDeleteBrand={handleDeleteBrand}
           />
         );
       case 'catalog':
@@ -1040,6 +1131,7 @@ export default function App() {
             categories={categories}
             jobProjects={jobProjects}
             addToast={addToast}
+            brands={brands}
           />
         );
 

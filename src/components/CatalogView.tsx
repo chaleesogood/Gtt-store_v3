@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { collection, doc, setDoc } from 'firebase/firestore';
 import { db, cleanUndefined } from '../firebase';
-import { Product, Category, JobProject, Bom, BomItem } from '../types';
+import { Product, Category, JobProject, Bom, BomItem, Brand } from '../types';
 import { 
   Search, 
   Printer, 
@@ -23,7 +23,8 @@ import {
   Trash2,
   ArrowRight,
   Loader2,
-  Play
+  Play,
+  FileText
 } from 'lucide-react';
 
 interface CatalogViewProps {
@@ -31,9 +32,10 @@ interface CatalogViewProps {
   categories: Category[];
   jobProjects?: JobProject[];
   addToast?: (type: 'success' | 'warning' | 'info', title: string, message: string) => void;
+  brands?: Brand[];
 }
 
-export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, jobProjects = [], addToast }) => {
+export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, jobProjects = [], addToast, brands = [] }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
@@ -48,6 +50,34 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
   const [bomDescription, setBomDescription] = useState<string>('');
   const [requiredQuantity, setRequiredQuantity] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  const handleOpenPdf = (pdfUrl?: string) => {
+    if (!pdfUrl) return;
+    try {
+      if (pdfUrl.startsWith('data:application/pdf;base64,')) {
+        // For base64, open in a new window with iframe, or download
+        const newWindow = window.open();
+        if (newWindow) {
+          newWindow.document.write(
+            `<iframe src="${pdfUrl}" style="width:100%; height:100%; border:none;"></iframe>`
+          );
+          newWindow.document.title = "คู่มือสินค้า PDF";
+        } else {
+          // Fallback to direct download
+          const link = document.createElement('a');
+          link.href = pdfUrl;
+          link.download = 'manual.pdf';
+          link.click();
+        }
+      } else {
+        // Direct web link
+        window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('ไม่สามารถเปิดไฟล์ PDF ได้โดยตรงจากเบราว์เซอร์นี้ แนะนำให้ตรวจสอบความถูกต้องของ URL');
+    }
+  };
 
   const handleJobChange = (jobNo: string) => {
     setSelectedJobNo(jobNo);
@@ -163,7 +193,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
   };
 
   // Extract all unique brands
-  const brands = useMemo(() => {
+  const uniqueBrandNames = useMemo(() => {
     const set = new Set<string>();
     products.forEach(p => {
       if (p.brand) set.add(p.brand.trim());
@@ -306,7 +336,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
             </div>
 
             {/* Brand/Manufacturer Filter */}
-            {brands.length > 0 && (
+            {uniqueBrandNames.length > 0 && (
               <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest font-sans block">
                   กรองตามผู้ผลิต (แบรนด์)
@@ -317,7 +347,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                   className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden"
                 >
                   <option value="all">แบรนด์ทั้งหมด (All Brands)</option>
-                  {brands.map(brand => (
+                  {uniqueBrandNames.map(brand => (
                     <option key={brand} value={brand}>{brand}</option>
                   ))}
                 </select>
@@ -429,9 +459,25 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                         ) : (
                           <Tag className="h-4 w-4 text-indigo-500" />
                         )}
-                        <h4 className="text-xs font-black text-slate-700 dark:text-slate-200 tracking-wide font-sans">
-                          {!isGenericSeries ? `Series: ${seriesName}` : 'พัสดุทั่วไป (ทั่วไป / ไม่มี Series ย่อย)'}
-                        </h4>
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">
+                          <h4 className="text-xs font-black text-slate-700 dark:text-slate-200 tracking-wide font-sans">
+                            {!isGenericSeries ? `Series: ${seriesName}` : 'พัสดุทั่วไป (ทั่วไป / ไม่มี Series ย่อย)'}
+                          </h4>
+                          {sSeriesObj?.pdfUrl && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenPdf(sSeriesObj.pdfUrl);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold bg-rose-500 hover:bg-rose-600 active:scale-95 text-white rounded-md shadow-3xs transition-all cursor-pointer"
+                              title="อ่าน PDF Manual ของ Series นี้ออนไลน์"
+                            >
+                              <FileText className="h-3 w-3" />
+                              <span>อ่านคู่มือ PDF</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <span className="font-mono text-[9px] font-bold text-slate-400">
                         {groupedProductsBySeries[seriesName].length} รายการ
@@ -449,24 +495,36 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                           <div
                             key={prod.id}
                             onClick={() => setSelectedProduct(prod)}
-                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-2xl p-4 shadow-3xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 cursor-pointer hover:shadow-xs hover:translate-y-[-1px] transition-all group relative animate-in fade-in duration-155"
+                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-2xl shadow-3xs flex flex-col sm:flex-row items-stretch justify-between cursor-pointer hover:shadow-xs hover:translate-y-[-1px] transition-all group relative animate-in fade-in duration-155 overflow-hidden"
                           >
                             {/* Left: Image & Info */}
-                            <div className="flex gap-4 items-center flex-1 min-w-0">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center flex-1 min-w-0">
                               {/* Product preview base64 / default icon */}
-                              <div className="w-16 h-16 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-800 shrink-0 flex items-center justify-center relative shadow-3xs">
+                              <div className="w-full sm:w-28 h-32 sm:h-auto sm:self-stretch bg-slate-50 dark:bg-slate-950 border-b sm:border-b-0 sm:border-r border-slate-150 dark:border-slate-800 shrink-0 flex items-center justify-center relative">
                                 {prod.image ? (
                                   <img src={prod.image} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                 ) : (
-                                  <Boxes className="h-6 w-6 text-slate-300 dark:text-slate-700" />
+                                  <Boxes className="h-8 w-8 text-slate-300 dark:text-slate-700" />
                                 )}
-                                <span className="absolute bottom-1 left-1 px-1 bg-slate-900/60 dark:bg-slate-950/80 text-[8px] text-white rounded font-mono font-bold uppercase">
-                                  {prod.brand || 'No Brand'}
-                                </span>
+                                {(() => {
+                                  const bMatch = brands.find(b => b.name === prod.brand);
+                                  if (bMatch?.logoUrl) {
+                                    return (
+                                      <div className="absolute top-2 left-2 h-7 w-7 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/50 dark:border-slate-800/80 p-0.5 flex items-center justify-center shadow-3xs">
+                                        <img src={bMatch.logoUrl} alt={prod.brand} className="max-h-full max-w-full object-contain" referrerPolicy="no-referrer" />
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <span className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-slate-900/60 dark:bg-slate-950/80 text-[8px] text-white rounded font-mono font-bold uppercase">
+                                      {prod.brand || 'No Brand'}
+                                    </span>
+                                  );
+                                })()}
                               </div>
 
                               {/* Product Details */}
-                              <div className="flex-1 min-w-0 text-left space-y-1">
+                              <div className="flex-1 min-w-0 text-left space-y-1 p-4">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <h5 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors font-sans">
                                     {prod.name}
@@ -479,6 +537,21 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                                       {prod.series}
                                     </span>
                                   )}
+                                  {(() => {
+                                    const bMatch = brands.find(b => b.name === prod.brand);
+                                    if (bMatch) {
+                                      return (
+                                        <span className="inline-flex items-center gap-1 bg-white dark:bg-slate-950 px-1.5 py-0.5 rounded-md border border-slate-150 dark:border-slate-800 text-[10px] font-black leading-none shrink-0 text-slate-700 dark:text-slate-300">
+                                          {bMatch.logoUrl ? (
+                                            <img src={bMatch.logoUrl} alt={prod.brand} className="h-8 object-contain" referrerPolicy="no-referrer" />
+                                          ) : (
+                                            <span>🏷️ {prod.brand}</span>
+                                          )}
+                                        </span>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                 </div>
 
                                 <p className="text-[10px] text-slate-450 dark:text-slate-500 line-clamp-1 leading-normal font-sans font-medium">
@@ -492,7 +565,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                             </div>
 
                             {/* Right: Stock Status & BOM Picker Action */}
-                            <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 w-full sm:w-auto shrink-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800 pt-3 sm:pt-0">
+                            <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 w-full sm:w-auto shrink-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800 p-4 pt-0 sm:pt-4 sm:pl-0 self-stretch sm:self-center">
                               {/* Stock status indicator */}
                               <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold font-sans flex items-center gap-1 ${
                                 !inStock
@@ -508,7 +581,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                               {/* Cart Controls */}
                               <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                                 {cartItem ? (
-                                  <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
+                                  <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-200/50 dark:border-slate-800">
                                     <button
                                       onClick={(e) => updateCartQty(prod.id, cartItem.quantity - 1, e)}
                                       className="w-6 h-6 rounded-lg bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 flex items-center justify-center font-bold text-xs active:scale-90 cursor-pointer"
@@ -591,9 +664,25 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                   )}
                 </div>
                 <div className="space-y-1.5 min-w-0 flex-1">
-                  <span className="px-2.5 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-extrabold uppercase tracking-widest inline-block font-sans">
-                    {selectedProduct.brand || 'GENERIC BRAND'}
-                  </span>
+                  {(() => {
+                    const bMatch = brands.find(b => b.name === selectedProduct.brand);
+                    if (bMatch) {
+                      return (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-xl text-[9.5px] font-black text-slate-700 dark:text-slate-300 shadow-3xs leading-none">
+                          {bMatch.logoUrl ? (
+                            <img src={bMatch.logoUrl} alt={selectedProduct.brand} className="h-5 object-contain" referrerPolicy="no-referrer" />
+                          ) : (
+                            <span>🏷️ {selectedProduct.brand}</span>
+                          )}
+                        </div>
+                      );
+                    }
+                    return (
+                      <span className="px-2.5 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-extrabold uppercase tracking-widest inline-block font-sans">
+                        {selectedProduct.brand || 'GENERIC BRAND'}
+                      </span>
+                    );
+                  })()}
                   <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 font-sans tracking-tight leading-tight">
                     {selectedProduct.name}
                   </h3>

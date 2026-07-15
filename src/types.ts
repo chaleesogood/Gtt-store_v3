@@ -24,6 +24,14 @@ export interface Product {
 export interface SubSeries {
   name: string;
   imageUrl?: string;
+  pdfUrl?: string;
+}
+
+export interface Brand {
+  id: string;
+  name: string;
+  logoUrl?: string; // Base64 or image URL
+  createdAt: string;
 }
 
 export interface Category {

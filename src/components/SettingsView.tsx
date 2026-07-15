@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Job, Employee, JobProject, normalizeModules } from '../types';
+import { Job, Employee, JobProject, normalizeModules, Brand } from '../types';
 import { 
   FolderGit2, 
   Users, 
@@ -24,7 +24,8 @@ import {
   Palette,
   Wrench,
   Sparkles,
-  ClipboardList
+  ClipboardList,
+  Tag
 } from 'lucide-react';
 
 const getDeptBadgeStyle = (dept: string) => {
@@ -465,9 +466,14 @@ interface SettingsViewProps {
 
   jobs: Job[];
   onEditJob: (id: string, updatedFields: Partial<Job>) => Promise<void>;
+
+  brands?: Brand[];
+  onAddBrand?: (brand: Omit<Brand, 'id' | 'createdAt'>) => Promise<void>;
+  onEditBrand?: (id: string, updatedFields: Partial<Brand>) => Promise<void>;
+  onDeleteBrand?: (id: string) => Promise<void>;
 }
 
-type SubTab = 'projects' | 'employees';
+type SubTab = 'projects' | 'employees' | 'brands';
 
 export default function SettingsView({
   employees,
@@ -479,7 +485,11 @@ export default function SettingsView({
   onEditJobProject,
   onDeleteJobProject,
   jobs,
-  onEditJob
+  onEditJob,
+  brands = [],
+  onAddBrand,
+  onEditBrand,
+  onDeleteBrand
 }: SettingsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('projects');
 
@@ -514,6 +524,14 @@ export default function SettingsView({
   const [empRole, setEmpRole] = useState('');
   const [empCardColor, setEmpCardColor] = useState('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-850 dark:text-slate-100');
 
+  // Form Fields & States - Brands
+  const [brandName, setBrandName] = useState('');
+  const [brandLogo, setBrandLogo] = useState('');
+  const [brandSearch, setBrandSearch] = useState('');
+  const [isBrandAddModalOpen, setIsBrandAddModalOpen] = useState(false);
+  const [isBrandEditModalOpen, setIsBrandEditModalOpen] = useState(false);
+  const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
+
   const [employeeSubTab, setEmployeeSubTab] = useState<'chart' | 'list'>('chart');
 
   // Filter project names & search
@@ -543,6 +561,14 @@ export default function SettingsView({
       );
     });
   }, [employees, empSearch]);
+
+  // Filter brands & search
+  const filteredBrands = useMemo(() => {
+    return brands.filter(b => {
+      const search = brandSearch.toLowerCase().trim();
+      return b.name.toLowerCase().includes(search);
+    });
+  }, [brands, brandSearch]);
 
   // Auto generator for Job No.
   const autoGenerateNewProjJobNo = () => {
@@ -738,6 +764,18 @@ export default function SettingsView({
           >
             <Users className="h-4 w-4" />
             <span>จัดการรายชื่อพนักงาน ({employees.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveSubTab('brands')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+              activeSubTab === 'brands' 
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
+            }`}
+            id="settings-tab-brands"
+          >
+            <Tag className="h-4 w-4" />
+            <span>จัดการแบรนด์สินค้า ({brands.length})</span>
           </button>
         </div>
       </div>
@@ -2204,6 +2242,415 @@ export default function SettingsView({
                 <button
                   type="submit"
                   className="px-4 py-1.5 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg cursor-pointer shadow-xs"
+                >
+                  บันทึกการแก้ไข
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ======================= TAB 3: BRAND DIRECTORY ======================== */}
+      {/* ======================================================================= */}
+      {activeSubTab === 'brands' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-base font-extrabold text-slate-800 font-sans flex items-center gap-1.5">
+                <Tag className="h-4 w-4 text-indigo-500" />
+                ทำเนียบแบรนด์สินค้า (Brand Directory)
+              </h3>
+              <p className="text-[10px] text-slate-400 font-medium">
+                ลงทะเบียนแบรนด์สินค้าที่ใช้ในโครงการและในคลังพัสดุ เพื่อเชื่อมโยงโลโก้แบรนด์สินค้าและเอกสารแคตตาล็อก
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setBrandName('');
+                setBrandLogo('');
+                setIsBrandAddModalOpen(true);
+              }}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-xs self-start md:self-auto"
+              id="btn-add-brand-modal"
+            >
+              <Plus className="h-4 w-4" />
+              <span>สร้างแบรนด์สินค้าใหม่</span>
+            </button>
+          </div>
+
+          {/* Search Box */}
+          <div className="bg-white/80 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+                <Search className="h-4 w-4 text-slate-400" />
+              </span>
+              <input
+                type="text"
+                placeholder="ค้นหาชื่อแบรนด์สินค้า..."
+                value={brandSearch}
+                onChange={(e) => setBrandSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950/20 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden"
+                id="brand-search-input"
+              />
+            </div>
+          </div>
+
+          {/* Brands list */}
+          {filteredBrands.length === 0 ? (
+            <div className="bg-white/40 dark:bg-slate-900/20 border border-slate-100 dark:border-slate-800 rounded-2xl p-12 text-center">
+              <div className="inline-flex p-3 bg-slate-100 dark:bg-slate-800 rounded-xl mb-3">
+                <Tag className="h-6 w-6 text-slate-400" />
+              </div>
+              <p className="text-xs font-bold text-slate-600 dark:text-slate-400">ไม่พบข้อมูลแบรนด์สินค้า</p>
+              <p className="text-[10px] text-slate-400 mt-1">คุณสามารถสร้างแบรนด์สินค้าใหม่ได้โดยคลิกปุ่ม "สร้างแบรนด์สินค้าใหม่"</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+              {filteredBrands.map((brand) => (
+                <div 
+                  key={brand.id}
+                  className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-between text-center shadow-xs transition-all hover:border-indigo-500/20 group"
+                >
+                  <div className="flex flex-col items-center space-y-3 w-full">
+                    {/* Logo Box */}
+                    <div className="h-16 w-16 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-100 dark:border-slate-850 flex items-center justify-center overflow-hidden shrink-0">
+                      {brand.logoUrl ? (
+                        <img 
+                          src={brand.logoUrl} 
+                          alt={brand.name} 
+                          className="max-h-full max-w-full object-contain p-1"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <span className="text-xl font-black text-indigo-500 font-sans uppercase">
+                          {brand.name.charAt(0)}
+                        </span>
+                      )}
+                    </div>
+                    {/* Brand Name */}
+                    <div className="space-y-0.5 w-full">
+                      <p className="text-xs font-black text-slate-800 dark:text-slate-100 font-sans truncate px-1" title={brand.name}>
+                        {brand.name}
+                      </p>
+                      <p className="text-[9px] font-bold text-slate-400 font-sans">
+                        ID: {brand.id.replace('brand-', '')}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-center gap-1.5 mt-4 pt-3 border-t border-slate-50 dark:border-slate-850 w-full opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedBrand(brand);
+                        setBrandName(brand.name);
+                        setBrandLogo(brand.logoUrl || '');
+                        setIsBrandEditModalOpen(true);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                      title="แก้ไขข้อมูลแบรนด์"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`คุณต้องการลบแบรนด์ "${brand.name}" หรือไม่? หากมีสินค้าใช้งานแบรนด์นี้ ข้อมูลแบรนด์อาจจะไม่แสดงผล`)) {
+                          onDeleteBrand?.(brand.id);
+                        }
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                      title="ลบแบรนด์สินค้า"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ======================== MODAL: ADD BRAND ============================= */}
+      {/* ======================================================================= */}
+      {isBrandAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Tag className="h-4 w-4 text-indigo-500" />
+                <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">สร้างแบรนด์สินค้าใหม่</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBrandAddModalOpen(false)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!brandName.trim()) return;
+                await onAddBrand?.({
+                  name: brandName.trim(),
+                  logoUrl: brandLogo.trim()
+                });
+                setIsBrandAddModalOpen(false);
+              }}
+              className="flex-1 overflow-y-auto"
+            >
+              <div className="p-4 space-y-4">
+                {/* Brand Name */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อแบรนด์สินค้า <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={brandName}
+                    onChange={(e) => setBrandName(e.target.value)}
+                    placeholder="กรอกชื่อแบรนด์สินค้า (เช่น Siemens, Schneider, Mitsubishi)..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Brand Logo Option 1: File upload */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">อัปโหลดไฟล์ Logo แบรนด์</label>
+                  <div className="flex items-center gap-3">
+                    <div className="h-16 w-16 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-850 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+                      {brandLogo ? (
+                        <img 
+                          src={brandLogo} 
+                          alt="Logo Preview" 
+                          className="max-h-full max-w-full object-contain p-1"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <Tag className="h-5 w-5 text-slate-300" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <label className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer border border-slate-200/60 dark:border-slate-700/60">
+                        <Upload className="h-3.5 w-3.5" />
+                        เลือกไฟล์รูปภาพ Logo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setBrandLogo(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                      <p className="text-[8px] text-slate-400 mt-1">ขนาดแนะนำ: อัตราส่วน 1:1, สี่เหลี่ยมจัตุรัส</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Brand Logo Option 2: Image URL */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">หรือใส่ลิงก์รูปภาพโลโก้ (Logo Image URL)</label>
+                  <input
+                    type="text"
+                    value={brandLogo.startsWith('data:') ? '' : brandLogo}
+                    onChange={(e) => setBrandLogo(e.target.value)}
+                    placeholder="วางลิงก์ URL รูปภาพโลโก้แบรนด์สินค้า..."
+                    className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] font-mono text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                  {brandLogo && brandLogo.startsWith('data:') && (
+                    <div className="flex items-center justify-between text-[8px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950/10 dark:text-emerald-400 px-2 py-1 rounded-md">
+                      <span>ไฟล์รูปภาพที่อัปโหลดจะถูกใช้เป็น Base64 Data</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setBrandLogo('')}
+                        className="text-rose-500 font-bold hover:underline"
+                      >
+                        ล้างรูปภาพ
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/10 flex justify-end gap-2 rounded-b-2xl">
+                <button
+                  type="button"
+                  onClick={() => setIsBrandAddModalOpen(false)}
+                  className="px-3.5 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 rounded-lg cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={!brandName.trim()}
+                  className={`px-4 py-1.5 text-xs font-black text-white rounded-lg cursor-pointer shadow-xs transition-all ${
+                    brandName.trim() 
+                      ? 'bg-indigo-600 hover:bg-indigo-500' 
+                      : 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  เพิ่มแบรนด์สินค้า
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ======================== MODAL: EDIT BRAND ============================ */}
+      {/* ======================================================================= */}
+      {isBrandEditModalOpen && selectedBrand && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Tag className="h-4 w-4 text-indigo-500" />
+                <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">แก้ไขข้อมูลแบรนด์สินค้า</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBrandEditModalOpen(false);
+                  setSelectedBrand(null);
+                }}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!brandName.trim() || !selectedBrand) return;
+                await onEditBrand?.(selectedBrand.id, {
+                  name: brandName.trim(),
+                  logoUrl: brandLogo.trim()
+                });
+                setIsBrandEditModalOpen(false);
+                setSelectedBrand(null);
+              }}
+              className="flex-1 overflow-y-auto"
+            >
+              <div className="p-4 space-y-4">
+                {/* Brand Name */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อแบรนด์สินค้า <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={brandName}
+                    onChange={(e) => setBrandName(e.target.value)}
+                    placeholder="กรอกชื่อแบรนด์สินค้า..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Brand Logo Option 1: File upload */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">อัปโหลดไฟล์ Logo แบรนด์</label>
+                  <div className="flex items-center gap-3">
+                    <div className="h-16 w-16 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-850 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+                      {brandLogo ? (
+                        <img 
+                          src={brandLogo} 
+                          alt="Logo Preview" 
+                          className="max-h-full max-w-full object-contain p-1"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <Tag className="h-5 w-5 text-slate-300" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <label className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer border border-slate-200/60 dark:border-slate-700/60">
+                        <Upload className="h-3.5 w-3.5" />
+                        เปลี่ยนไฟล์รูปภาพ Logo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setBrandLogo(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                      <p className="text-[8px] text-slate-400 mt-1">ขนาดแนะนำ: อัตราส่วน 1:1, สี่เหลี่ยมจัตุรัส</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Brand Logo Option 2: Image URL */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">หรือใส่ลิงก์รูปภาพโลโก้ (Logo Image URL)</label>
+                  <input
+                    type="text"
+                    value={brandLogo.startsWith('data:') ? '' : brandLogo}
+                    onChange={(e) => setBrandLogo(e.target.value)}
+                    placeholder="วางลิงก์ URL รูปภาพโลโก้แบรนด์สินค้า..."
+                    className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] font-mono text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                  {brandLogo && brandLogo.startsWith('data:') && (
+                    <div className="flex items-center justify-between text-[8px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950/10 dark:text-emerald-400 px-2 py-1 rounded-md">
+                      <span>ไฟล์รูปภาพที่อัปโหลดจะถูกใช้เป็น Base64 Data</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setBrandLogo('')}
+                        className="text-rose-500 font-bold hover:underline"
+                      >
+                        ล้างรูปภาพ
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/10 flex justify-end gap-2 rounded-b-2xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBrandEditModalOpen(false);
+                    setSelectedBrand(null);
+                  }}
+                  className="px-3.5 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 rounded-lg cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={!brandName.trim()}
+                  className={`px-4 py-1.5 text-xs font-black text-white rounded-lg cursor-pointer shadow-xs transition-all ${
+                    brandName.trim() 
+                      ? 'bg-indigo-600 hover:bg-indigo-500' 
+                      : 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                  }`}
                 >
                   บันทึกการแก้ไข
                 </button>

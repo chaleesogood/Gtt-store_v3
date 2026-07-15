@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Category, Product } from '../types';
-import { Plus, Trash2, Edit3, X, Layers, AlertCircle, Upload, Image as ImageIcon, ChevronDown, ChevronUp, Tag } from 'lucide-react';
+import { Plus, Trash2, Edit3, X, Layers, AlertCircle, Upload, Image as ImageIcon, ChevronDown, ChevronUp, Tag, FileText } from 'lucide-react';
 
 interface CategoryViewProps {
   categories: Category[];
@@ -42,16 +42,19 @@ export default function CategoryView({
   const [expandedSeriesCatId, setExpandedSeriesCatId] = useState<string | null>(null);
   const [seriesInput, setSeriesInput] = useState('');
   const [seriesImageInput, setSeriesImageInput] = useState('');
+  const [seriesPdfInput, setSeriesPdfInput] = useState('');
 
   // Editing Series States
   const [editingSeriesName, setEditingSeriesName] = useState<{ catId: string; oldName: string } | null>(null);
   const [editSeriesNameInput, setEditSeriesNameInput] = useState('');
   const [editSeriesImageInput, setEditSeriesImageInput] = useState('');
+  const [editSeriesPdfInput, setEditSeriesPdfInput] = useState('');
 
-  const startEditSeries = (catId: string, seriesName: string, imgUrl: string) => {
+  const startEditSeries = (catId: string, seriesName: string, imgUrl: string, pdfUrl: string) => {
     setEditingSeriesName({ catId, oldName: seriesName });
     setEditSeriesNameInput(seriesName);
     setEditSeriesImageInput(imgUrl);
+    setEditSeriesPdfInput(pdfUrl);
   };
 
   const handleSaveEditSeries = (catId: string) => {
@@ -59,6 +62,7 @@ export default function CategoryView({
     const { oldName } = editingSeriesName;
     const newName = editSeriesNameInput.trim();
     const newImage = editSeriesImageInput.trim();
+    const newPdf = editSeriesPdfInput.trim();
 
     if (!newName) return;
 
@@ -77,7 +81,7 @@ export default function CategoryView({
     const updatedSeries = (cat.series || []).map((s) => s === oldName ? newName : s);
     const updatedSubSeries = (cat.subSeries || []).map((s) => {
       if (s.name === oldName) {
-        return { name: newName, imageUrl: newImage };
+        return { name: newName, imageUrl: newImage, pdfUrl: newPdf };
       }
       return s;
     });
@@ -98,6 +102,7 @@ export default function CategoryView({
     setEditingSeriesName(null);
     setEditSeriesNameInput('');
     setEditSeriesImageInput('');
+    setEditSeriesPdfInput('');
   };
 
   const handleAddSeries = (catId: string) => {
@@ -115,7 +120,7 @@ export default function CategoryView({
     const updatedSeries = [...currentSeries, seriesInput.trim()];
     const updatedSubSeries = [
       ...currentSubSeries,
-      { name: seriesInput.trim(), imageUrl: seriesImageInput.trim() },
+      { name: seriesInput.trim(), imageUrl: seriesImageInput.trim(), pdfUrl: seriesPdfInput.trim() },
     ];
     onEditCategory(catId, { 
       series: updatedSeries,
@@ -123,6 +128,7 @@ export default function CategoryView({
     });
     setSeriesInput('');
     setSeriesImageInput('');
+    setSeriesPdfInput('');
   };
 
   const handleRemoveSeries = (catId: string, seriesName: string) => {
@@ -136,6 +142,31 @@ export default function CategoryView({
         series: updatedSeries,
         subSeries: updatedSubSeries
       });
+    }
+  };
+
+  const handleOpenPdf = (pdfUrl?: string) => {
+    if (!pdfUrl) return;
+    try {
+      if (pdfUrl.startsWith('data:application/pdf;base64,')) {
+        const newWindow = window.open();
+        if (newWindow) {
+          newWindow.document.write(
+            `<iframe src="${pdfUrl}" style="width:100%; height:100%; border:none;"></iframe>`
+          );
+          newWindow.document.title = "คู่มือสินค้า PDF";
+        } else {
+          const link = document.createElement('a');
+          link.href = pdfUrl;
+          link.download = 'manual.pdf';
+          link.click();
+        }
+      } else {
+        window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('ไม่สามารถเปิดไฟล์ PDF ได้โดยตรงจากเบราว์เซอร์นี้ แนะนำให้ตรวจสอบความถูกต้องของ URL');
     }
   };
 
@@ -459,38 +490,73 @@ export default function CategoryView({
                                   <div className="text-[10px] font-black text-indigo-700 dark:text-indigo-400">
                                     กำลังแก้ไข: "{ser}"
                                   </div>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    <div className="space-y-1">
-                                      <label className="text-[9px] font-black text-slate-500 block">ชื่อ Series ใหม่</label>
-                                      <input
-                                        type="text"
-                                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100"
-                                        value={editSeriesNameInput}
-                                        onChange={(e) => setEditSeriesNameInput(e.target.value)}
-                                      />
+                                  <div className="grid grid-cols-1 gap-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                      <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-500 block">ชื่อ Series ใหม่</label>
+                                        <input
+                                          type="text"
+                                          className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100"
+                                          value={editSeriesNameInput}
+                                          onChange={(e) => setEditSeriesNameInput(e.target.value)}
+                                        />
+                                      </div>
+                                      <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-500 block">รูปภาพของ Series</label>
+                                        <div className="flex items-center gap-1.5">
+                                          <input
+                                            type="text"
+                                            placeholder="URL รูปภาพ..."
+                                            className="flex-grow px-2.5 py-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100"
+                                            value={editSeriesImageInput}
+                                            onChange={(e) => setEditSeriesImageInput(e.target.value)}
+                                          />
+                                          <label className="cursor-pointer p-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center shrink-0 border-dashed" title="อัปโหลดรูปภาพ">
+                                            <Upload className="h-3.5 w-3.5 text-slate-500" />
+                                            <input
+                                              type="file"
+                                              accept="image/*"
+                                              className="hidden"
+                                              onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                  const reader = new FileReader();
+                                                  reader.onloadend = () => {
+                                                    setEditSeriesImageInput(reader.result as string);
+                                                  };
+                                                  reader.readAsDataURL(file);
+                                                }
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+                                      </div>
                                     </div>
                                     <div className="space-y-1">
-                                      <label className="text-[9px] font-black text-slate-500 block">รูปภาพของ Series</label>
+                                      <label className="text-[9px] font-black text-slate-500 block">คู่มือเทคนิค (Manual PDF URL หรืออัปโหลด) <span className="text-[8px] font-normal text-slate-400 dark:text-slate-500">(แนะนำ &lt; 500KB)</span></label>
                                       <div className="flex items-center gap-1.5">
                                         <input
                                           type="text"
-                                          placeholder="URL รูปภาพ..."
+                                          placeholder="URL คู่มือ PDF หรือไฟล์ Base64..."
                                           className="flex-grow px-2.5 py-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100"
-                                          value={editSeriesImageInput}
-                                          onChange={(e) => setEditSeriesImageInput(e.target.value)}
+                                          value={editSeriesPdfInput}
+                                          onChange={(e) => setEditSeriesPdfInput(e.target.value)}
                                         />
-                                        <label className="cursor-pointer p-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center shrink-0 border-dashed" title="อัปโหลดรูปภาพ">
+                                        <label className="cursor-pointer p-1.5 bg-white dark:bg-slate-850 border border-slate-300 dark:border-slate-755 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center shrink-0 border-dashed" title="อัปโหลดไฟล์ PDF คู่มือ">
                                           <Upload className="h-3.5 w-3.5 text-slate-500" />
                                           <input
                                             type="file"
-                                            accept="image/*"
+                                            accept="application/pdf"
                                             className="hidden"
                                             onChange={(e) => {
                                               const file = e.target.files?.[0];
                                               if (file) {
+                                                if (file.size > 500 * 1024) {
+                                                  alert('แนะนำไฟล์ PDF ขนาดไม่เกิน 500KB เพื่อประหยัดพื้นที่คลาวด์');
+                                                }
                                                 const reader = new FileReader();
                                                 reader.onloadend = () => {
-                                                  setEditSeriesImageInput(reader.result as string);
+                                                  setEditSeriesPdfInput(reader.result as string);
                                                 };
                                                 reader.readAsDataURL(file);
                                               }
@@ -532,17 +598,32 @@ export default function CategoryView({
                                   referrerPolicy="no-referrer"
                                 />
                                 <div className="min-w-0 flex-grow">
-                                  <div className="text-xs font-black text-slate-850 dark:text-slate-100 truncate leading-tight font-sans" title={ser}>
-                                    {ser}
+                                  <div className="text-xs font-black text-slate-850 dark:text-slate-100 truncate leading-tight font-sans flex items-center gap-1.5" title={ser}>
+                                    <span>{ser}</span>
+                                    {subSerObj?.pdfUrl && (
+                                      <span className="inline-flex items-center gap-0.5 px-1 py-0.2 text-[8px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded shrink-0">
+                                        <FileText className="h-2 w-2" /> PDF
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-[9px] text-indigo-600 dark:text-indigo-400 font-extrabold font-mono mt-0.5">
                                     Sub-series
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
+                                  {subSerObj?.pdfUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenPdf(subSerObj.pdfUrl)}
+                                      className="p-1.5 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all cursor-pointer rounded-lg"
+                                      title="เปิดอ่านคู่มือ PDF ออนไลน์"
+                                    >
+                                      <FileText className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
-                                    onClick={() => startEditSeries(cat.id, ser, subSerObj?.imageUrl || '')}
+                                    onClick={() => startEditSeries(cat.id, ser, subSerObj?.imageUrl || '', subSerObj?.pdfUrl || '')}
                                     className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors cursor-pointer rounded-lg hover:bg-white dark:hover:bg-slate-900"
                                     title="แก้ไข Series ย่อย"
                                   >
@@ -564,9 +645,9 @@ export default function CategoryView({
                       </div>
 
                       {/* Add Sub-series compact inline section */}
-                      <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850/80 p-2.5 rounded-xl space-y-2">
+                      <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850/80 p-3 rounded-xl space-y-2.5">
                         <span className="text-[10px] font-black text-slate-650 dark:text-slate-350 block">เพิ่ม Series ย่อยใหม่</span>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 gap-2">
                           <input
                             type="text"
                             placeholder="ระบุชื่อ Series (เช่น 1 Pole, 3 Pole...)"
@@ -581,39 +662,79 @@ export default function CategoryView({
                             }}
                             id={`input-add-series-name-${cat.id}`}
                           />
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="text"
-                              placeholder="URL รูปภาพ (หรืออัปโหลด)..."
-                              className="flex-grow px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100"
-                              value={seriesImageInput}
-                              onChange={(e) => setSeriesImageInput(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  handleAddSeries(cat.id);
-                                }
-                              }}
-                              id={`input-add-series-img-${cat.id}`}
-                            />
-                            <label className="cursor-pointer p-1.5 bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center shrink-0 border-dashed" title="อัปโหลดรูปภาพ">
-                              <Upload className="h-3.5 w-3.5 text-slate-500" />
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="flex items-center gap-1.5">
                               <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    const reader = new FileReader();
-                                    reader.onloadend = () => {
-                                      setSeriesImageInput(reader.result as string);
-                                    };
-                                    reader.readAsDataURL(file);
+                                type="text"
+                                placeholder="URL รูปภาพ (หรืออัปโหลด)..."
+                                className="flex-grow px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100"
+                                value={seriesImageInput}
+                                onChange={(e) => setSeriesImageInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleAddSeries(cat.id);
                                   }
                                 }}
+                                id={`input-add-series-img-${cat.id}`}
                               />
-                            </label>
+                              <label className="cursor-pointer p-1.5 bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center shrink-0 border-dashed" title="อัปโหลดรูปภาพ">
+                                <Upload className="h-3.5 w-3.5 text-slate-500" />
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      const reader = new FileReader();
+                                      reader.onloadend = () => {
+                                        setSeriesImageInput(reader.result as string);
+                                      };
+                                      reader.readAsDataURL(file);
+                                    }
+                                  }}
+                                />
+                              </label>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                placeholder="URL คู่มือ PDF (แนะนำ &lt; 500KB)..."
+                                className="flex-grow px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-lg text-xs focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-sans text-slate-800 dark:text-slate-100"
+                                value={seriesPdfInput}
+                                onChange={(e) => setSeriesPdfInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleAddSeries(cat.id);
+                                  }
+                                }}
+                                id={`input-add-series-pdf-${cat.id}`}
+                              />
+                              <label className="cursor-pointer p-1.5 bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center shrink-0 border-dashed" title="อัปโหลดคู่มือ PDF">
+                                <Upload className="h-3.5 w-3.5 text-slate-500" />
+                                <input
+                                  type="file"
+                                  accept="application/pdf"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      if (file.size > 500 * 1024) {
+                                        alert('แนะนำไฟล์ PDF ขนาดไม่เกิน 500KB เพื่อประหยัดพื้นที่คลาวด์');
+                                      }
+                                      const reader = new FileReader();
+                                      reader.onloadend = () => {
+                                        setSeriesPdfInput(reader.result as string);
+                                      };
+                                      reader.readAsDataURL(file);
+                                    }
+                                  }}
+                                />
+                              </label>
+                            </div>
                           </div>
                         </div>
                         <div className="flex justify-end">
