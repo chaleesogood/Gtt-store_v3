@@ -13,7 +13,7 @@ import Logo from './components/Logo';
 
 import SettingsView from './components/SettingsView';
 import { CatalogView } from './components/CatalogView';
-import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen } from 'lucide-react';
+import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs } from 'firebase/firestore';
 import { db, cleanUndefined } from './firebase';
 
@@ -1504,23 +1504,35 @@ export default function App() {
         
         {isQuotaExceeded && (
           <div className="mb-6 bg-amber-50 border-2 border-amber-200 rounded-2xl p-5 text-left text-amber-900 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="flex items-start gap-3.5">
-              <div className="p-2.5 bg-amber-100 text-amber-700 rounded-xl shrink-0">
-                <AlertTriangle className="h-6 w-6 animate-pulse text-amber-600" />
-              </div>
-              <div className="space-y-1">
-                <h4 className="text-sm font-black text-amber-950 font-sans flex items-center gap-2">
-                  คลังระบบฐานข้อมูล Cloud เต็มโควต้าชั่วคราว (Firestore Quota Exceeded)
-                </h4>
-                <p className="text-xs text-amber-800 font-sans leading-relaxed">
-                  ขณะนี้ปริมาณการใช้งานบนคลังข้อมูลร่วมมีปริมาณสูงจนทะลุขีดจำกัดโควต้าผู้ใช้งานฟรีของ Google Firestore แล้ว (Free-tier Quota Limit Reached) 
-                  <strong> ระบบได้สลับการทำงานมาใช้ "ระบบบันทึกฐานข้อมูลสำรองในเบราว์เซอร์เครื่อง (Local Storage Sandbox)" ให้คุณโดยอัตโนมัติแล้ว</strong> เพื่อไม่ขัดจังหวะการทำงาน
-                </p>
-                <div className="pt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-amber-900/80 font-medium font-sans">
-                  <span className="flex items-center gap-1">✅ <strong>ยังสามารถใช้งานได้ปกติ</strong>: เพิ่ม/ลด/แก้ไขสต็อกสินค้า, และสเปรดชีตสูตร BOM ได้ทันที</span>
-                  <span className="flex items-center gap-1">🔒 <strong>ปลอดภัยสูง</strong>: ข้อมูลทั้งหมดจะบันทึกไว้ในอุปกรณ์นี้อย่างปลอดภัย และจะเชื่อมต่อฐานข้อมูล Cloud โดยอัตโนมัติเมื่อสิ้นสุดการจำกัดรอบวัน</span>
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 bg-amber-100 text-amber-700 rounded-xl shrink-0">
+                  <AlertTriangle className="h-6 w-6 animate-pulse text-amber-600" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-black text-amber-950 font-sans flex items-center gap-2">
+                    คลังระบบฐานข้อมูล Cloud เต็มโควต้าชั่วคราว (Firestore Quota Exceeded)
+                  </h4>
+                  <p className="text-xs text-amber-800 font-sans leading-relaxed">
+                    ขณะนี้ปริมาณการใช้งานบนคลังข้อมูลร่วมมีปริมาณสูงจนทะลุขีดจำกัดโควต้าผู้ใช้งานฟรีของ Google Firestore แล้ว (Free-tier Quota Limit Reached) 
+                    <strong> ระบบได้สลับการทำงานมาใช้ "ระบบบันทึกฐานข้อมูลสำรองในเบราว์เซอร์เครื่อง (Local Storage Sandbox)" ให้คุณโดยอัตโนมัติแล้ว</strong> เพื่อไม่ขัดจังหวะการทำงาน
+                  </p>
+                  <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-x-4 gap-y-1 text-[11px] text-amber-900/80 font-medium font-sans">
+                    <span className="flex items-center gap-1">✅ <strong>ยังสามารถใช้งานได้ปกติ</strong>: เพิ่ม/ลด/แก้ไขสต็อกสินค้า, และสเปรดชีตสูตร BOM ได้ทันที</span>
+                    <span className="flex items-center gap-1">🔒 <strong>ปลอดภัยสูง</strong>: ข้อมูลทั้งหมดจะบันทึกไว้ในอุปกรณ์นี้อย่างปลอดภัย และจะเชื่อมต่อฐานข้อมูล Cloud โดยอัตโนมัติเมื่อสิ้นสุดการจำกัดรอบวัน</span>
+                  </div>
                 </div>
               </div>
+              <a
+                href="https://console.firebase.google.com/project/store-gtt/firestore/databases/ai-studio-stockinventoryma-f6aa8430-9129-40f5-b3fd-44323fc5cf99/data?openUpgradeDialog=true"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-black rounded-xl shadow-xs transition-all hover:scale-102 active:scale-98 shrink-0 text-center cursor-pointer"
+                id="btn-link-firestore-console"
+              >
+                <ExternalLink className="h-4 w-4" />
+                ตรวจเช็คโควต้า / อัปเกรดฐานข้อมูล
+              </a>
             </div>
           </div>
         )}
