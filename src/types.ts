@@ -19,6 +19,7 @@ export interface Product {
   warehouse?: string; // WAREHOUSE LOCATION
   expiryDate?: string; // EXPIRY DATE (YYYY-MM-DD)
   color?: string; // Selected color name for this product
+  sortOrder?: number; // Custom sorting order for display
 }
 
 export interface SubSeries {
@@ -214,6 +215,21 @@ export interface DailyReport {
   reviewComment?: string; // ความคิดเห็นเพิ่มเติมหลังตรวจสอบ
   createdAt: string;
   updatedAt: string;
+}
+
+export function sortProducts(list: Product[]): Product[] {
+  return [...list].sort((a, b) => {
+    if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+    } else if (a.sortOrder !== undefined) {
+      return -1;
+    } else if (b.sortOrder !== undefined) {
+      return 1;
+    }
+    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+  });
 }
 
 

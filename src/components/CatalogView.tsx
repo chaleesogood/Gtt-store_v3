@@ -537,8 +537,17 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                       </span>
                     </div>
 
-                    {/* PRODUCT LIST AS COMPACT ROW GRID - 2/3 COLUMNS TO REDUCE VERTICAL HEIGHT */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
+                    {/* PRODUCT LIST AS COMPACT ROW LIST - FULL WIDTH HORIZONTAL BARS */}
+                    <div className="flex flex-col gap-2">
+                      {/* Column Header Row (Visible on Desktop / Large Screens) */}
+                      <div className="hidden lg:flex items-center gap-4 px-4 py-2 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-800 text-[10px] font-black text-slate-400 uppercase tracking-widest font-sans">
+                        <span className="flex-1">รายการพัสดุ / แบรนด์</span>
+                        <span className="w-36">รหัส SKU</span>
+                        <span className="w-28 text-right">ราคาต่อหน่วย</span>
+                        <span className="w-28 text-center">คลังคงเหลือ</span>
+                        <span className="w-32 text-right">จัดการชุด BOM</span>
+                      </div>
+
                       {groupedProductsBySeries[seriesName].map((prod) => {
                         const inStock = prod.quantity > 0;
                         const isLowStock = !inStock || prod.quantity <= (prod.minAlert || 5);
@@ -548,72 +557,86 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                           <div
                             key={prod.id}
                             onClick={() => setSelectedProduct(prod)}
-                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-xl shadow-3xs flex flex-row items-center justify-between cursor-pointer hover:shadow-xs hover:translate-y-[-1px] transition-all group relative animate-in fade-in duration-155 overflow-hidden p-2 gap-2"
+                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-750 rounded-xl shadow-3xs flex flex-col lg:flex-row lg:items-center justify-between cursor-pointer hover:shadow-xs hover:translate-y-[-0.5px] transition-all group relative animate-in fade-in duration-155 overflow-hidden p-3 gap-3"
                           >
-                            {/* Left: Image & Info (Horizontal inline) */}
-                            <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                              {/* Product preview square icon */}
-                              <div className="w-11 h-11 bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-lg shrink-0 flex items-center justify-center relative overflow-hidden">
+                            {/* Col 1: Product preview, Name, Brand */}
+                            <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                              <div className="w-12 h-12 bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-lg shrink-0 flex items-center justify-center relative overflow-hidden shadow-4xs">
                                 {prod.image ? (
                                   <img src={prod.image} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                 ) : (
-                                  <Boxes className="h-5 w-5 text-slate-300 dark:text-slate-700" />
+                                  <Boxes className="h-6 w-6 text-slate-300 dark:text-slate-700" />
                                 )}
                               </div>
-
-                              {/* Product Details */}
-                              <div className="flex-1 min-w-0 text-left space-y-0.5">
+                              <div className="min-w-0 flex-1 text-left space-y-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <h5 className="text-[11.5px] font-black text-slate-800 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors font-sans">
+                                  <h5 className="text-[12.5px] font-black text-slate-800 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors font-sans">
                                     {prod.name}
                                   </h5>
                                   {prod.series && (
-                                    <span className="text-[8px] font-bold text-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/20 px-1 py-0.2 rounded">
+                                    <span className="text-[8.5px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.2 rounded-md border border-indigo-100/30">
                                       {prod.series}
                                     </span>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-1 text-[9px] text-slate-400 font-sans">
-                                  <span>SKU: {prod.sku || 'N/A'}</span>
-                                  <span>•</span>
-                                  <span className="font-extrabold text-slate-500 dark:text-slate-400 truncate max-w-[50px]">{prod.brand}</span>
-                                </div>
-                                <div className="text-[10px] font-sans font-extrabold text-indigo-600 dark:text-indigo-400">
-                                  ฿{prod.price.toLocaleString()}
+                                <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500 font-sans">
+                                  <span className="font-extrabold text-indigo-700 dark:text-indigo-400 px-1.5 py-0.5 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-md border border-indigo-100/20">{prod.brand}</span>
+                                  <span className="hidden sm:inline text-slate-300 dark:text-slate-700">•</span>
+                                  <span className="hidden sm:inline truncate max-w-[240px]" title={prod.description}>{prod.description || 'ไม่มีคำอธิบายเพิ่มเติม'}</span>
                                 </div>
                               </div>
                             </div>
 
-                            {/* Right: Stock Status & BOM Picker Action (Horizontal inline) */}
-                            <div className="flex flex-col items-end gap-1.5 shrink-0 min-w-[95px]">
-                              {/* Stock status indicator */}
-                              <span className={`px-1.5 py-0.2 rounded-full text-[8.5px] font-extrabold font-sans flex items-center gap-0.5 ${
-                                !inStock
-                                  ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-100 dark:border-rose-900/40'
-                                  : isLowStock
-                                  ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-450 border border-amber-100 dark:border-amber-900/40'
-                                  : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40'
-                              }`}>
-                                <span className={`w-1 h-1 rounded-full ${!inStock ? 'bg-rose-500' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                                {!inStock ? 'หมด' : `${prod.quantity} ${prod.unit || 'ชิ้น'}`}
-                              </span>
+                            {/* Divider on Mobile only */}
+                            <div className="h-px w-full bg-slate-100 dark:bg-slate-800/80 lg:hidden" />
 
-                              {/* Cart Controls */}
-                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            {/* Column Group for desktop alignment / stacked on mobile */}
+                            <div className="flex flex-row items-center justify-between lg:justify-end gap-4 flex-wrap lg:flex-nowrap">
+                              {/* Col 2: SKU */}
+                              <div className="w-36 shrink-0 text-left font-mono text-[10.5px] font-bold text-slate-500 dark:text-slate-400">
+                                <span className="lg:hidden text-[9px] font-black text-slate-400 dark:text-slate-500 block mb-1 uppercase tracking-wider font-sans">SKU:</span>
+                                {prod.sku || <span className="text-slate-300 dark:text-slate-700">-</span>}
+                              </div>
+
+                              {/* Col 3: Price */}
+                              <div className="w-28 shrink-0 text-left lg:text-right font-sans">
+                                <span className="lg:hidden text-[9px] font-black text-slate-400 dark:text-slate-500 block mb-1 uppercase tracking-wider font-sans">ราคาต่อหน่วย:</span>
+                                <span className="text-[12.5px] font-black text-slate-800 dark:text-slate-150">
+                                  ฿{prod.price.toLocaleString()}
+                                </span>
+                              </div>
+
+                              {/* Col 4: Stock level */}
+                              <div className="w-28 shrink-0 text-left lg:text-center font-sans">
+                                <span className="lg:hidden text-[9px] font-black text-slate-400 dark:text-slate-500 block mb-1 uppercase tracking-wider font-sans">คลังคงเหลือ:</span>
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black font-sans inline-flex items-center gap-1 border ${
+                                  !inStock
+                                    ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border-rose-100 dark:border-rose-900/40'
+                                    : isLowStock
+                                    ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-450 border-amber-100 dark:border-amber-900/40'
+                                    : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/40'
+                                }`}>
+                                  <span className={`w-1 h-1 rounded-full ${!inStock ? 'bg-rose-500 animate-pulse' : isLowStock ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                                  {!inStock ? 'สินค้าหมด' : `${prod.quantity} ${prod.unit || 'ชิ้น'}`}
+                                </span>
+                              </div>
+
+                              {/* Col 5: Actions */}
+                              <div className="w-32 shrink-0 flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
                                 {cartItem ? (
-                                  <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-950 p-0.5 rounded-lg border border-slate-200/50 dark:border-slate-800 scale-90">
+                                  <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
                                     <button
                                       onClick={(e) => updateCartQty(prod.id, cartItem.quantity - 1, e)}
-                                      className="w-5 h-5 rounded bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 flex items-center justify-center font-bold text-[10px] active:scale-90 cursor-pointer"
+                                      className="w-5.5 h-5.5 rounded-lg bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 flex items-center justify-center font-black text-xs active:scale-90 transition-all cursor-pointer shadow-3xs"
                                     >
                                       -
                                     </button>
-                                    <span className="font-mono text-[10px] font-black text-indigo-600 dark:text-indigo-400 min-w-[14px] text-center">
+                                    <span className="font-mono text-[11px] font-black text-indigo-600 dark:text-indigo-400 min-w-[18px] text-center">
                                       {cartItem.quantity}
                                     </span>
                                     <button
                                       onClick={(e) => updateCartQty(prod.id, cartItem.quantity + 1, e)}
-                                      className="w-5 h-5 rounded bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 flex items-center justify-center font-bold text-[10px] active:scale-90 cursor-pointer"
+                                      className="w-5.5 h-5.5 rounded-lg bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 flex items-center justify-center font-black text-xs active:scale-90 transition-all cursor-pointer shadow-3xs"
                                     >
                                       +
                                     </button>
@@ -621,9 +644,9 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                                 ) : (
                                   <button
                                     onClick={(e) => addToCart(prod, e)}
-                                    className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-[9px] rounded-lg shadow-sm shadow-indigo-600/10 transition-all flex items-center gap-1 cursor-pointer"
+                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-[10px] rounded-xl shadow-3xs hover:shadow-md hover:shadow-indigo-600/10 transition-all flex items-center gap-1.5 cursor-pointer border border-indigo-500"
                                   >
-                                    <ShoppingCart className="h-3 w-3" />
+                                    <ShoppingCart className="h-3.5 w-3.5" />
                                     <span>จัดชุด BOM</span>
                                   </button>
                                 )}

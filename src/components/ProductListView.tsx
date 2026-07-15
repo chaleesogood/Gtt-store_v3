@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { Product, Category, Employee, JobProject, Brand } from '../types';
-import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag } from 'lucide-react';
+import { Product, Category, Employee, JobProject, Brand, sortProducts } from '../types';
+import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag, Copy, ArrowUpDown } from 'lucide-react';
 import CategoryView from './CategoryView';
 import OrderingSystemView from './OrderingSystemView';
 import ShoppingCartView from './ShoppingCartView';
@@ -11,6 +11,7 @@ interface ProductListViewProps {
   categories: Category[];
   onAddProduct: (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onEditProduct: (id: string, updated: Partial<Product>) => void;
+  onBulkEditProducts?: (updates: { id: string; updatedFields: Partial<Product> }[]) => Promise<void>;
   onDeleteProduct: (id: string) => void;
   onAdjustStock: (id: string, change: number, reason: string) => any;
   statusFilter: string;
@@ -73,6 +74,7 @@ export default function ProductListView({
   categories,
   onAddProduct,
   onEditProduct,
+  onBulkEditProducts,
   onDeleteProduct,
   onAdjustStock,
   statusFilter,
@@ -92,6 +94,7 @@ export default function ProductListView({
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+  const [isReorderMode, setIsReorderMode] = useState(false);
 
   // Shopping Cart state
   const [cartItems, setCartItems] = useState<any[]>(() => {
@@ -169,6 +172,66 @@ export default function ProductListView({
   const [adjustAmount, setAdjustAmount] = useState(1);
   const [adjustReason, setAdjustReason] = useState('รับของเข้า / ปรับปรุงสต็อก');
   const [adjustType, setAdjustType] = useState<'in' | 'out'>('in');
+
+  // Reorder and Auto-format actions
+  const handleMoveProduct = async (productId: string, direction: 'up' | 'down') => {
+    const currentList = [...filteredProducts];
+    const index = currentList.findIndex(p => p.id === productId);
+    if (index === -1) return;
+
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= currentList.length) return;
+
+    const itemA = currentList[index];
+    const itemB = currentList[swapIndex];
+
+    const updatedAllProducts = [...products];
+    const globalIndexA = updatedAllProducts.findIndex(p => p.id === itemA.id);
+    const globalIndexB = updatedAllProducts.findIndex(p => p.id === itemB.id);
+
+    if (globalIndexA !== -1 && globalIndexB !== -1) {
+      // Initialize sortOrder for all products to preserve layout order
+      updatedAllProducts.forEach((p, idx) => {
+        if (p.sortOrder === undefined) {
+          p.sortOrder = idx * 10;
+        }
+      });
+
+      // Swap sortOrders
+      const tempOrder = updatedAllProducts[globalIndexA].sortOrder;
+      updatedAllProducts[globalIndexA].sortOrder = updatedAllProducts[globalIndexB].sortOrder;
+      updatedAllProducts[globalIndexB].sortOrder = tempOrder;
+
+      // Clean up and normalize indices
+      const sortedTemp = [...updatedAllProducts].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      const finalUpdates = sortedTemp.map((p, idx) => ({
+        id: p.id,
+        updatedFields: { sortOrder: idx * 10 }
+      }));
+
+      if (onBulkEditProducts) {
+        await onBulkEditProducts(finalUpdates);
+        addToast('success', 'ปรับอันดับพัสดุสำเร็จ', `ย้ายตำแหน่งสินค้า "${itemA.name}" ${direction === 'up' ? 'ขึ้น' : 'ลง'} เรียบร้อย`);
+      }
+    }
+  };
+
+  const handleAutoFormatOrder = async () => {
+    // Natural alphanumeric sorting of products
+    const sortedByName = [...products].sort((a, b) => 
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+    );
+
+    const finalUpdates = sortedByName.map((p, idx) => ({
+      id: p.id,
+      updatedFields: { sortOrder: idx * 10 }
+    }));
+
+    if (onBulkEditProducts) {
+      await onBulkEditProducts(finalUpdates);
+      addToast('success', 'จัดรูปแบบอัตโนมัติสำเร็จ', 'เรียงลำดับสินค้าตัวเลขน้อยอยู่บนเรียบร้อยและบันทึกลงระบบแล้ว');
+    }
+  };
 
   // Filtered Products
   const filteredProducts = products.filter((p) => {
@@ -256,6 +319,29 @@ export default function ProductListView({
     setFormImage(product.image);
     setImagePreview(product.image);
     setFormDescription(product.description);
+    setFormSourceUrl(product.sourceUrl || '');
+    setShowGallery(false);
+    setFormWarehouse(product.warehouse || 'คลังสินค้าหลัก A');
+    setFormExpiryDate(product.expiryDate || '');
+    setFormColor(product.color || '');
+    setFormBrand(product.brand || '');
+    setIsModalOpen(true);
+  };
+
+  // Open Modal for Clone
+  const handleOpenCloneModal = (product: Product) => {
+    setEditingProduct(null);
+    setFormName(`${product.name} (คัดลอก)`);
+    setFormSku(`${product.sku}-COPY`);
+    setFormCategory(product.category);
+    setFormSeries(product.series || '');
+    setFormPrice(product.price);
+    setFormCostPrice(product.costPrice);
+    setFormQuantity(product.quantity);
+    setFormMinAlert(product.minAlert);
+    setFormImage(product.image);
+    setImagePreview(product.image);
+    setFormDescription(product.description || '');
     setFormSourceUrl(product.sourceUrl || '');
     setShowGallery(false);
     setFormWarehouse(product.warehouse || 'คลังสินค้าหลัก A');
@@ -676,6 +762,22 @@ export default function ProductListView({
               </button>
             </div>
 
+            {/* Organize & Reorder Mode Toggle */}
+            <button
+              onClick={() => setIsReorderMode(!isReorderMode)}
+              className={`px-3 py-1 text-[10px] font-black rounded border transition-all cursor-pointer flex items-center gap-1.5 shadow-sm hover:scale-102 active:scale-98 ${
+                isReorderMode
+                  ? 'bg-rose-50 border-rose-300 text-rose-700 font-extrabold shadow-sm ring-1 ring-rose-200'
+                  : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100/80 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400'
+              }`}
+              id="btn-toggle-reorder-mode"
+              type="button"
+              title="จัดระเบียบและสลับช่องสินค้าขึ้นลง"
+            >
+              <ArrowUpDown className="h-3.5 w-3.5" />
+              จัดระเบียบแก้ไข
+            </button>
+
             {/* View Layout Toggle */}
             <div className="flex items-center bg-slate-100 p-0.5 rounded gap-1">
               <button
@@ -706,6 +808,44 @@ export default function ProductListView({
               </button>
             </div>
           </div>
+
+
+      {/* Reorder Mode Control Panel */}
+      {isReorderMode && (
+        <div className="bg-indigo-50/90 dark:bg-slate-900 border border-indigo-200 dark:border-slate-800 rounded-2xl p-4 mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-md animate-in fade-in zoom-in-95 duration-200">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-100 dark:bg-slate-800 rounded-xl text-indigo-700 dark:text-indigo-400 shrink-0">
+              <ArrowUpDown className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-extrabold text-slate-800 dark:text-slate-100 font-sans leading-tight">
+                โหมดจัดระเบียบลำดับพัสดุสินค้า (Reorder Mode)
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-sans mt-0.5 leading-relaxed">
+                กดลูกศร <span className="font-bold text-indigo-600 dark:text-indigo-400">ขึ้น ⬆️</span> หรือ <span className="font-bold text-indigo-600 dark:text-indigo-400">ลง ⬇️</span> ในช่องจัดลำดับ เพื่อปรับเปลี่ยนสลับตำแหน่งแถวพัสดุด้วยตนเอง หรือกดปุ่มจัดรูปแบบอัตโนมัติเพื่อเรียงตามชื่อสินค้า (ตัวเลขน้อยอยู่บน) และบันทึกลงฐานข้อมูลทันที
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              onClick={handleAutoFormatOrder}
+              className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black rounded-lg border border-slate-300 dark:border-slate-700 transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-102 active:scale-98"
+              id="btn-reorder-auto-format"
+              type="button"
+            >
+              ✨ จัดรูปแบบอัตโนมัติ
+            </button>
+            <button
+              onClick={() => setIsReorderMode(false)}
+              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-lg transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-102 active:scale-98"
+              id="btn-reorder-exit"
+              type="button"
+            >
+              ❌ ปิดโหมดจัดลำดับ
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Product Grid / Table */}
       {filteredProducts.length === 0 ? (
@@ -806,6 +946,9 @@ export default function ProductListView({
                         <thead>
                           <tr className="bg-slate-100/20 border-b border-slate-100/60 text-[9px] font-bold text-slate-400 font-sans uppercase tracking-wider">
                             <th className="py-1 px-2 min-w-[200px]">สินค้า (Product)</th>
+                            {isReorderMode && (
+                              <th className="py-1 px-2 text-center min-w-[80px] text-indigo-600 dark:text-indigo-400 font-extrabold">จัดลำดับ</th>
+                            )}
                             <th className="py-1 px-2 min-w-[110px]">รหัส SKU</th>
                             <th className="py-1 px-2 text-right min-w-[90px]">ต้นทุน (฿)</th>
                             <th className="py-1 px-2 text-center min-w-[130px]">คงเหลือ / เกณฑ์</th>
@@ -874,7 +1017,7 @@ export default function ProductListView({
                                   {/* Series Divider Header Row */}
                                   {ps.seriesName !== 'ทั่วไป / ไม่มี Series ย่อย' && (
                                     <tr className={`${colors.bg} ${colors.text} ${colors.border} text-[10px] font-black font-sans border-y border-slate-100/50 transition-all shadow-3xs`}>
-                                      <td colSpan={5} className="py-2 px-3">
+                                      <td colSpan={isReorderMode ? 6 : 5} className="py-2 px-3">
                                         <div className="flex items-center justify-between">
                                           <div className="flex items-center gap-2">
                                             {(() => {
@@ -965,6 +1108,32 @@ export default function ProductListView({
                                         </div>
                                       </td>
 
+                                      {/* Custom Reordering Buttons Column cell */}
+                                      {isReorderMode && (
+                                        <td className="py-1 px-2 text-center">
+                                          <div className="flex items-center justify-center gap-1 bg-slate-100 dark:bg-slate-800 rounded p-1 border border-slate-200 dark:border-slate-700 w-fit mx-auto shadow-3xs">
+                                            <button
+                                              onClick={() => handleMoveProduct(p.id, 'up')}
+                                              className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer active:scale-90"
+                                              title="เลื่อนขึ้น"
+                                              id={`btn-reorder-up-grp-${p.id}`}
+                                              type="button"
+                                            >
+                                              <ChevronUp className="h-4 w-4" />
+                                            </button>
+                                            <button
+                                              onClick={() => handleMoveProduct(p.id, 'down')}
+                                              className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer active:scale-90"
+                                              title="เลื่อนลง"
+                                              id={`btn-reorder-down-grp-${p.id}`}
+                                              type="button"
+                                            >
+                                              <ChevronDown className="h-4 w-4" />
+                                            </button>
+                                          </div>
+                                        </td>
+                                      )}
+
                                       {/* SKU */}
                                       <td className="py-0.5 px-1.5">
                                         <div className="text-[10px] font-mono font-bold text-slate-500 tracking-tight leading-none">
@@ -1048,6 +1217,14 @@ export default function ProductListView({
                                             <Edit3 className="h-3 w-3" />
                                           </button>
                                           <button
+                                            onClick={() => handleOpenCloneModal(p)}
+                                            className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded cursor-pointer"
+                                            title="คัดลอกพัสดุ (Clone)"
+                                            id={`btn-clone-item-grp-${p.id}`}
+                                          >
+                                            <Copy className="h-3 w-3" />
+                                          </button>
+                                          <button
                                             onClick={() => onDeleteProduct(p.id)}
                                             className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 rounded cursor-pointer"
                                             title="ลบ"
@@ -1084,6 +1261,9 @@ export default function ProductListView({
               <thead>
                 <tr className="bg-slate-100/20 border-b border-slate-100/60 text-[9px] font-bold text-slate-400 font-sans uppercase tracking-wider">
                   <th className="py-1 px-2 min-w-[200px]">สินค้า (Product)</th>
+                  {isReorderMode && (
+                    <th className="py-1 px-2 text-center min-w-[80px] text-indigo-600 dark:text-indigo-400 font-extrabold">จัดลำดับ</th>
+                  )}
                   <th className="py-1 px-2 min-w-[120px]">หมวดหมู่ / รหัส SKU</th>
                   <th className="py-1 px-2 text-right min-w-[90px]">ต้นทุน (฿)</th>
                   <th className="py-1 px-2 text-center min-w-[130px]">คงเหลือ / เกณฑ์</th>
@@ -1151,6 +1331,32 @@ export default function ProductListView({
                           </div>
                         </div>
                       </td>
+
+                      {/* Custom Reordering Buttons Column cell */}
+                      {isReorderMode && (
+                        <td className="py-1 px-2 text-center">
+                          <div className="flex items-center justify-center gap-1 bg-slate-100 dark:bg-slate-800 rounded p-1 border border-slate-200 dark:border-slate-700 w-fit mx-auto shadow-3xs">
+                            <button
+                              onClick={() => handleMoveProduct(p.id, 'up')}
+                              className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer active:scale-90"
+                              title="เลื่อนขึ้น"
+                              id={`btn-reorder-up-list-${p.id}`}
+                              type="button"
+                            >
+                              <ChevronUp className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleMoveProduct(p.id, 'down')}
+                              className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer active:scale-90"
+                              title="เลื่อนลง"
+                              id={`btn-reorder-down-list-${p.id}`}
+                              type="button"
+                            >
+                              <ChevronDown className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
 
                       {/* Category & SKU */}
                       <td className="py-0.5 px-1.5">
@@ -1258,6 +1464,14 @@ export default function ProductListView({
                             id={`btn-edit-item-${p.id}`}
                           >
                             <Edit3 className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenCloneModal(p)}
+                            className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                            title="คัดลอกพัสดุ (Clone)"
+                            id={`btn-clone-item-${p.id}`}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() => onDeleteProduct(p.id)}

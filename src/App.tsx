@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand } from './types';
+import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand, sortProducts } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_ACTIVITIES } from './initialData';
 import Toast, { ToastMessage } from './components/Toast';
 import DashboardView from './components/DashboardView';
@@ -96,10 +96,9 @@ export default function App() {
         setProducts(INITIAL_PRODUCTS);
         localStorage.setItem('stock_manager_products', JSON.stringify(INITIAL_PRODUCTS));
       } else {
-        // Sort by name or date if needed, let's preserve order by title/name
-        list.sort((a, b) => a.name.localeCompare(b.name));
-        setProducts(list);
-        localStorage.setItem('stock_manager_products', JSON.stringify(list));
+        const sorted = sortProducts(list);
+        setProducts(sorted);
+        localStorage.setItem('stock_manager_products', JSON.stringify(sorted));
       }
     }, (error) => {
       console.error("Firestore products sync error:", error);
@@ -390,7 +389,7 @@ export default function App() {
     };
 
     // Optimistic Update
-    const updatedProducts = [...products, product].sort((a, b) => a.name.localeCompare(b.name));
+    const updatedProducts = sortProducts([...products, product]);
     const updatedActivities = [activity, ...activities];
     setProducts(updatedProducts);
     setActivities(updatedActivities);
@@ -462,6 +461,41 @@ export default function App() {
       console.error(error);
       checkFirestoreQuotaError(error);
       addToast('info', 'บันทึกความเปลี่ยนแปลงแล้ว (โหมดจำลองเครื่อง)', 'แก้ไขข้อมูลสินค้าและบันทึกในเครื่องของคุณเรียบร้อย');
+    }
+  };
+
+  const handleBulkEditProducts = async (updates: { id: string; updatedFields: Partial<Product> }[]) => {
+    const updatedProducts = products.map((prod) => {
+      const update = updates.find((u) => u.id === prod.id);
+      if (update) {
+        return { ...prod, ...update.updatedFields, updatedAt: new Date().toISOString() };
+      }
+      return prod;
+    });
+
+    const sortedProducts = sortProducts(updatedProducts);
+    setProducts(sortedProducts);
+    localStorage.setItem('stock_manager_products', JSON.stringify(sortedProducts));
+
+    try {
+      const batch = writeBatch(db);
+      updates.forEach((up) => {
+        const productRef = doc(db, 'products', up.id);
+        const cleanFields: Record<string, any> = {};
+        Object.entries(up.updatedFields).forEach(([key, val]) => {
+          if (val !== undefined) {
+            cleanFields[key] = val;
+          }
+        });
+        cleanFields.updatedAt = new Date().toISOString();
+        batch.update(productRef, cleanFields);
+      });
+      await batch.commit();
+      addToast('success', 'บันทึกจัดลำดับพัสดุสำเร็จ', 'จัดลำดับเรียงตำแหน่งสินค้าเข้าสู่ระบบเรียบร้อย');
+    } catch (error: any) {
+      console.error(error);
+      checkFirestoreQuotaError(error);
+      addToast('info', 'จัดลำดับพัสดุแล้ว (โหมดจำลอง)', 'จัดลำดับสินค้าและบันทึกข้อมูลบนเครื่องของคุณชั่วคราว');
     }
   };
 
@@ -1047,6 +1081,7 @@ export default function App() {
             categories={categories}
             onAddProduct={handleAddProduct}
             onEditProduct={handleEditProduct}
+            onBulkEditProducts={handleBulkEditProducts}
             onDeleteProduct={handleDeleteProduct}
             onAdjustStock={handleAdjustStock}
             statusFilter={statusFilter}
