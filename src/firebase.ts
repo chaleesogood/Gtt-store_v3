@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from 'firebase/auth';
 import firebaseConfigJson from '../firebase-applet-config.json';
 
 // Initialize Firebase using values from config JSON
@@ -14,11 +15,29 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore targeting the specific databaseId if provided
+// Initialize Firestore targeting the specific databaseId if provided, with local cache persistence
 const dbId = firebaseConfigJson.firestoreDatabaseId;
+const firestoreSettings = {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+};
+
 export const db = dbId && dbId !== '(default)'
-  ? getFirestore(app, dbId)
-  : getFirestore(app);
+  ? initializeFirestore(app, firestoreSettings, dbId)
+  : initializeFirestore(app, firestoreSettings);
+
+// Initialize Auth
+export const auth = getAuth(app);
+export { 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged,
+  updateProfile
+};
 
 export function cleanUndefined<T>(obj: T): T {
   if (obj === null || typeof obj !== 'object') {
@@ -39,4 +58,5 @@ export function cleanUndefined<T>(obj: T): T {
   });
   return result as T;
 }
+
 

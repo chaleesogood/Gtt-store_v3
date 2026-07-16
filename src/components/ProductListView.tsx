@@ -904,35 +904,37 @@ export default function ProductListView({
                 <div key={group.category.id} className="bg-slate-50/20 rounded-lg overflow-hidden" id={`category-group-${group.category.id}`}>
                   {/* Category Header with Stats */}
                   <div
-                    className="bg-slate-100/50 py-1 px-2 flex flex-row items-center justify-between gap-1.5 cursor-pointer select-none hover:bg-slate-100/75 transition-colors"
+                    className="bg-slate-100/50 py-2 px-3 flex flex-row items-center justify-between gap-2.5 cursor-pointer select-none hover:bg-slate-100/75 transition-colors"
                     onClick={() => toggleCategoryCollapse(group.category.id)}
                     id={`group-header-${group.category.id}`}
                   >
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       {isCollapsed ? (
-                        <ChevronRight className="h-3 w-3 text-slate-400" />
+                        <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
                       ) : (
-                        <ChevronDown className="h-3 w-3 text-slate-400" />
+                        <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />
                       )}
                       <img
                         src={group.category.imageUrl || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'}
                         alt={group.category.name}
-                        className="w-5 h-5 object-cover rounded border border-slate-200"
+                        className="w-10 h-10 object-cover rounded-lg border border-slate-200 shadow-3xs shrink-0"
                         referrerPolicy="no-referrer"
                       />
-                      <span className={`inline-block px-1.5 py-0.2 text-[9px] font-black rounded border ${group.category.color}`}>
-                        {group.category.name.split(' (')[0]}
-                      </span>
-                      <span className="text-[9px] font-bold text-slate-400 font-sans">
-                        ({group.products.length} รายการ)
-                      </span>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                        <span className={`inline-block px-2.5 py-0.5 text-xs sm:text-sm font-black rounded-lg border shadow-3xs ${group.category.color}`}>
+                          {group.category.name.split(' (')[0]}
+                        </span>
+                        <span className="text-[11px] sm:text-xs font-bold text-slate-400 font-sans">
+                          ({group.products.length} รายการ)
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 font-sans" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1 bg-white px-1.5 py-0.2 rounded border border-slate-100 shadow-3xs">
+                    <div className="flex items-center gap-2 text-[10px] sm:text-xs font-bold text-slate-500 font-sans" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-slate-100 shadow-3xs">
                         <span className="text-slate-400 font-medium">สต็อกรวม:</span>
                         <span className="font-black text-slate-700">{totalQty} ชิ้น</span>
                       </div>
-                      <div className="flex items-center gap-1 bg-white px-1.5 py-0.2 rounded border border-slate-100 shadow-3xs">
+                      <div className="flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-slate-100 shadow-3xs">
                         <span className="text-slate-400 font-medium">ทุนคลัง:</span>
                         <span className="font-black text-indigo-600">{formatCurrency(totalCostVal)}</span>
                       </div>

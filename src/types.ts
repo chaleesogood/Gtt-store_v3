@@ -232,4 +232,13 @@ export function sortProducts(list: Product[]): Product[] {
   });
 }
 
+export interface UserRole {
+  uid: string;
+  email: string;
+  displayName?: string;
+  role: 'admin' | 'user'; // admin = Edit, Add, Delete; user = View, Add, Edit but CANNOT delete
+  createdAt: string;
+}
+
+
 

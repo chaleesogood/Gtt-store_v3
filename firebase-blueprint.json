@@ -109,6 +109,19 @@
         "receivedQty": { "type": "number" }
       },
       "required": ["id", "requesterName", "orderTitle", "status", "quantity", "createdAt"]
+    },
+    "UserRole": {
+      "title": "UserRole",
+      "description": "User role mapping for permissions",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
     }
   },
   "firestore": {
@@ -135,6 +148,10 @@
     "/orders/{orderId}": {
       "schema": "ProductOrder",
       "description": "Stores purchase and item tracking orders"
+    },
+    "/user_roles/{userId}": {
+      "schema": "UserRole",
+      "description": "Stores custom user roles for stock and deletion control"
     }
   }
 }

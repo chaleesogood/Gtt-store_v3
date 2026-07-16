@@ -1,8 +1,68 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Check if user is signed in
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Check if the current user has admin role
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'chaleesogood@gmail.com' ||
+        (exists(/databases/$(database)/documents/user_roles/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    match /user_roles/{userId} {
+      allow read: if true;
+      allow write: if !isSignedIn() || request.auth.uid == userId || isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if !isSignedIn() || isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if !isSignedIn() || isAdmin();
+    }
+
+    match /activities/{activityId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if !isSignedIn() || isAdmin();
+    }
+
+    match /boms/{bomId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if !isSignedIn() || isAdmin();
+    }
+
+    match /projects/{projectId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if !isSignedIn() || isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if !isSignedIn() || isAdmin();
+    }
+
+    // Default fallback for any other collection
     match /{document=**} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if !isSignedIn() || isAdmin();
     }
   }
 }
+

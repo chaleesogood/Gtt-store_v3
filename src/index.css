@@ -1,5 +1,122 @@
 @import "tailwindcss";
 
+/* -------------------- GLOBAL TYPOGRAPHY BOOST -------------------- */
+:root {
+  font-size: 112.5% !important; /* Scale base font size from 16px to 18px! (1.125x size boost globally) */
+  scroll-behavior: smooth;
+}
+
+/* Ensure body and general rendering are crisp and clean */
+body {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Redefine small classes to be highly legible */
+.text-xs {
+  font-size: 0.825rem !important; /* 13.2px scaled -> ~15px read size! */
+}
+.text-sm {
+  font-size: 0.95rem !important; /* 15.2px scaled -> ~17px read size! */
+}
+.text-\[10px\] {
+  font-size: 0.75rem !important; /* ensure extra small labels are easily readable */
+}
+.text-\[9px\] {
+  font-size: 0.72rem !important;
+}
+
+/* -------------------- VIBRANT CLICKABLE BUTTONS -------------------- */
+/* Add micro-interactions and rich colors to all clickable buttons in the app */
+button, 
+[role="button"],
+input[type="submit"] {
+  font-weight: 700 !important; /* bold labels for all interactive elements */
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+button:not(:disabled):not(.cursor-not-allowed),
+[role="button"]:not(:disabled) {
+  cursor: pointer !important;
+}
+
+/* Hover effects for standard buttons */
+button:not(:disabled):hover {
+  transform: translateY(-1.5px) !important;
+  filter: brightness(1.08) !important;
+}
+
+/* Active pressed state */
+button:not(:disabled):active {
+  transform: translateY(0.5px) scale(0.97) !important;
+  filter: brightness(0.95) !important;
+}
+
+/* Vibrant primary buttons (Indigo) */
+.bg-indigo-600, .bg-indigo-500 {
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35) !important;
+}
+.bg-indigo-600:hover, .bg-indigo-500:hover {
+  background: linear-gradient(135deg, #5a52e6 0%, #7679f2 100%) !important;
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.48) !important;
+}
+
+/* Vibrant success buttons (Emerald Green) */
+.bg-emerald-600, .bg-emerald-500 {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35) !important;
+}
+.bg-emerald-600:hover, .bg-emerald-500:hover {
+  background: linear-gradient(135deg, #05a675 0%, #15ca8e 100%) !important;
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.48) !important;
+}
+
+/* Vibrant hazard / danger buttons (Rose Red) */
+.bg-rose-600, .bg-rose-500, .bg-red-600 {
+  background: linear-gradient(135deg, #dc2626 0%, #f43f5e 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 4px 12px rgba(244, 63, 94, 0.35) !important;
+}
+.bg-rose-600:hover, .bg-rose-500:hover, .bg-red-600:hover {
+  background: linear-gradient(135deg, #e11d48 0%, #fb7185 100%) !important;
+  box-shadow: 0 6px 16px rgba(244, 63, 94, 0.48) !important;
+}
+
+/* Vibrant warning buttons (Amber Yellow) */
+.bg-amber-600, .bg-amber-500 {
+  background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35) !important;
+}
+.bg-amber-600:hover, .bg-amber-500:hover {
+  background: linear-gradient(135deg, #e08705 0%, #f7ac25 100%) !important;
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.48) !important;
+}
+
+/* Vibrant secondary/gray buttons (enhance readability and border contrast) */
+.border-slate-200 {
+  border-width: 1.5px !important;
+}
+.bg-slate-100 {
+  background-color: #f1f5f9 !important;
+  border: 1.5px solid #cbd5e1 !important;
+  color: #1e293b !important;
+}
+.bg-slate-100:hover {
+  background-color: #e2e8f0 !important;
+  border-color: #94a3b8 !important;
+}
+
+/* Dark Mode Overrides for interactive buttons and layout elements */
 @variant dark (&:where(.dark, .dark *));
 
 .dark {
@@ -45,6 +162,13 @@
 
   & .bg-slate-100 {
     background-color: #1e2b52 !important;
+    border-color: #2e3c6a !important;
+    color: #f1f5f9 !important;
+  }
+  
+  & .bg-slate-100:hover {
+    background-color: #243564 !important;
+    border-color: #435490 !important;
   }
 
   & .bg-slate-100\/30 {

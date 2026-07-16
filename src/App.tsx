@@ -13,9 +13,32 @@ import Logo from './components/Logo';
 
 import SettingsView from './components/SettingsView';
 import { CatalogView } from './components/CatalogView';
-import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink } from 'lucide-react';
+import UserManagementView from './components/UserManagementView';
+import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs } from 'firebase/firestore';
-import { db, cleanUndefined } from './firebase';
+import { db, cleanUndefined, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from './firebase';
+import { UserRole } from './types';
+
+// Proxy console.error to intercept and downgrade Firestore quota/limit errors to warnings
+const originalConsoleError = console.error;
+console.error = (...args) => {
+  const isQuota = args.some(arg => {
+    if (!arg) return false;
+    const str = String(arg.message || (arg.stack ? arg.stack : arg));
+    return (
+      str.toLowerCase().includes('quota') || 
+      str.toLowerCase().includes('limit') || 
+      str.toLowerCase().includes('exceed') || 
+      str.toLowerCase().includes('resource_exhausted') ||
+      str.toLowerCase().includes('permission-denied')
+    );
+  });
+  if (isQuota) {
+    console.warn("Firestore Quota/Limit warning suppressed from console.error:", ...args);
+    return;
+  }
+  originalConsoleError(...args);
+};
 
 export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -31,12 +54,91 @@ export default function App() {
   const [brands, setBrands] = useState<Brand[]>([]);
 
 
-  // Auth / Admin state
-  const [adminEmail, setAdminEmail] = useState<string | null>(() => localStorage.getItem('admin_email'));
+  // Real Firebase Auth states
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'user'>('user');
+  const [userRoles, setUserRoles] = useState<UserRole[]>([]);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Login / Register inputs
   const [loginEmailInput, setLoginEmailInput] = useState('');
+  const [loginPasswordInput, setLoginPasswordInput] = useState('');
+  const [registerDisplayNameInput, setRegisterDisplayNameInput] = useState('');
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [isDemoBypass, setIsDemoBypass] = useState(false);
+  const [isOperationNotAllowed, setIsOperationNotAllowed] = useState(false);
 
   // Firestore status / Quota state
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
+
+  // Listen to Auth State Changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser(user);
+        
+        // Fetch/Listen to this user's specific role in 'user_roles'
+        const userRoleRef = doc(db, 'user_roles', user.uid);
+        const unsubscribeRole = onSnapshot(userRoleRef, async (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data() as UserRole;
+            setCurrentUserRole(data.role);
+          } else {
+            // Document doesn't exist, let's create a default role record!
+            const isDefaultAdmin = user.email === 'chaleesogood@gmail.com';
+            const defaultRole: 'admin' | 'user' = isDefaultAdmin ? 'admin' : 'user';
+            
+            const newRoleRecord: UserRole = {
+              uid: user.uid,
+              email: user.email || '',
+              displayName: user.displayName || user.email?.split('@')[0] || 'Unknown User',
+              role: defaultRole,
+              createdAt: new Date().toISOString()
+            };
+            
+            try {
+              await setDoc(userRoleRef, cleanUndefined(newRoleRecord));
+              setCurrentUserRole(defaultRole);
+            } catch (err) {
+              console.error("Error creating user role record:", err);
+              setCurrentUserRole(defaultRole);
+            }
+          }
+          setAuthLoading(false);
+        }, (error) => {
+          console.error("Error listening to user role:", error);
+          setCurrentUserRole(user.email === 'chaleesogood@gmail.com' ? 'admin' : 'user');
+          setAuthLoading(false);
+        });
+        
+        return () => unsubscribeRole();
+      } else {
+        setCurrentUser(null);
+        setCurrentUserRole('user');
+        setAuthLoading(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch user_roles list for Admin screen
+  useEffect(() => {
+    if (currentUser && currentUserRole === 'admin') {
+      const q = query(collection(db, 'user_roles'), orderBy('createdAt', 'desc'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const list: UserRole[] = [];
+        snapshot.forEach((document) => {
+          list.push(document.data() as UserRole);
+        });
+        setUserRoles(list);
+      }, (error) => {
+        handleFirestoreError("Firestore user_roles sync error", error);
+      });
+      return () => unsubscribe();
+    } else {
+      setUserRoles([]);
+    }
+  }, [currentUser, currentUserRole]);
 
   const checkFirestoreQuotaError = (error: any) => {
     if (error) {
@@ -50,6 +152,24 @@ export default function App() {
       ) {
         setIsQuotaExceeded(true);
       }
+    }
+  };
+
+  const handleFirestoreError = (context: string, error: any) => {
+    if (!error) return;
+    const msg = error.message || String(error);
+    const isQuota = (
+      msg.toLowerCase().includes('quota') || 
+      msg.toLowerCase().includes('limit') || 
+      msg.toLowerCase().includes('exceed') || 
+      msg.toLowerCase().includes('resource_exhausted') ||
+      msg.toLowerCase().includes('permission-denied')
+    );
+    if (isQuota) {
+      setIsQuotaExceeded(true);
+      console.warn(`${context} (Quota Exceeded / Offline):`, error);
+    } else {
+      console.error(context, error);
     }
   };
 
@@ -82,6 +202,7 @@ export default function App() {
 
   // Sync products from Firestore (seed if empty)
   useEffect(() => {
+    if (!currentUser) return;
     const q = query(collection(db, 'products'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Product[] = [];
@@ -101,17 +222,17 @@ export default function App() {
         localStorage.setItem('stock_manager_products', JSON.stringify(sorted));
       }
     }, (error) => {
-      console.error("Firestore products sync error:", error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Firestore products sync error", error);
       addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อคลังสินค้า (Firestore)', `สลับไปใช้คลังสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_products');
       setProducts(saved ? JSON.parse(saved) : INITIAL_PRODUCTS);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync categories from Firestore (seed if empty)
   useEffect(() => {
+    if (!currentUser) return;
     const q = query(collection(db, 'categories'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Category[] = [];
@@ -130,14 +251,13 @@ export default function App() {
         localStorage.setItem('stock_manager_categories', JSON.stringify(list));
       }
     }, (error) => {
-      console.error("Firestore categories sync error:", error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Firestore categories sync error", error);
       addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อคลังกลุ่มสินค้า (Firestore)', `สลับไปใช้คลังกลุ่มสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_categories');
       setCategories(saved ? JSON.parse(saved) : INITIAL_CATEGORIES);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync and heal database: Ensure any category referenced by any product is defined in the categories collection
   useEffect(() => {
@@ -180,6 +300,7 @@ export default function App() {
 
   // Sync activities from Firestore (seed if empty)
   useEffect(() => {
+    if (!currentUser) return;
     const q = query(collection(db, 'activities'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: StockActivity[] = [];
@@ -198,17 +319,17 @@ export default function App() {
         localStorage.setItem('stock_manager_activities', JSON.stringify(list));
       }
     }, (error) => {
-      console.error("Firestore activities sync error:", error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Firestore activities sync error", error);
       addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อประวัติการทำงาน (Firestore)', `สลับไปใช้ประวัติสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_activities');
       setActivities(saved ? JSON.parse(saved) : INITIAL_ACTIVITIES);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync boms from Firestore
   useEffect(() => {
+    if (!currentUser) return;
     const q = query(collection(db, 'boms'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Bom[] = [];
@@ -219,16 +340,16 @@ export default function App() {
       setBoms(list);
       localStorage.setItem('stock_manager_boms', JSON.stringify(list));
     }, (error) => {
-      console.error("Firestore boms sync error:", error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Firestore boms sync error", error);
       const saved = localStorage.getItem('stock_manager_boms');
       setBoms(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync projects from Firestore
   useEffect(() => {
+    if (!currentUser) return;
     const q = query(collection(db, 'projects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Project[] = [];
@@ -239,16 +360,16 @@ export default function App() {
       setProjects(list);
       localStorage.setItem('stock_manager_projects_list', JSON.stringify(list));
     }, (error) => {
-      console.error("Firestore projects sync error:", error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Firestore projects sync error", error);
       const saved = localStorage.getItem('stock_manager_projects_list');
       setProjects(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync jobs from Firestore
   useEffect(() => {
+    if (!currentUser) return;
     const q = query(collection(db, 'jobs'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Job[] = [];
@@ -259,16 +380,16 @@ export default function App() {
       setJobs(list);
       localStorage.setItem('stock_manager_jobs_list', JSON.stringify(list));
     }, (error) => {
-      console.error("Firestore jobs sync error:", error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Firestore jobs sync error", error);
       const saved = localStorage.getItem('stock_manager_jobs_list');
       setJobs(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync employees from Firestore
   useEffect(() => {
+    if (!currentUser) return;
     const q = query(collection(db, 'employees'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Employee[] = [];
@@ -279,16 +400,16 @@ export default function App() {
       setEmployees(list);
       localStorage.setItem('stock_manager_employees_list', JSON.stringify(list));
     }, (error) => {
-      console.error("Firestore employees sync error:", error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Firestore employees sync error", error);
       const saved = localStorage.getItem('stock_manager_employees_list');
       setEmployees(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync brands from Firestore
   useEffect(() => {
+    if (!currentUser) return;
     const q = query(collection(db, 'brands'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Brand[] = [];
@@ -299,16 +420,16 @@ export default function App() {
       setBrands(list);
       localStorage.setItem('stock_manager_brands_list', JSON.stringify(list));
     }, (error) => {
-      console.error("Firestore brands sync error:", error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Firestore brands sync error", error);
       const saved = localStorage.getItem('stock_manager_brands_list');
       setBrands(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync job projects from Firestore
   useEffect(() => {
+    if (!currentUser) return;
     const q = query(collection(db, 'jobProjects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: JobProject[] = [];
@@ -319,16 +440,16 @@ export default function App() {
       setJobProjects(list);
       localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(list));
     }, (error) => {
-      console.error("Firestore jobProjects sync error:", error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Firestore jobProjects sync error", error);
       const saved = localStorage.getItem('stock_manager_job_projects_list');
       setJobProjects(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync daily reports from Firestore
   useEffect(() => {
+    if (!currentUser) return;
     const q = query(collection(db, 'dailyReports'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: DailyReport[] = [];
@@ -339,18 +460,32 @@ export default function App() {
       setDailyReports(list);
       localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(list));
     }, (error) => {
-      console.error("Firestore dailyReports sync error:", error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Firestore dailyReports sync error", error);
       const saved = localStorage.getItem('stock_manager_daily_reports_list');
       setDailyReports(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
 
 
   // Toast Helpers
-  const addToast = (type: 'success' | 'warning' | 'info', title: string, message: string) => {
+  const lastToastTimes = useRef<Record<string, number>>({});
+
+  const addToast = (type: 'success' | 'warning' | 'info' | 'error', title: string, message: string) => {
+    const now = Date.now();
+    const lastTime = lastToastTimes.current[title];
+    if (lastTime && now - lastTime < 5000) {
+      return;
+    }
+
+    // Suppress Firestore warning spam if quota is already exceeded
+    if (isQuotaExceeded && (title.includes('Firestore') || title.includes('เชื่อมต่อ') || message.includes('Firestore') || message.includes('เชื่อมต่อ'))) {
+      return;
+    }
+
+    lastToastTimes.current[title] = now;
+
     const newToast: ToastMessage = {
       id: Math.random().toString(36).substring(2, 9),
       type,
@@ -362,6 +497,126 @@ export default function App() {
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Offline Sandbox Backup & Restore Helpers
+  const handleDownloadBackup = () => {
+    try {
+      const backupData: Record<string, any> = {};
+      const keys = [
+        'stock_manager_products',
+        'stock_manager_categories',
+        'stock_manager_activities',
+        'stock_manager_boms',
+        'stock_manager_projects_list',
+        'stock_manager_jobs_list',
+        'stock_manager_employees_list',
+        'stock_manager_brands_list',
+        'stock_manager_job_projects_list',
+        'stock_manager_daily_reports_list'
+      ];
+      
+      keys.forEach(key => {
+        const val = localStorage.getItem(key);
+        if (val) {
+          try {
+            backupData[key] = JSON.parse(val);
+          } catch {
+            backupData[key] = val;
+          }
+        }
+      });
+
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `stock_manager_backup_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      addToast('success', 'สำรองข้อมูลสำเร็จ', 'ดาวน์โหลดไฟล์สำรองข้อมูลเครื่องเรียบร้อยแล้ว');
+    } catch (err: any) {
+      console.error(err);
+      addToast('warning', 'สำรองข้อมูลล้มเหลว', `เกิดข้อผิดพลาด: ${err.message}`);
+    }
+  };
+
+  const handleRestoreBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const content = event.target?.result as string;
+        const backupData = JSON.parse(content);
+        
+        const keys = [
+          'stock_manager_products',
+          'stock_manager_categories',
+          'stock_manager_activities',
+          'stock_manager_boms',
+          'stock_manager_projects_list',
+          'stock_manager_jobs_list',
+          'stock_manager_employees_list',
+          'stock_manager_brands_list',
+          'stock_manager_job_projects_list',
+          'stock_manager_daily_reports_list'
+        ];
+
+        let restoredCount = 0;
+        keys.forEach(key => {
+          if (backupData[key]) {
+            localStorage.setItem(key, JSON.stringify(backupData[key]));
+            restoredCount++;
+          }
+        });
+
+        if (restoredCount === 0) {
+          throw new Error('ไม่พบข้อมูลสำรองที่ถูกต้องในไฟล์นี้');
+        }
+
+        // Reload data to local states
+        const prodVal = localStorage.getItem('stock_manager_products');
+        if (prodVal) setProducts(JSON.parse(prodVal));
+
+        const catVal = localStorage.getItem('stock_manager_categories');
+        if (catVal) setCategories(JSON.parse(catVal));
+
+        const actVal = localStorage.getItem('stock_manager_activities');
+        if (actVal) setActivities(JSON.parse(actVal));
+
+        const bomVal = localStorage.getItem('stock_manager_boms');
+        if (bomVal) setBoms(JSON.parse(bomVal));
+
+        const projVal = localStorage.getItem('stock_manager_projects_list');
+        if (projVal) setProjects(JSON.parse(projVal));
+
+        const jobsVal = localStorage.getItem('stock_manager_jobs_list');
+        if (jobsVal) setJobs(JSON.parse(jobsVal));
+
+        const empVal = localStorage.getItem('stock_manager_employees_list');
+        if (empVal) setEmployees(JSON.parse(empVal));
+
+        const brandVal = localStorage.getItem('stock_manager_brands_list');
+        if (brandVal) setBrands(JSON.parse(brandVal));
+
+        const jpVal = localStorage.getItem('stock_manager_job_projects_list');
+        if (jpVal) setJobProjects(JSON.parse(jpVal));
+
+        const drVal = localStorage.getItem('stock_manager_daily_reports_list');
+        if (drVal) setDailyReports(JSON.parse(drVal));
+
+        addToast('success', 'กู้คืนข้อมูลสำเร็จ', 'กู้คืนข้อมูลพัสดุและสต็อกทั้งหมดเข้าสู่เครื่องเรียบร้อยแล้ว');
+      } catch (err: any) {
+        console.error(err);
+        addToast('warning', 'กู้คืนข้อมูลล้มเหลว', `ไฟล์ไม่ถูกต้องหรือเกิดข้อผิดพลาด: ${err.message}`);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   // -------------------- PRODUCTS WORKFLOWS --------------------
@@ -401,8 +656,7 @@ export default function App() {
       await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
       addToast('success', 'ลงทะเบียนสินค้าเรียบร้อย', `สินค้า "${product.name}" ได้รับการเพิ่มในสต็อกแล้ว`);
     } catch (error: any) {
-      console.error(error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Add product error", error);
       addToast('info', 'ลงทะเบียนสำเร็จ (โหมดจำลองเครื่อง)', `สินค้า "${product.name}" ถูกบันทึกไว้ในอุปกรณ์นี้ชั่วคราว`);
     }
   };
@@ -458,8 +712,7 @@ export default function App() {
 
       addToast('success', 'บันทึกความเปลี่ยนแปลงแล้ว', 'แก้ไขข้อมูลรายละเอียดสินค้าเรียบร้อย');
     } catch (error: any) {
-      console.error(error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Edit product error", error);
       addToast('info', 'บันทึกความเปลี่ยนแปลงแล้ว (โหมดจำลองเครื่อง)', 'แก้ไขข้อมูลสินค้าและบันทึกในเครื่องของคุณเรียบร้อย');
     }
   };
@@ -493,13 +746,16 @@ export default function App() {
       await batch.commit();
       addToast('success', 'บันทึกจัดลำดับพัสดุสำเร็จ', 'จัดลำดับเรียงตำแหน่งสินค้าเข้าสู่ระบบเรียบร้อย');
     } catch (error: any) {
-      console.error(error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Bulk edit products error", error);
       addToast('info', 'จัดลำดับพัสดุแล้ว (โหมดจำลอง)', 'จัดลำดับสินค้าและบันทึกข้อมูลบนเครื่องของคุณชั่วคราว');
     }
   };
 
   const handleDeleteProduct = async (id: string) => {
+    if (currentUserRole !== 'admin') {
+      addToast('error', 'ปฏิเสธการเข้าถึง', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ได้รับอนุญาตให้ลบข้อมูล');
+      return;
+    }
     const productToDelete = products.find((p) => p.id === id);
     if (!productToDelete) return;
 
@@ -530,8 +786,7 @@ export default function App() {
         await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
         addToast('info', 'นำสินค้าออกจากระบบ', `ลบ "${productToDelete.name}" เรียบร้อยแล้ว`);
       } catch (error: any) {
-        console.error(error);
-        checkFirestoreQuotaError(error);
+        handleFirestoreError("Delete product error", error);
         addToast('info', 'นำสินค้าออกแล้ว (โหมดจำลองเครื่อง)', `ลบรายการสินค้าในอุปกรณ์นี้เรียบร้อย`);
       }
     }
@@ -601,8 +856,7 @@ export default function App() {
       });
       await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
     } catch (error: any) {
-      console.error(error);
-      checkFirestoreQuotaError(error);
+      handleFirestoreError("Adjust stock error", error);
       // Since it's optimistic, we don't roll back, just log quota and toast
     }
   };
@@ -658,6 +912,10 @@ export default function App() {
   };
 
   const handleDeleteCategory = async (id: string) => {
+    if (currentUserRole !== 'admin') {
+      addToast('error', 'ปฏิเสธการเข้าถึง', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ได้รับอนุญาตให้ลบข้อมูล');
+      return;
+    }
     const associatedProducts = products.filter((p) => p.category === id);
     const catToDelete = categories.find((c) => c.id === id);
     if (!catToDelete) return;
@@ -756,6 +1014,10 @@ export default function App() {
   };
 
   const handleDeleteJob = async (id: string) => {
+    if (currentUserRole !== 'admin') {
+      addToast('error', 'ปฏิเสธการเข้าถึง', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ได้รับอนุญาตให้ลบข้อมูล');
+      return;
+    }
     const jobToDelete = jobs.find((j) => j.id === id);
     if (!jobToDelete) return;
 
@@ -823,6 +1085,10 @@ export default function App() {
   };
 
   const handleDeleteEmployee = async (id: string) => {
+    if (currentUserRole !== 'admin') {
+      addToast('error', 'ปฏิเสธการเข้าถึง', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ได้รับอนุญาตให้ลบข้อมูล');
+      return;
+    }
     const empToDelete = employees.find((e) => e.id === id);
     if (!empToDelete) return;
 
@@ -888,6 +1154,10 @@ export default function App() {
   };
 
   const handleDeleteBrand = async (id: string) => {
+    if (currentUserRole !== 'admin') {
+      addToast('error', 'ปฏิเสธการเข้าถึง', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ได้รับอนุญาตให้ลบข้อมูล');
+      return;
+    }
     const brandToDelete = brands.find((b) => b.id === id);
     if (!brandToDelete) return;
 
@@ -953,6 +1223,10 @@ export default function App() {
   };
 
   const handleDeleteJobProject = async (id: string) => {
+    if (currentUserRole !== 'admin') {
+      addToast('error', 'ปฏิเสธการเข้าถึง', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ได้รับอนุญาตให้ลบข้อมูล');
+      return;
+    }
     const projToDelete = jobProjects.find((p) => p.id === id);
     if (!projToDelete) return;
 
@@ -1020,6 +1294,10 @@ export default function App() {
   };
 
   const handleDeleteDailyReport = async (id: string) => {
+    if (currentUserRole !== 'admin') {
+      addToast('error', 'ปฏิเสธการเข้าถึง', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ได้รับอนุญาตให้ลบข้อมูล');
+      return;
+    }
     const reportToDelete = dailyReports.find((r) => r.id === id);
     if (!reportToDelete) return;
 
@@ -1039,6 +1317,10 @@ export default function App() {
   };
 
   const handleClearLogs = async () => {
+    if (currentUserRole !== 'admin') {
+      addToast('error', 'ปฏิเสธการเข้าถึง', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ได้รับอนุญาตให้ลบประวัติการทำรายการ');
+      return;
+    }
     if (confirm('คุณแน่ใจหรือไม่ที่ต้องการจะเคลียร์ประวัติการทำรายการในอดีตทั้งหมด? (ประวัติจะหายไปถาวร)')) {
       try {
         const querySnapshot = await getDocs(collection(db, 'activities'));
@@ -1170,6 +1452,29 @@ export default function App() {
             boms={boms}
           />
         );
+      case 'users':
+        if (currentUserRole !== 'admin') {
+          return (
+            <div className="p-8 text-center text-slate-500 font-sans">
+              <AlertTriangle className="h-12 w-12 text-rose-500 mx-auto mb-3 animate-pulse" />
+              <p className="font-bold text-sm text-slate-800 dark:text-slate-200">เข้าถึงสิทธิ์ถูกปฏิเสธ (Unauthorized Access)</p>
+              <p className="text-xs mt-1">เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถตรวจสอบและสลับสิทธิ์การเข้าใช้งานได้</p>
+            </div>
+          );
+        }
+        return (
+          <UserManagementView
+            userRoles={userRoles}
+            currentUserEmail={currentUser ? currentUser.email : null}
+            onUpdateUserRole={async (uid, role) => {
+              await updateDoc(doc(db, 'user_roles', uid), { role });
+            }}
+            onDeleteUserRole={async (uid) => {
+              await deleteDoc(doc(db, 'user_roles', uid));
+            }}
+            addToast={addToast}
+          />
+        );
 
       default:
         return null;
@@ -1186,10 +1491,111 @@ export default function App() {
     setIsNotificationsOpen(false);
   };
 
-  if (!adminEmail) {
+  const handleGoogleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      setIsOperationNotAllowed(false);
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      addToast('success', 'เข้าสู่ระบบสำเร็จ', `ยินดีต้อนรับคุณ ${user.email} เข้าสู่ระบบควบคุมคลังสินค้า`);
+    } catch (error: any) {
+      console.error("Google login error:", error);
+      if (error.code === 'auth/operation-not-allowed' || error.message?.includes('operation-not-allowed')) {
+        setIsOperationNotAllowed(true);
+        addToast('error', 'ระบบยังไม่เปิดใช้', 'ผู้ให้บริการ Google Login ยังไม่ได้เปิดใช้ใน Firebase Console');
+      } else if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
+        addToast('warning', 'ยกเลิกการล็อกอิน', 'คุณได้ยกเลิกหรือปิดหน้าต่างป๊อปอัปเข้าสู่ระบบ Google');
+      } else {
+        addToast('error', 'ข้อผิดพลาดการเข้าสู่ระบบ', `ไม่สามารถเข้าสู่ระบบด้วย Google: ${error.message}`);
+      }
+    }
+  };
+
+  const handleEmailPasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = loginEmailInput.trim().toLowerCase();
+    const password = loginPasswordInput;
+    
+    if (!email || !password) {
+      addToast('warning', 'กรอกข้อมูลไม่ครบ', 'โปรดระบุอีเมลและรหัสผ่านเพื่อดำเนินการ');
+      return;
+    }
+
+    try {
+      setIsOperationNotAllowed(false);
+      if (isRegisterMode) {
+        // Register standard user
+        const result = await createUserWithEmailAndPassword(auth, email, password);
+        const user = result.user;
+        
+        // Update display name
+        const displayName = registerDisplayNameInput.trim() || email.split('@')[0];
+        await updateProfile(user, { displayName });
+        
+        // Save user role record
+        const userRoleRef = doc(db, 'user_roles', user.uid);
+        const isDefaultAdmin = email === 'chaleesogood@gmail.com';
+        const defaultRole: 'admin' | 'user' = isDefaultAdmin ? 'admin' : 'user';
+        
+        const newRoleRecord: UserRole = {
+          uid: user.uid,
+          email,
+          displayName,
+          role: defaultRole,
+          createdAt: new Date().toISOString()
+        };
+        
+        await setDoc(userRoleRef, cleanUndefined(newRoleRecord));
+        addToast('success', 'สมัครสมาชิกสำเร็จ', `สร้างบัญชีและเข้าสู่ระบบเรียบร้อยแล้ว: ${email}`);
+      } else {
+        // Login
+        const result = await signInWithEmailAndPassword(auth, email, password);
+        addToast('success', 'เข้าสู่ระบบสำเร็จ', `เข้าสู่ระบบสำเร็จในชื่อบัญชี ${result.user.email}`);
+      }
+    } catch (error: any) {
+      console.error("Auth error:", error);
+      let errMsg = error.message;
+      if (error.code === 'auth/operation-not-allowed' || error.message?.includes('operation-not-allowed')) {
+        setIsOperationNotAllowed(true);
+        errMsg = 'ช่องทางล็อกอินนี้ (Email/Password) ยังไม่เปิดใช้งานใน Firebase Console ของคุณ';
+      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        errMsg = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+      } else if (error.code === 'auth/email-already-in-use') {
+        errMsg = 'อีเมลนี้ถูกใช้งานในการสมัครสมาชิกไปแล้ว';
+      } else if (error.code === 'auth/weak-password') {
+        errMsg = 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร';
+      } else if (error.code === 'auth/invalid-email') {
+        errMsg = 'รูปแบบอีเมลไม่ถูกต้อง';
+      }
+      addToast('error', 'เกิดข้อผิดพลาด', errMsg);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      setIsDemoBypass(false);
+      await signOut(auth);
+      addToast('info', 'ออกจากระบบเรียบร้อย', 'เซสชันการเข้าใช้งานคลังถูกปิดเรียบร้อยแล้ว');
+    } catch (err: any) {
+      addToast('error', 'ออกจากระบบล้มเหลว', err.message);
+    }
+  };
+
+  if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4 antialiased selection:bg-indigo-500/30">
-        <div className="max-w-md w-full bg-slate-800 border border-slate-700/80 rounded-3xl shadow-2xl p-8 space-y-6 animate-in fade-in zoom-in-95 duration-300">
+      <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4 antialiased">
+        <div className="text-center space-y-4">
+          <Logo className="h-16 w-16 mx-auto animate-bounce text-indigo-500" size={64} />
+          <p className="text-sm text-indigo-400 font-mono tracking-widest uppercase">กำลังเชื่อมต่อระบบคลัง GTT EE STORE...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4 antialiased selection:bg-indigo-500/30">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-8 space-y-6 animate-in fade-in zoom-in-95 duration-300">
           <div className="text-center space-y-3">
             <div className="flex justify-center">
               <Logo className="h-16 w-16" size={64} />
@@ -1200,39 +1606,130 @@ export default function App() {
             </div>
           </div>
 
-          <div className="border-t border-slate-700/60 my-2"></div>
+          <div className="border-t border-slate-800/80 my-2"></div>
 
-          <form 
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (loginEmailInput.trim()) {
-                const email = loginEmailInput.trim().toLowerCase();
-                localStorage.setItem('admin_email', email);
-                setAdminEmail(email);
-                addToast('success', 'เข้าสู่ระบบสำเร็จ', `ยินดีต้อนรับคุณ ${email} เข้าสู่ระบบควบคุมคลังสินค้า`);
-              }
-            }} 
-            className="space-y-5 text-left"
-          >
+          {isOperationNotAllowed && (
+            <div className="p-4 bg-rose-950/40 border border-rose-800/80 rounded-2xl text-xs space-y-2.5 text-slate-200">
+              <div className="flex items-center gap-2 font-bold text-rose-400">
+                <AlertTriangle className="h-4.5 w-4.5 shrink-0" />
+                <span>เปิดใช้งานสิทธิ์การล็อกอินที่คอนโซล Firebase (Auth Required)</span>
+              </div>
+              <p className="leading-relaxed text-slate-300">
+                ระบบล็อกอินยังไม่ได้รับการเปิดใช้งานในหลังบ้านของคุณ โปรดแก้ไขได้ตามขั้นตอนดังนี้:
+              </p>
+              <ol className="list-decimal pl-4.5 space-y-1.5 font-sans text-slate-300 leading-normal">
+                <li>เปิดหน้า <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline inline-flex items-center gap-0.5 font-bold">Firebase Console <ExternalLink className="h-3 w-3" /></a></li>
+                <li>ไปที่แท็บเมนู <strong className="text-white">Authentication</strong> &gt; <strong className="text-white">Sign-in method</strong></li>
+                <li>คลิกเปิดใช้งาน (Enable) <strong className="text-white">Email/Password</strong> และ <strong className="text-white">Google</strong></li>
+                <li>บันทึกการเปลี่ยนแปลง แล้วกลับมารีเฟรชหน้านี้ใหม่</li>
+              </ol>
+            </div>
+          )}
+
+          {/* Tab Selection */}
+          <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-2xl border border-slate-800">
+            <button
+              onClick={() => { setIsRegisterMode(false); }}
+              className={`py-2 text-xs font-bold rounded-xl transition-all font-sans cursor-pointer ${
+                !isRegisterMode ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              เข้าสู่ระบบ (Login)
+            </button>
+            <button
+              onClick={() => { setIsRegisterMode(true); }}
+              className={`py-2 text-xs font-bold rounded-xl transition-all font-sans cursor-pointer ${
+                isRegisterMode ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              สมัครสมาชิก (Register)
+            </button>
+          </div>
+
+          <form onSubmit={handleEmailPasswordLogin} className="space-y-4 text-left">
+            {isRegisterMode && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-400 font-sans block">ชื่อผู้ใช้งาน / Display Name</label>
+                <input
+                  type="text"
+                  value={registerDisplayNameInput}
+                  onChange={(e) => setRegisterDisplayNameInput(e.target.value)}
+                  placeholder="ชื่อของคุณ..."
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                />
+              </div>
+            )}
+
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-300 font-sans block">ระบุอีเมลผู้ดูแลคลัง / Admin Email Login</label>
+              <label className="text-xs font-bold text-slate-400 font-sans block">อีเมลเข้าใช้ระบบ / Email Address</label>
               <input
                 type="email"
                 required
                 value={loginEmailInput}
                 onChange={(e) => setLoginEmailInput(e.target.value)}
                 placeholder="name@example.com"
-                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-500 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
+                className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-400 font-sans block">รหัสผ่าน / Password (ขั้นต่ำ 6 ตัว)</label>
+              <input
+                type="password"
+                required
+                value={loginPasswordInput}
+                onChange={(e) => setLoginPasswordInput(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold rounded-xl text-xs font-sans uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 hover:shadow-indigo-600/30 cursor-pointer"
+              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold rounded-xl text-xs font-sans uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 hover:shadow-indigo-600/30 cursor-pointer text-center"
             >
-              เข้าสู่ระบบระบบผู้ดูแล (Sign In)
+              {isRegisterMode ? 'สร้างบัญชีสมาชิกใหม่ (Register)' : 'ลงชื่อเข้าสู่คลัง (Sign In)'}
             </button>
           </form>
+
+          {/* OR divider */}
+          <div className="relative flex items-center justify-center py-2">
+            <div className="absolute inset-x-0 border-t border-slate-800"></div>
+            <span className="relative px-3 bg-slate-900 text-[10px] font-black text-slate-500 tracking-wider font-sans">หรือเข้าใช้ผ่านช่องทาง</span>
+          </div>
+
+          {/* Google login option */}
+          <button
+            onClick={handleGoogleLogin}
+            type="button"
+            className="w-full py-3 px-4 bg-slate-950 hover:bg-slate-800 active:bg-slate-900 border border-slate-800 hover:border-slate-700 text-white font-bold rounded-xl text-xs font-sans tracking-wide transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+          >
+            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none">
+              <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114-3.463 0-6.27-2.808-6.27-6.27s2.807-6.27 6.27-6.27c1.633 0 3.124.628 4.254 1.652l3.125-3.124C19.294 2.723 15.984 1.5 12.24 1.5c-5.799 0-10.5 4.701-10.5 10.5s4.701 10.5 10.5 10.5c5.342 0 10.026-3.834 10.026-10.5 0-.585-.054-1.15-.152-1.715H12.24Z" />
+            </svg>
+            <span>เข้าใช้ด้วยบัญชี Google (Gmail)</span>
+          </button>
+
+          {/* Demo Bypass Option */}
+          <div className="border-t border-slate-800/80 my-2"></div>
+          <button
+            onClick={() => {
+              setIsDemoBypass(true);
+              setCurrentUser({
+                uid: 'demo-admin-uid',
+                email: 'chaleesogood@gmail.com',
+                displayName: 'ผู้ใช้ทดลอง (Demo Admin)',
+                isDemo: true
+              });
+              setCurrentUserRole('admin');
+              addToast('success', 'เข้าสู่ระบบโหมดทดสอบแล้ว', 'เข้าใช้งานระบบด้วยสิทธิ์ผู้ดูแลระบบ (Demo Bypass Mode) เรียบร้อยแล้ว');
+            }}
+            type="button"
+            className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 border border-dashed border-slate-700/80 hover:border-slate-600 text-slate-400 hover:text-slate-200 font-bold rounded-xl text-xs font-sans tracking-wide transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Sparkles className="h-4 w-4 text-amber-400 animate-pulse" />
+            <span>เข้าใช้ด้วยโหมดทดสอบระบบ (Demo Bypass Mode)</span>
+          </button>
 
           <p className="text-[10px] text-slate-500 text-center font-mono leading-relaxed">
             ระบบจัดเก็บคลังและคำนวณโครงสร้าง BOM แบบเรียลไทม์<br />
@@ -1344,6 +1841,20 @@ export default function App() {
             <Settings className="h-4.5 w-4.5 flex-shrink-0" />
             ตั้งค่าโปรเจ็ค & พนักงาน
           </button>
+
+          {currentUserRole === 'admin' && (
+            <button
+              onClick={() => setCurrentTab('users')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+                currentTab === 'users'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
+                  : 'hover:bg-slate-800/60 hover:text-slate-100 text-slate-400'
+              }`}
+            >
+              <Shield className="h-4.5 w-4.5 flex-shrink-0 text-indigo-400 animate-pulse" />
+              จัดการสิทธิ์ผู้ใช้ (User Roles)
+            </button>
+          )}
 
           <button
             onClick={() => setCurrentTab('logs')}
@@ -1472,6 +1983,19 @@ export default function App() {
               <Settings className="h-4.5 w-4.5" />
               ตั้งค่าโปรเจ็ค & พนักงาน
             </button>
+
+            {currentUserRole === 'admin' && (
+              <button
+                onClick={() => { setCurrentTab('users'); setIsMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
+                  currentTab === 'users' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
+                }`}
+              >
+                <Shield className="h-4.5 w-4.5 text-indigo-400" />
+                จัดการสิทธิ์ผู้ใช้ (User Roles)
+              </button>
+            )}
+
             <button
               onClick={() => { setCurrentTab('logs'); setIsMobileMenuOpen(false); }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
@@ -1485,8 +2009,7 @@ export default function App() {
             <button
               onClick={() => {
                 if (confirm('คุณแน่ใจหรือไม่ว่าต้องการออกจากระบบคลังสินค้า?')) {
-                  localStorage.removeItem('admin_email');
-                  setAdminEmail(null);
+                  handleSignOut();
                   setIsMobileMenuOpen(false);
                 }
               }}
@@ -1503,36 +2026,63 @@ export default function App() {
       <main className="flex-grow p-4 sm:p-6 lg:p-8 overflow-y-auto max-w-7xl mx-auto w-full relative">
         
         {isQuotaExceeded && (
-          <div className="mb-6 bg-amber-50 border-2 border-amber-200 rounded-2xl p-5 text-left text-amber-900 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="mb-6 bg-amber-50 dark:bg-amber-950/25 border-2 border-amber-200 dark:border-amber-900/50 rounded-2xl p-5 text-left text-amber-950 dark:text-amber-200 shadow-xs animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5">
               <div className="flex items-start gap-3.5">
-                <div className="p-2.5 bg-amber-100 text-amber-700 rounded-xl shrink-0">
-                  <AlertTriangle className="h-6 w-6 animate-pulse text-amber-600" />
+                <div className="p-2.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 rounded-xl shrink-0">
+                  <AlertTriangle className="h-6 w-6 animate-pulse text-amber-600 dark:text-amber-400" />
                 </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-black text-amber-950 font-sans flex items-center gap-2">
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-black text-amber-950 dark:text-amber-100 font-sans flex items-center gap-2">
                     คลังระบบฐานข้อมูล Cloud เต็มโควต้าชั่วคราว (Firestore Quota Exceeded)
                   </h4>
-                  <p className="text-xs text-amber-800 font-sans leading-relaxed">
+                  <p className="text-xs text-amber-900/90 dark:text-amber-300 font-sans leading-relaxed">
                     ขณะนี้ปริมาณการใช้งานบนคลังข้อมูลร่วมมีปริมาณสูงจนทะลุขีดจำกัดโควต้าผู้ใช้งานฟรีของ Google Firestore แล้ว (Free-tier Quota Limit Reached) 
                     <strong> ระบบได้สลับการทำงานมาใช้ "ระบบบันทึกฐานข้อมูลสำรองในเบราว์เซอร์เครื่อง (Local Storage Sandbox)" ให้คุณโดยอัตโนมัติแล้ว</strong> เพื่อไม่ขัดจังหวะการทำงาน
                   </p>
-                  <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-x-4 gap-y-1 text-[11px] text-amber-900/80 font-medium font-sans">
+                  <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-x-4 gap-y-1 text-[11px] text-amber-900/80 dark:text-amber-400 font-medium font-sans">
                     <span className="flex items-center gap-1">✅ <strong>ยังสามารถใช้งานได้ปกติ</strong>: เพิ่ม/ลด/แก้ไขสต็อกสินค้า, และสเปรดชีตสูตร BOM ได้ทันที</span>
                     <span className="flex items-center gap-1">🔒 <strong>ปลอดภัยสูง</strong>: ข้อมูลทั้งหมดจะบันทึกไว้ในอุปกรณ์นี้อย่างปลอดภัย และจะเชื่อมต่อฐานข้อมูล Cloud โดยอัตโนมัติเมื่อสิ้นสุดการจำกัดรอบวัน</span>
                   </div>
                 </div>
               </div>
-              <a
-                href="https://console.firebase.google.com/project/store-gtt/firestore/databases/ai-studio-stockinventoryma-f6aa8430-9129-40f5-b3fd-44323fc5cf99/data?openUpgradeDialog=true"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-black rounded-xl shadow-xs transition-all hover:scale-102 active:scale-98 shrink-0 text-center cursor-pointer"
-                id="btn-link-firestore-console"
-              >
-                <ExternalLink className="h-4 w-4" />
-                ตรวจเช็คโควต้า / อัปเกรดฐานข้อมูล
-              </a>
+              <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0 justify-end min-w-[220px]">
+                <button
+                  onClick={handleDownloadBackup}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600 text-white text-xs font-black rounded-xl shadow-xs transition-all hover:scale-102 active:scale-98 cursor-pointer text-center"
+                  id="btn-download-backup"
+                  type="button"
+                >
+                  <Download className="h-4 w-4" />
+                  ดาวน์โหลดไฟล์สำรอง (.json)
+                </button>
+                
+                <label
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white text-xs font-black rounded-xl shadow-xs transition-all hover:scale-102 active:scale-98 cursor-pointer text-center"
+                  id="lbl-restore-backup"
+                >
+                  <Upload className="h-4 w-4" />
+                  กู้คืนข้อมูลจากเครื่อง
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleRestoreBackup}
+                    className="hidden"
+                    id="input-restore-backup"
+                  />
+                </label>
+
+                <a
+                  href="https://console.firebase.google.com/project/store-gtt/firestore/databases/ai-studio-stockinventoryma-f6aa8430-9129-40f5-b3fd-44323fc5cf99/data?openUpgradeDialog=true"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 text-amber-900 dark:text-amber-200 text-xs font-bold rounded-xl transition-all hover:scale-102 active:scale-98 text-center cursor-pointer border border-amber-200/50 dark:border-amber-950"
+                  id="btn-link-firestore-console"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  ตรวจสอบโควต้า / อัปเกรด
+                </a>
+              </div>
             </div>
           </div>
         )}
@@ -1616,20 +2166,24 @@ export default function App() {
               </div>
             )}
 
-            {/* Profile Avatar / Mock account */}
-            <div className="flex items-center gap-2.5 border-l border-slate-200 pl-3">
+            {/* Profile Avatar / Real account */}
+            <div className="flex items-center gap-2.5 border-l border-slate-200 dark:border-slate-800 pl-3">
               <div className="text-right hidden xl:block">
-                <span className="text-xs font-bold text-slate-800 font-sans block">ผู้ดูแลระบบคลัง</span>
-                <span className="text-[10px] text-slate-400 font-mono">{adminEmail}</span>
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                  {currentUser?.displayName || currentUser?.email?.split('@')[0]}
+                </span>
+                <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-bold tracking-wider uppercase block bg-indigo-50 dark:bg-indigo-950/40 py-0.5 px-1.5 rounded-md border border-indigo-100/60 dark:border-indigo-900/40 mt-0.5 text-center">
+                  {currentUserRole === 'admin' ? '★ ผู้ดูแล (Admin)' : '● ผู้ใช้ (User)'}
+                </span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono block mt-0.5">{currentUser?.email}</span>
               </div>
               <button
                 onClick={() => {
                   if (confirm('คุณแน่ใจหรือไม่ว่าต้องการออกจากระบบคลังสินค้า?')) {
-                    localStorage.removeItem('admin_email');
-                    setAdminEmail(null);
+                    handleSignOut();
                   }
                 }}
-                className="h-9 px-3 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 border border-slate-200 hover:border-rose-100 text-slate-600 flex items-center justify-center font-bold text-[10px] font-sans tracking-wider transition-all cursor-pointer uppercase shrink-0"
+                className="h-9 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/20 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 hover:border-rose-100 text-slate-600 dark:text-slate-400 flex items-center justify-center font-bold text-[10px] font-sans tracking-wider transition-all cursor-pointer uppercase shrink-0"
                 title="ออกจากระบบ (Sign Out)"
               >
                 Sign Out
