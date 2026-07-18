@@ -510,7 +510,7 @@ export default function ShoppingCartView({
                                     🏷️ {item.product.series}
                                   </span>
                                 )}
-                                <div className="text-[9.5px] text-slate-400 font-mono mt-1">SKU: {item.product.sku}</div>
+                                <div className="text-[9.5px] text-slate-400 font-mono mt-1">Code: {item.product.sku}</div>
                                 <div className="text-[9.5px] text-slate-400 mt-0.5">คลังสินค้า: {item.product.warehouse || 'คลังหลัก'}</div>
                               </div>
                             </div>

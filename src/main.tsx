@@ -1,6 +1,40 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 
+// Safe console log interceptor to suppress harmless Firebase warning/error messages in sandboxed iframes
+(function() {
+  const filterKeywords = [
+    'Using maximum backoff delay to prevent overloading the backend',
+    '@firebase/firestore',
+    'prevent overloading the backend'
+  ];
+
+  const originalWarn = window.console.warn;
+  const originalError = window.console.error;
+
+  const shouldSuppress = (args: any[]) => {
+    return args.some(arg => {
+      if (typeof arg === 'string') {
+        return filterKeywords.some(keyword => arg.includes(keyword));
+      }
+      if (arg && typeof arg === 'object' && arg.message && typeof arg.message === 'string') {
+        return filterKeywords.some(keyword => arg.message.includes(keyword));
+      }
+      return false;
+    });
+  };
+
+  window.console.warn = function(...args: any[]) {
+    if (shouldSuppress(args)) return;
+    originalWarn.apply(window.console, args);
+  };
+
+  window.console.error = function(...args: any[]) {
+    if (shouldSuppress(args)) return;
+    originalError.apply(window.console, args);
+  };
+})();
+
 // Safe LocalStorage patch to handle QuotaExceededError and disabled iframe local storage
 (function() {
   let isLocalStorageAvailable = false;

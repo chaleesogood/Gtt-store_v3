@@ -73,13 +73,18 @@ export default function App() {
 
   // Listen to Auth State Changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    let unsubscribeRole: (() => void) | null = null;
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (unsubscribeRole) {
+        unsubscribeRole();
+        unsubscribeRole = null;
+      }
       if (user) {
         setCurrentUser(user);
         
         // Fetch/Listen to this user's specific role in 'user_roles'
         const userRoleRef = doc(db, 'user_roles', user.uid);
-        const unsubscribeRole = onSnapshot(userRoleRef, async (docSnap) => {
+        unsubscribeRole = onSnapshot(userRoleRef, async (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data() as UserRole;
             setCurrentUserRole(data.role);
@@ -110,15 +115,18 @@ export default function App() {
           setCurrentUserRole(user.email === 'chaleesogood@gmail.com' ? 'admin' : 'user');
           setAuthLoading(false);
         });
-        
-        return () => unsubscribeRole();
       } else {
         setCurrentUser(null);
         setCurrentUserRole('user');
         setAuthLoading(false);
       }
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeRole) {
+        unsubscribeRole();
+      }
+    };
   }, []);
 
   // Fetch user_roles list for Admin screen
@@ -200,7 +208,7 @@ export default function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // Sync products from Firestore (seed if empty)
+  // Sync products from Firestore (no seeding)
   useEffect(() => {
     if (!currentUser) return;
     const q = query(collection(db, 'products'));
@@ -210,12 +218,8 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as Product);
       });
       if (list.length === 0) {
-                // Seeding initial products
-        INITIAL_PRODUCTS.forEach((prod) => {
-          setDoc(doc(db, 'products', prod.id), cleanUndefined(prod)).catch((err) => console.error("Seeding error:", err));
-        });
-        setProducts(INITIAL_PRODUCTS);
-        localStorage.setItem('stock_manager_products', JSON.stringify(INITIAL_PRODUCTS));
+        setProducts([]);
+        localStorage.setItem('stock_manager_products', JSON.stringify([]));
       } else {
         const sorted = sortProducts(list);
         setProducts(sorted);
@@ -225,12 +229,12 @@ export default function App() {
       handleFirestoreError("Firestore products sync error", error);
       addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อคลังสินค้า (Firestore)', `สลับไปใช้คลังสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_products');
-      setProducts(saved ? JSON.parse(saved) : INITIAL_PRODUCTS);
+      setProducts(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Sync categories from Firestore (seed if empty)
+  // Sync categories from Firestore (no seeding)
   useEffect(() => {
     if (!currentUser) return;
     const q = query(collection(db, 'categories'));
@@ -240,12 +244,8 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as Category);
       });
       if (list.length === 0) {
-                // Seeding initial categories
-        INITIAL_CATEGORIES.forEach((cat) => {
-          setDoc(doc(db, 'categories', cat.id), cleanUndefined(cat)).catch((err) => console.error("Seeding error:", err));
-        });
-        setCategories(INITIAL_CATEGORIES);
-        localStorage.setItem('stock_manager_categories', JSON.stringify(INITIAL_CATEGORIES));
+        setCategories([]);
+        localStorage.setItem('stock_manager_categories', JSON.stringify([]));
       } else {
         setCategories(list);
         localStorage.setItem('stock_manager_categories', JSON.stringify(list));
@@ -254,10 +254,78 @@ export default function App() {
       handleFirestoreError("Firestore categories sync error", error);
       addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อคลังกลุ่มสินค้า (Firestore)', `สลับไปใช้คลังกลุ่มสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_categories');
-      setCategories(saved ? JSON.parse(saved) : INITIAL_CATEGORIES);
+      setCategories(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
   }, [currentUser]);
+
+  // Auto-seed database if empty on login/boot
+  useEffect(() => {
+    if (!currentUser) return;
+    const checkAndSeed = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, 'products'));
+        if (querySnapshot.empty) {
+          console.log("No products found in Firestore. Auto-seeding initial data...");
+          // Seed categories
+          for (const cat of INITIAL_CATEGORIES) {
+            await setDoc(doc(db, 'categories', cat.id), cleanUndefined(cat));
+          }
+          // Seed products
+          for (const prod of INITIAL_PRODUCTS) {
+            await setDoc(doc(db, 'products', prod.id), cleanUndefined(prod));
+          }
+          // Seed activities
+          for (const act of INITIAL_ACTIVITIES) {
+            await setDoc(doc(db, 'activities', act.id), cleanUndefined(act));
+          }
+        }
+      } catch (err: any) {
+        console.warn("Auto-seeding skipped or failed (perhaps offline or quota exceeded):", err);
+        // If Firestore fails (e.g. quota exceeded) and local storage is empty, initialize with default values
+        const localProducts = localStorage.getItem('stock_manager_products');
+        if (!localProducts || JSON.parse(localProducts).length === 0) {
+          setProducts(INITIAL_PRODUCTS);
+          setCategories(INITIAL_CATEGORIES);
+          setActivities(INITIAL_ACTIVITIES);
+          localStorage.setItem('stock_manager_products', JSON.stringify(INITIAL_PRODUCTS));
+          localStorage.setItem('stock_manager_categories', JSON.stringify(INITIAL_CATEGORIES));
+          localStorage.setItem('stock_manager_activities', JSON.stringify(INITIAL_ACTIVITIES));
+        }
+      }
+    };
+    checkAndSeed();
+  }, [currentUser]);
+
+  // Manual database seeding function to restore saved/initial demo items
+  const handleSeedDatabase = async () => {
+    try {
+      console.log("Seeding default database items...");
+      // Seed categories
+      for (const cat of INITIAL_CATEGORIES) {
+        await setDoc(doc(db, 'categories', cat.id), cleanUndefined(cat));
+      }
+      // Seed products
+      for (const prod of INITIAL_PRODUCTS) {
+        await setDoc(doc(db, 'products', prod.id), cleanUndefined(prod));
+      }
+      // Seed activities
+      for (const act of INITIAL_ACTIVITIES) {
+        await setDoc(doc(db, 'activities', act.id), cleanUndefined(act));
+      }
+      addToast('success', 'กู้คืนข้อมูลเริ่มต้นสำเร็จ', 'นำรายการสินค้า หมวดหมู่ และประวัติการทำรายการตัวอย่างเริ่มต้นกลับมาเรียบร้อยแล้ว');
+    } catch (err: any) {
+      console.error("Error seeding database:", err);
+      // Fallback to local storage if Firestore has error/quota limits
+      setProducts(INITIAL_PRODUCTS);
+      setCategories(INITIAL_CATEGORIES);
+      setActivities(INITIAL_ACTIVITIES);
+      localStorage.setItem('stock_manager_products', JSON.stringify(INITIAL_PRODUCTS));
+      localStorage.setItem('stock_manager_categories', JSON.stringify(INITIAL_CATEGORIES));
+      localStorage.setItem('stock_manager_activities', JSON.stringify(INITIAL_ACTIVITIES));
+      addToast('warning', 'กู้คืนข้อมูลเริ่มต้นลงในเครื่องสำเร็จ', 'เนื่องจากระบบคลาวด์ขัดข้อง ระบบได้บันทึกข้อมูลตัวอย่างให้ใช้งานในเครื่องเรียบร้อยแล้ว');
+    }
+  };
 
   // Sync and heal database: Ensure any category referenced by any product is defined in the categories collection
   useEffect(() => {
@@ -288,7 +356,7 @@ export default function App() {
           color: defaultCat?.color || fallbackColor,
         };
         
-                try {
+        try {
           await setDoc(doc(db, 'categories', catId), cleanUndefined(newCat));
           console.log(`Auto-created missing category document in Firestore: ${catId}`);
         } catch (err) {
@@ -298,7 +366,7 @@ export default function App() {
     });
   }, [products, categories]);
 
-  // Sync activities from Firestore (seed if empty)
+  // Sync activities from Firestore (no seeding)
   useEffect(() => {
     if (!currentUser) return;
     const q = query(collection(db, 'activities'), orderBy('timestamp', 'desc'));
@@ -308,12 +376,8 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as StockActivity);
       });
       if (list.length === 0) {
-                // Seeding initial activities
-        INITIAL_ACTIVITIES.forEach((act) => {
-          setDoc(doc(db, 'activities', act.id), cleanUndefined(act)).catch((err) => console.error("Seeding error:", err));
-        });
-        setActivities(INITIAL_ACTIVITIES);
-        localStorage.setItem('stock_manager_activities', JSON.stringify(INITIAL_ACTIVITIES));
+        setActivities([]);
+        localStorage.setItem('stock_manager_activities', JSON.stringify([]));
       } else {
         setActivities(list);
         localStorage.setItem('stock_manager_activities', JSON.stringify(list));
@@ -322,7 +386,7 @@ export default function App() {
       handleFirestoreError("Firestore activities sync error", error);
       addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อประวัติการทำงาน (Firestore)', `สลับไปใช้ประวัติสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_activities');
-      setActivities(saved ? JSON.parse(saved) : INITIAL_ACTIVITIES);
+      setActivities(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
   }, [currentUser]);
@@ -1439,6 +1503,9 @@ export default function App() {
             onAddBrand={handleAddBrand}
             onEditBrand={handleEditBrand}
             onDeleteBrand={handleDeleteBrand}
+            onSeedDatabase={handleSeedDatabase}
+            onDownloadBackup={handleDownloadBackup}
+            onRestoreBackup={handleRestoreBackup}
           />
         );
       case 'catalog':

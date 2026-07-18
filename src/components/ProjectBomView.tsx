@@ -207,7 +207,7 @@ function GroupedProductSelect({ products, categories, selectedValue, onChange, p
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-[9px] text-slate-400">
-                      <span>SKU: {p.sku || '-'} | แบรนด์: {p.brand || 'ทั่วไป'}</span>
+                      <span>Code: {p.sku || '-'} | แบรนด์: {p.brand || 'ทั่วไป'}</span>
                       <span className="text-indigo-600 font-extrabold">คลัง: {p.quantity} {p.unit || 'ชิ้น'}</span>
                     </div>
                   </button>
@@ -1098,23 +1098,31 @@ export default function ProjectBomView({
   });
 
   return (
-    <div className="space-y-3.5 text-left font-sans">
+    <div className="space-y-2 text-left font-sans">
       
-      {/* Title Header Workspace (Flat & Compact) */}
-      <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
-        <div className="flex items-center gap-1.5">
-          <Boxes className="h-4.5 w-4.5 text-indigo-600" />
-          <h2 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+      {/* Title Header Workspace (Unified Dark Banner - Compact) */}
+      <div className="flex flex-row items-center justify-between gap-3 bg-slate-900 text-slate-100 p-2 px-3.5 rounded-xl relative overflow-hidden">
+        {/* Background Accent Gradients */}
+        <div className="absolute right-0 top-0 w-48 h-48 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute left-1/3 bottom-0 w-32 h-32 bg-emerald-600/5 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="z-10 text-left">
+          <div className="flex items-center gap-1.5 text-indigo-400 font-bold text-[8px] uppercase tracking-widest font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>BOM & Assembly Center</span>
+          </div>
+          <h2 className="text-sm font-black text-white font-sans flex items-center gap-1.5 mt-0.5">
+            <Boxes className="h-4 w-4 text-indigo-400" />
             สูตรชิ้นส่วนประกอบพัสดุ (BOM & Assembly Workspace)
           </h2>
         </div>
 
         {/* Dense Tabs Navigation */}
-        <div className="flex bg-slate-100 p-0.5 rounded gap-1 shrink-0">
+        <div className="flex bg-slate-800/80 p-0.5 rounded gap-1 shrink-0 z-10">
           <button
             onClick={() => setActiveTab('bom')}
-            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 ${
-              activeTab === 'bom' ? 'bg-white text-indigo-700 shadow-3xs' : 'text-slate-500 hover:text-slate-800'
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
+              activeTab === 'bom' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <FileSpreadsheet className="h-3 w-3" />
@@ -1122,8 +1130,8 @@ export default function ProjectBomView({
           </button>
           <button
             onClick={() => setActiveTab('projects')}
-            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 ${
-              activeTab === 'projects' ? 'bg-white text-indigo-700 shadow-3xs' : 'text-slate-500 hover:text-slate-800'
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
+              activeTab === 'projects' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Settings className="h-3 w-3" />
@@ -1506,7 +1514,7 @@ export default function ProjectBomView({
                                 <thead>
                                   <tr className="border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                                     <th className="py-0.5 px-1 w-[120px] text-center">ติดตามเสนอซื้อ</th>
-                                    <th className="py-0.5 px-1 min-w-[200px]">รายละเอียดชิ้นส่วน / SKU</th>
+                                    <th className="py-0.5 px-1 min-w-[200px]">รายละเอียดชิ้นส่วน / Code</th>
                                     <th className="py-0.5 px-1 text-center w-[90px]">จำนวนใช้ต่อชุด</th>
                                     <th className="py-0.5 px-1 text-center w-[70px]">หน่วย</th>
                                     <th className="py-0.5 px-1 text-right w-[100px]">ราคาทุนรวม</th>
@@ -1565,7 +1573,7 @@ export default function ProjectBomView({
                                             <div>
                                               <div className="line-clamp-1">{item.productName}</div>
                                               <div className="text-[9px] text-slate-400 font-normal">
-                                                SKU: {p?.sku || '-'} | <span className={currentQtyInStock < requiredTotal ? 'text-rose-600 font-extrabold' : 'text-emerald-700 font-extrabold'}>คงเหลือสต็อก: {currentQtyInStock} {item.unit || 'ชิ้น'}</span>
+                                                Code: {p?.sku || '-'} | <span className={currentQtyInStock < requiredTotal ? 'text-rose-600 font-extrabold' : 'text-emerald-700 font-extrabold'}>คงเหลือสต็อก: {currentQtyInStock} {item.unit || 'ชิ้น'}</span>
                                               </div>
                                             </div>
                                           </div>

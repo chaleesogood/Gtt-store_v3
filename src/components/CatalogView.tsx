@@ -257,6 +257,14 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
   // Filtered Products
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
+      // Exclude mock products entirely
+      const isMock = ['prod-1', 'prod-2', 'prod-3', 'prod-4', 'prod-5', 'prod-6'].includes(p.id);
+      if (isMock) return false;
+
+      // แคตตาล็อกสินค้า ถ้าไม่ใส่รุ่นไม่ต้องแสดง
+      const hasModel = p.modelNumber !== undefined && p.modelNumber !== null && String(p.modelNumber).trim() !== '';
+      if (!hasModel) return false;
+
       const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
       const matchesBrand = selectedBrand === 'all' || p.brand === selectedBrand;
       const matchesStock = !inStockOnly || p.quantity > 0;
@@ -417,7 +425,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
             <div className="relative w-full">
               <input
                 type="text"
-                placeholder="ค้นหาตามชื่อสินค้า, รหัส SKU/Part Number, แบรนด์, รายละเอียดผลิตภัณฑ์..."
+                placeholder="ค้นหาตามชื่อสินค้า, Code, แบรนด์, รายละเอียดผลิตภัณฑ์..."
                 className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -542,7 +550,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                       {/* Column Header Row (Visible on Desktop / Large Screens) */}
                       <div className="hidden lg:flex items-center gap-4 px-4 py-2 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-800 text-[10px] font-black text-slate-400 uppercase tracking-widest font-sans">
                         <span className="flex-1">รายการพัสดุ / แบรนด์</span>
-                        <span className="w-36">รหัส SKU</span>
+                        <span className="w-36">Code</span>
                         <span className="w-28 text-right">ราคาต่อหน่วย</span>
                         <span className="w-28 text-center">คลังคงเหลือ</span>
                         <span className="w-32 text-right">จัดการชุด BOM</span>
@@ -570,8 +578,13 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                               </div>
                               <div className="min-w-0 flex-1 text-left space-y-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <h5 className="text-[12.5px] font-black text-slate-800 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors font-sans">
-                                    {prod.name}
+                                  <h5 className="text-[12.5px] font-black text-slate-800 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors font-sans flex items-center gap-1">
+                                    {prod.modelNumber !== undefined && prod.modelNumber !== null && String(prod.modelNumber).trim() !== '' && (
+                                      <span className="inline-block px-1.5 py-0.5 text-[9px] font-black text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/40 rounded mr-1 leading-none shrink-0">
+                                        รุ่น: {prod.modelNumber} {prod.modelUnit || 'Kg'}
+                                      </span>
+                                    )}
+                                    <span>{prod.name}</span>
                                   </h5>
                                   {prod.series && (
                                     <span className="text-[8.5px] font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.2 rounded-md border border-indigo-100/30">
@@ -594,7 +607,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                             <div className="flex flex-row items-center justify-between lg:justify-end gap-4 flex-wrap lg:flex-nowrap">
                               {/* Col 2: SKU */}
                               <div className="w-36 shrink-0 text-left font-mono text-[10.5px] font-bold text-slate-500 dark:text-slate-400">
-                                <span className="lg:hidden text-[9px] font-black text-slate-400 dark:text-slate-500 block mb-1 uppercase tracking-wider font-sans">SKU:</span>
+                                <span className="lg:hidden text-[9px] font-black text-slate-400 dark:text-slate-500 block mb-1 uppercase tracking-wider font-sans">Code:</span>
                                 {prod.sku || <span className="text-slate-300 dark:text-slate-700">-</span>}
                               </div>
 
@@ -720,8 +733,16 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                   <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 font-sans tracking-tight leading-tight">
                     {selectedProduct.name}
                   </h3>
-                  <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-bold flex items-center gap-1">
-                    <Barcode className="h-3 w-3 text-slate-400" /> MODEL / SKU: <span className="text-slate-600 dark:text-slate-300 font-extrabold">{selectedProduct.sku || 'N/A'}</span>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-bold flex flex-col gap-0.5">
+                    <div className="flex items-center gap-1">
+                      <Barcode className="h-3 w-3 text-slate-400" /> Code: <span className="text-slate-600 dark:text-slate-300 font-extrabold">{selectedProduct.sku || 'N/A'}</span>
+                    </div>
+                    {selectedProduct.modelNumber !== undefined && selectedProduct.modelNumber !== null && String(selectedProduct.modelNumber).trim() !== '' && (
+                      <div className="flex items-center gap-1 text-rose-600 dark:text-rose-400">
+                        <span>รุ่นสินค้า: </span>
+                        <span className="text-rose-700 dark:text-rose-300 font-extrabold">{selectedProduct.modelNumber} {selectedProduct.modelUnit || 'Kg'}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -980,7 +1001,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                                 </div>
                                 <div className="flex items-center gap-2 mt-0.5">
                                   <span className="text-[10px] font-mono font-bold text-slate-400">
-                                    SKU: {item.product.sku || 'N/A'}
+                                    Code: {item.product.sku || 'N/A'}
                                   </span>
                                   <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1 py-0.2 rounded">
                                     แบรนด์: {item.product.brand || 'No Brand'}
@@ -1146,7 +1167,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                   <thead>
                     <tr className="bg-slate-50 text-slate-700 uppercase font-bold border-b border-slate-300">
                       <th className="py-2 px-3 border-r border-slate-300 w-1/4">ชื่อผลิตภัณฑ์ / MODEL</th>
-                      <th className="py-2 px-3 border-r border-slate-300 w-1/6">รหัส SKU / Part No.</th>
+                      <th className="py-2 px-3 border-r border-slate-300 w-1/6">Code</th>
                       <th className="py-2 px-3 border-r border-slate-300 w-1/6">แบรนด์</th>
                       <th className="py-2 px-3 border-r border-slate-300 w-1/6">Series ย่อย</th>
                       <th className="py-2 px-3 border-r border-slate-300 text-right w-1/12">ราคาขาย</th>

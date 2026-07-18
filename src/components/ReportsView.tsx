@@ -285,7 +285,7 @@ export default function ReportsView({ products, categories, activities }: Report
   }, [filteredProducts, filteredActivities]);
 
   // ==========================================
-  // REPORT 4: Low Stock & Expiry Alerts Report
+  // REPORT 4: Low Stock Alerts Report
   // ==========================================
   const alertsReport = useMemo(() => {
     const today = new Date();
@@ -293,10 +293,6 @@ export default function ReportsView({ products, categories, activities }: Report
 
     const outOfStock: Product[] = [];
     const lowStock: Product[] = [];
-    
-    const expired: Product[] = [];
-    const expiring30: Product[] = [];
-    const expiring90: Product[] = [];
     const safeStock: Product[] = [];
 
     filteredProducts.forEach(p => {
@@ -305,24 +301,6 @@ export default function ReportsView({ products, categories, activities }: Report
         outOfStock.push(p);
       } else if (p.quantity <= p.minAlert) {
         lowStock.push(p);
-      }
-
-      // Expiry tracking
-      if (p.expiryDate) {
-        const expDate = new Date(p.expiryDate);
-        expDate.setHours(0, 0, 0, 0);
-        const timeDiff = expDate.getTime() - today.getTime();
-        const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-
-        if (daysDiff < 0) {
-          expired.push(p);
-        } else if (daysDiff <= 30) {
-          expiring30.push(p);
-        } else if (daysDiff <= 90) {
-          expiring90.push(p);
-        } else {
-          safeStock.push(p);
-        }
       } else {
         safeStock.push(p);
       }
@@ -331,9 +309,9 @@ export default function ReportsView({ products, categories, activities }: Report
     return {
       outOfStock,
       lowStock,
-      expired,
-      expiring30,
-      expiring90,
+      expired: [],
+      expiring30: [],
+      expiring90: [],
       safeStock
     };
   }, [filteredProducts]);
@@ -363,27 +341,20 @@ export default function ReportsView({ products, categories, activities }: Report
         csvContent += `"${m.label}","${m.inQty}","${m.outQty}","${net}","${m.totalCount}"\n`;
       });
     } else if (activeTab === 'sales') {
-      csvContent += "อันดับ,ชื่อสินค้า,รหัส SKU,ยอดขายออก (ชิ้น),รายรับประมาณการ (บาท),คงเหลือปัจจุบัน,คลังจัดเก็บ\n";
+      csvContent += "อันดับ,ชื่อสินค้า,Code,ยอดขายออก (ชิ้น),รายรับประมาณการ (บาท),คงเหลือปัจจุบัน,คลังจัดเก็บ\n";
       csvContent += "--- สินค้ายอดขายสูงสุด (Best Sellers) ---\n";
       salesRanking.bestSellers.slice(0, 15).forEach((item, idx) => {
         csvContent += `"${idx + 1}","${item.product.name}","${item.product.sku}","${item.soldQty}","${item.revenueValue}","${item.product.quantity}","${item.product.warehouse || 'คลังหลัก A'}"\n`;
       });
     } else if (activeTab === 'alerts') {
-      csvContent += "ประเภทการแจ้งเตือน,ชื่อสินค้า,รหัส SKU,จำนวนคงเหลือ,แจ้งเตือนขั้นต่ำ,คลังจัดเก็บ,วันหมดอายุ\n";
+      csvContent += "ประเภทการแจ้งเตือน,ชื่อสินค้า,Code,จำนวนคงเหลือ,แจ้งเตือนขั้นต่ำ,คลังจัดเก็บ\n";
       csvContent += "--- สินค้าหมดสต็อก ---\n";
       alertsReport.outOfStock.forEach(p => {
-        csvContent += `"สินค้าหมดคลัง","${p.name}","${p.sku}","${p.quantity}","${p.minAlert}","${p.warehouse || 'คลังหลัก A'}","${p.expiryDate || '-'}"\n`;
+        csvContent += `"สินค้าหมดคลัง","${p.name}","${p.sku}","${p.quantity}","${p.minAlert}","${p.warehouse || 'คลังหลัก A'}"\n`;
       });
       csvContent += "\n--- สินค้าเหลือน้อยใกล้หมด ---\n";
       alertsReport.lowStock.forEach(p => {
-        csvContent += `"สินค้าเหลือน้อย","${p.name}","${p.sku}","${p.quantity}","${p.minAlert}","${p.warehouse || 'คลังหลัก A'}","${p.expiryDate || '-'}"\n`;
-      });
-      csvContent += "\n--- สินค้าหมดอายุ/ใกล้หมดอายุ ---\n";
-      alertsReport.expired.forEach(p => {
-        csvContent += `"หมดอายุแล้ว","${p.name}","${p.sku}","${p.quantity}","${p.minAlert}","${p.warehouse || 'คลังหลัก A'}","${p.expiryDate}"\n`;
-      });
-      alertsReport.expiring30.forEach(p => {
-        csvContent += `"หมดอายุภายใน 30 วัน","${p.name}","${p.sku}","${p.quantity}","${p.minAlert}","${p.warehouse || 'คลังหลัก A'}","${p.expiryDate}"\n`;
+        csvContent += `"สินค้าเหลือน้อย","${p.name}","${p.sku}","${p.quantity}","${p.minAlert}","${p.warehouse || 'คลังหลัก A'}"\n`;
       });
     }
 
@@ -401,7 +372,7 @@ export default function ReportsView({ products, categories, activities }: Report
     const totalValue = products.reduce((sum, p) => sum + p.quantity * p.costPrice, 0);
     const totalInflow = filteredActivities.filter(a => a.type === 'in' || (a.type === 'adjust' && a.quantityChange > 0)).reduce((sum, a) => sum + Math.abs(a.quantityChange), 0);
     const totalOutflow = filteredActivities.filter(a => a.type === 'out' || (a.type === 'adjust' && a.quantityChange < 0)).reduce((sum, a) => sum + Math.abs(a.quantityChange), 0);
-    const alertCount = alertsReport.outOfStock.length + alertsReport.lowStock.length + alertsReport.expired.length + alertsReport.expiring30.length;
+    const alertCount = alertsReport.outOfStock.length + alertsReport.lowStock.length;
 
     return {
       totalValue,
@@ -412,26 +383,33 @@ export default function ReportsView({ products, categories, activities }: Report
   }, [products, filteredActivities, alertsReport]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2 text-left">
       {/* HEADER SECTION */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800 font-sans flex items-center gap-2">
-            <BarChart3 className="h-6 w-6 text-indigo-600" />
+      <div className="flex flex-row items-center justify-between gap-3 bg-slate-900 text-slate-100 p-2 px-3.5 rounded-xl relative overflow-hidden">
+        {/* Background Accent Gradients */}
+        <div className="absolute right-0 top-0 w-48 h-48 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute left-1/3 bottom-0 w-32 h-32 bg-emerald-600/5 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="z-10 text-left">
+          <div className="flex items-center gap-1.5 text-indigo-400 font-bold text-[8px] uppercase tracking-widest font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Intelligence Reports Center</span>
+          </div>
+          <h2 className="text-sm font-black text-white font-sans flex items-center gap-1.5 mt-0.5">
+            <BarChart3 className="h-4 w-4 text-indigo-400" />
             ระบบรายงานและการวิเคราะห์เชิงลึก (Intelligence Reports)
           </h2>
-          <p className="text-xs text-slate-500 font-sans mt-0.5">วิเคราะห์ประวัติสต็อกคงคลัง การรับเข้า-เบิกจ่าย และระบบสินค้าควบคุมหมดอายุ</p>
         </div>
         
         {/* Actions bar (Export and Preset Quick Selectors) */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="z-10 flex items-center gap-2">
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-100 rounded-xl transition-all cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-all cursor-pointer shadow-3xs"
             id="btn-export-report-csv"
           >
-            <FileSpreadsheet className="h-4 w-4" />
-            ส่งออกไฟล์ Excel (Export CSV)
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            <span>ส่งออก Excel (.csv)</span>
           </button>
         </div>
       </div>
@@ -506,7 +484,7 @@ export default function ReportsView({ products, categories, activities }: Report
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
               <input
                 type="text"
-                placeholder="ค้นหาชื่อสินค้า หรือ SKU..."
+                placeholder="ค้นหาชื่อสินค้า หรือ Code..."
                 className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -953,7 +931,7 @@ export default function ReportsView({ products, categories, activities }: Report
                       />
                       <div className="flex-grow min-w-0">
                         <h4 className="text-xs font-bold text-slate-800 truncate font-sans">{item.product.name}</h4>
-                        <span className="text-[10px] font-mono font-semibold text-slate-400 tracking-tight">{item.product.sku}</span>
+                        <span className="text-[10px] font-mono font-semibold text-slate-400 tracking-tight">Code: {item.product.sku}</span>
                       </div>
 
                       {/* Sales quantities info */}
@@ -1044,7 +1022,7 @@ export default function ReportsView({ products, categories, activities }: Report
                       <div className="min-w-0">
                         <span className="inline-block px-2 py-0.5 text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-100 rounded-md uppercase">สินค้าหมดเกลี้ยง (Out)</span>
                         <h4 className="text-xs font-black text-slate-800 truncate font-sans mt-1">{p.name}</h4>
-                        <span className="text-[10px] font-mono text-slate-400">SKU: {p.sku} | 📍 {p.warehouse || 'คลังหลัก A'}</span>
+                        <span className="text-[10px] font-mono text-slate-400">Code: {p.sku} | 📍 {p.warehouse || 'คลังหลัก A'}</span>
                       </div>
                     </div>
                     <div className="text-right font-sans">
@@ -1067,7 +1045,7 @@ export default function ReportsView({ products, categories, activities }: Report
                       <div className="min-w-0">
                         <span className="inline-block px-2 py-0.5 text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-md">เหลือน้อยวิกฤต (Low)</span>
                         <h4 className="text-xs font-bold text-slate-800 truncate font-sans mt-1">{p.name}</h4>
-                        <span className="text-[10px] font-mono text-slate-400">SKU: {p.sku} | 📍 {p.warehouse || 'คลังหลัก A'}</span>
+                        <span className="text-[10px] font-mono text-slate-400">Code: {p.sku} | 📍 {p.warehouse || 'คลังหลัก A'}</span>
                       </div>
                     </div>
                     <div className="text-right font-sans">
@@ -1111,7 +1089,7 @@ export default function ReportsView({ products, categories, activities }: Report
                       <div className="min-w-0">
                         <span className="inline-block px-2 py-0.5 text-[9px] font-bold text-white bg-rose-600 rounded-md">🔴 หมดอายุแล้ว (Expired)</span>
                         <h4 className="text-xs font-black text-slate-800 truncate font-sans mt-1">{p.name}</h4>
-                        <span className="text-[10px] font-mono text-slate-400">SKU: {p.sku} | 📍 {p.warehouse || 'คลังหลัก A'}</span>
+                        <span className="text-[10px] font-mono text-slate-400">Code: {p.sku} | 📍 {p.warehouse || 'คลังหลัก A'}</span>
                       </div>
                     </div>
                     <div className="text-right font-sans">
@@ -1134,7 +1112,7 @@ export default function ReportsView({ products, categories, activities }: Report
                       <div className="min-w-0">
                         <span className="inline-block px-2 py-0.5 text-[9px] font-bold text-amber-700 bg-amber-100 rounded-md">⏳ หมดอายุภายใน 30 วัน</span>
                         <h4 className="text-xs font-bold text-slate-800 truncate font-sans mt-1">{p.name}</h4>
-                        <span className="text-[10px] font-mono text-slate-400">SKU: {p.sku} | 📍 {p.warehouse || 'คลังหลัก A'}</span>
+                        <span className="text-[10px] font-mono text-slate-400">Code: {p.sku} | 📍 {p.warehouse || 'คลังหลัก A'}</span>
                       </div>
                     </div>
                     <div className="text-right font-sans">
@@ -1157,7 +1135,7 @@ export default function ReportsView({ products, categories, activities }: Report
                       <div className="min-w-0">
                         <span className="inline-block px-2 py-0.5 text-[9px] font-semibold text-indigo-700 bg-indigo-50 rounded-md">⚡ หมดอายุต่ำกว่า 90 วัน</span>
                         <h4 className="text-xs font-medium text-slate-700 truncate font-sans mt-1">{p.name}</h4>
-                        <span className="text-[10px] font-mono text-slate-400">SKU: {p.sku} | 📍 {p.warehouse || 'คลังหลัก A'}</span>
+                        <span className="text-[10px] font-mono text-slate-400">Code: {p.sku} | 📍 {p.warehouse || 'คลังหลัก A'}</span>
                       </div>
                     </div>
                     <div className="text-right font-sans">

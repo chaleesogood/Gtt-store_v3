@@ -17,9 +17,10 @@ export interface Product {
   createdAt: string;
   updatedAt: string;
   warehouse?: string; // WAREHOUSE LOCATION
-  expiryDate?: string; // EXPIRY DATE (YYYY-MM-DD)
   color?: string; // Selected color name for this product
   sortOrder?: number; // Custom sorting order for display
+  modelNumber?: number | string; // ตัวเลข (รุ่น)
+  modelUnit?: 'Kg' | 'mm' | 'A' | 'W' | 'V' | 'Hp' | 'Pin' | 'Ch' | 'Rpm' | string; // หน่วยเลือกได้
 }
 
 export interface SubSeries {

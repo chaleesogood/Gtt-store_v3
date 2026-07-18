@@ -39,7 +39,31 @@ export default function ActivityLogView({ activities, onClearLogs }: ActivityLog
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2 text-left">
+      
+      {/* Title Header Workspace (Unified Dark Banner - Compact) */}
+      <div className="flex flex-row items-center justify-between gap-3 bg-slate-900 text-slate-100 p-2 px-3.5 rounded-xl relative overflow-hidden">
+        {/* Background Accent Gradients */}
+        <div className="absolute right-0 top-0 w-48 h-48 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute left-1/3 bottom-0 w-32 h-32 bg-emerald-600/5 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="z-10 text-left">
+          <div className="flex items-center gap-1.5 text-indigo-400 font-bold text-[8px] uppercase tracking-widest font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Security & Transaction Logs</span>
+          </div>
+          <h2 className="text-sm font-black text-white font-sans flex items-center gap-1.5 mt-0.5">
+            <History className="h-4 w-4 text-indigo-400" />
+            ประวัติการทำรายการคลังสินค้า (Stock Activity Logs)
+          </h2>
+        </div>
+
+        {/* Clear logs action or metadata tag */}
+        <div className="z-10 text-[10px] text-slate-400 font-mono hidden sm:block">
+          บันทึกทั้งหมด: {activities.length} รายการ
+        </div>
+      </div>
+
       {/* KPI Cards / Counters */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Total Stock In */}

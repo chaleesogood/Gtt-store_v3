@@ -25,7 +25,10 @@ import {
   Wrench,
   Sparkles,
   ClipboardList,
-  Tag
+  Tag,
+  Database,
+  RotateCcw,
+  Download
 } from 'lucide-react';
 
 const getDeptBadgeStyle = (dept: string) => {
@@ -478,9 +481,13 @@ interface SettingsViewProps {
   onAddBrand?: (brand: Omit<Brand, 'id' | 'createdAt'>) => Promise<void>;
   onEditBrand?: (id: string, updatedFields: Partial<Brand>) => Promise<void>;
   onDeleteBrand?: (id: string) => Promise<void>;
+
+  onSeedDatabase?: () => Promise<void>;
+  onDownloadBackup?: () => void;
+  onRestoreBackup?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-type SubTab = 'projects' | 'employees' | 'brands';
+type SubTab = 'projects' | 'employees' | 'brands' | 'database';
 
 export default function SettingsView({
   employees,
@@ -496,7 +503,10 @@ export default function SettingsView({
   brands = [],
   onAddBrand,
   onEditBrand,
-  onDeleteBrand
+  onDeleteBrand,
+  onSeedDatabase,
+  onDownloadBackup,
+  onRestoreBackup
 }: SettingsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('projects');
 
@@ -784,66 +794,75 @@ export default function SettingsView({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2 text-left">
       
       {/* Header Selector card */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-slate-900 text-slate-100 p-6 rounded-3xl shadow-lg relative overflow-hidden">
+      <div className="flex flex-row items-center justify-between gap-3 bg-slate-900 text-slate-100 p-2 px-3.5 rounded-xl relative overflow-hidden">
         
         {/* Background Accent Gradients */}
-        <div className="absolute right-0 top-0 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute left-1/3 bottom-0 w-60 h-60 bg-emerald-600/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute right-0 top-0 w-48 h-48 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute left-1/3 bottom-0 w-32 h-32 bg-emerald-600/5 rounded-full blur-2xl pointer-events-none" />
 
-        <div className="z-10">
-          <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-widest font-mono">
-            <Compass className="h-4 w-4 text-indigo-400" />
+        <div className="z-10 text-left">
+          <div className="flex items-center gap-1.5 text-indigo-400 font-bold text-[8px] uppercase tracking-widest font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>Unified Settings & Directory</span>
           </div>
-          <h2 className="text-xl font-black text-white font-sans flex items-center gap-2 mt-1.5">
-            <FolderGit2 className="h-6 w-6 text-indigo-400" />
-            ตั้งค่าโปรเจ็ค พนักงาน
+          <h2 className="text-sm font-black text-white font-sans flex items-center gap-1.5 mt-0.5">
+            <FolderGit2 className="h-4 w-4 text-indigo-400" />
+            ตั้งค่าโปรเจ็ค พนักงาน และแบรนด์สินค้า
           </h2>
-          <p className="text-xs text-slate-400 font-sans mt-1 max-w-xl">
-            บริหารจัดการฐานข้อมูลพนักงาน ช่างประกอบโครงการ ตลอดจนลงทะเบียนเลขโครงการ Job No. เพื่อความสม่ำเสมอของชุดข้อมูลเดียวกัน
-          </p>
         </div>
 
         {/* Tab Controls */}
-        <div className="flex flex-wrap gap-1 bg-slate-800/80 p-1.5 rounded-2xl border border-slate-700/60 shrink-0 self-start xl:self-center z-10">
+        <div className="flex bg-slate-800/80 p-0.5 rounded gap-1 shrink-0 z-10">
           <button
             onClick={() => setActiveSubTab('projects')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
               activeSubTab === 'projects' 
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
+                ? 'bg-indigo-600 text-white shadow-3xs' 
+                : 'text-slate-400 hover:text-slate-200'
             }`}
             id="settings-tab-projects"
           >
-            <FolderGit2 className="h-4 w-4" />
-            <span>ตั้งค่า โปรเจ็ค ({jobProjects.length})</span>
+            <FolderGit2 className="h-3 w-3" />
+            <span>โปรเจ็ค ({jobProjects.length})</span>
           </button>
           <button
             onClick={() => setActiveSubTab('employees')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
               activeSubTab === 'employees' 
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
+                ? 'bg-indigo-600 text-white shadow-3xs' 
+                : 'text-slate-400 hover:text-slate-200'
             }`}
             id="settings-tab-employees"
           >
-            <Users className="h-4 w-4" />
-            <span>จัดการรายชื่อพนักงาน ({employees.length})</span>
+            <Users className="h-3 w-3" />
+            <span>พนักงาน ({employees.length})</span>
           </button>
           <button
             onClick={() => setActiveSubTab('brands')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
               activeSubTab === 'brands' 
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
+                ? 'bg-indigo-600 text-white shadow-3xs' 
+                : 'text-slate-400 hover:text-slate-200'
             }`}
             id="settings-tab-brands"
           >
-            <Tag className="h-4 w-4" />
-            <span>จัดการแบรนด์สินค้า ({brands.length})</span>
+            <Tag className="h-3 w-3" />
+            <span>แบรนด์ ({brands.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveSubTab('database')}
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
+              activeSubTab === 'database' 
+                ? 'bg-indigo-600 text-white shadow-3xs' 
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            id="settings-tab-database"
+          >
+            <Database className="h-3 w-3" />
+            <span>ฐานข้อมูลสำรอง & กู้คืน</span>
           </button>
         </div>
       </div>
@@ -2934,6 +2953,101 @@ export default function SettingsView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ===================== TAB 4: DATABASE & RECOVERY ====================== */}
+      {/* ======================================================================= */}
+      {activeSubTab === 'database' && (
+        <div className="space-y-6 animate-in fade-in duration-200 text-left">
+          <div>
+            <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 font-sans flex items-center gap-1.5">
+              <Database className="h-4 w-4 text-indigo-500" />
+              จัดการฐานข้อมูล คลังสำรอง และการกู้คืน (Database Backup & Recovery)
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              จัดการกู้คืนชุดสินค้าและสูตรคำนวณเริ่มต้น หรือสำรองข้อมูลไฟล์เก็บไว้ในกรณีอุปกรณ์สูญหายหรือข้อมูลขาดหาย
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Box 1: Seeding / Initial Restore */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                  <RotateCcw className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 font-sans">
+                    นำรายการสินค้าและประวัติเริ่มต้นกลับมา (Restore Default Sample Data)
+                  </h4>
+                  <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                    ฟังก์ชันนี้จะทำนำเข้าชุดข้อมูลตัวอย่างที่สมบูรณ์กลับคืนสู่คลังสินค้าของคุณโดยอัตโนมัติ (เช่น สมาร์ทโฟน X1 Neo, โน้ตบุ๊ก ProAir, โครงสร้าง BOM, และกลุ่มสินค้าทั้งหมด) โดยจะนำเข้าชุดข้อมูลที่ขาดหายกลับคืนมาทันที
+                  </p>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex justify-end">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (onSeedDatabase) {
+                      if (confirm("คุณแน่ใจหรือไม่ว่าต้องการนำชุดสินค้าและกลุ่มสินค้าเริ่มต้นกลับมา? (ข้อมูลประวัติและรายการเริ่มต้นที่ตรงกันจะถูกนำกลับมาใหม่)")) {
+                        await onSeedDatabase();
+                      }
+                    }
+                  }}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  ดึงรายการเริ่มต้นที่บันทึกกลับมาด่วน
+                </button>
+              </div>
+            </div>
+
+            {/* Box 2: Manual Backup / Restore */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                  <Upload className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 font-sans">
+                    สำรองข้อมูลและจัดการกู้คืนด้วยตนเอง (Manual Backup & Import)
+                  </h4>
+                  <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                    คุณสามารถดาวน์โหลดรายการสินค้าที่ปรับแต่งทั้งหมดเก็บไว้เป็นไฟล์สำรองข้อมูลส่วนตัว (.json) และนำกลับมาอัปโหลดเพื่อกู้คืนได้ทุกเมื่อบนอุปกรณ์อื่นๆ
+                  </p>
+                </div>
+              </div>
+              
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex flex-wrap gap-2 justify-end font-sans">
+                <button
+                  type="button"
+                  onClick={onDownloadBackup}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200 font-bold text-[10px] rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  ดาวน์โหลดไฟล์สำรอง (.json)
+                </button>
+
+                <label
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-600/10"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  อัปโหลดเพื่อกู้คืนไฟล์ข้อมูล
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={onRestoreBackup}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
           </div>
         </div>
       )}

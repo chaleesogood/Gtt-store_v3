@@ -47,7 +47,6 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
     warehouse: 'คลังสินค้าหลัก A',
-    expiryDate: '2027-12-31',
   },
   {
     id: 'prod-2',
@@ -64,7 +63,6 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
     warehouse: 'คลังสินค้าหลัก A',
-    expiryDate: '2028-06-15',
   },
   {
     id: 'prod-3',
@@ -81,7 +79,6 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
     warehouse: 'คลังสำรอง B',
-    expiryDate: '',
   },
   {
     id: 'prod-4',
@@ -98,7 +95,6 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
     warehouse: 'คลังสำรอง B',
-    expiryDate: '',
   },
   {
     id: 'prod-5',
@@ -115,7 +111,6 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
     warehouse: 'คลังสินค้าหน้าร้าน C',
-    expiryDate: '2026-08-20',
   },
   {
     id: 'prod-6',
@@ -132,7 +127,6 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
     warehouse: 'คลังสินค้าหน้าร้าน C',
-    expiryDate: '2026-07-15',
   }
 ];
 

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Product, Category, Employee, JobProject, Brand, sortProducts } from '../types';
-import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag, Copy, ArrowUpDown } from 'lucide-react';
+import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag, Copy, ArrowUpDown, FileText } from 'lucide-react';
 import CategoryView from './CategoryView';
 import OrderingSystemView from './OrderingSystemView';
 import ShoppingCartView from './ShoppingCartView';
@@ -106,6 +106,31 @@ export default function ProductListView({
     localStorage.setItem('stock_manager_cart', JSON.stringify(cartItems));
   }, [cartItems]);
 
+  const handleOpenPdf = (pdfUrl?: string) => {
+    if (!pdfUrl) return;
+    try {
+      if (pdfUrl.startsWith('data:application/pdf;base64,')) {
+        const newWindow = window.open();
+        if (newWindow) {
+          newWindow.document.write(
+            `<iframe src="${pdfUrl}" style="width:100%; height:100%; border:none;"></iframe>`
+          );
+          newWindow.document.title = "คู่มือสินค้า PDF";
+        } else {
+          const link = document.createElement('a');
+          link.href = pdfUrl;
+          link.download = 'manual.pdf';
+          link.click();
+        }
+      } else {
+        window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (e) {
+      console.error(e);
+      addToast('warning', 'เกิดข้อผิดพลาด', 'ไม่สามารถเปิดไฟล์ PDF ได้ แนะนำให้ตรวจสอบความถูกต้องของ URL');
+    }
+  };
+
   const handleAddToCart = (product: Product) => {
     const exists = cartItems.find((item) => item.product.id === product.id);
     if (exists) {
@@ -142,6 +167,7 @@ export default function ProductListView({
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showLegacyProducts, setShowLegacyProducts] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   // Form Fields
@@ -157,9 +183,10 @@ export default function ProductListView({
   const [formDescription, setFormDescription] = useState('');
   const [formSourceUrl, setFormSourceUrl] = useState('');
   const [formWarehouse, setFormWarehouse] = useState('คลังสินค้าหลัก A');
-  const [formExpiryDate, setFormExpiryDate] = useState('');
   const [formColor, setFormColor] = useState('');
   const [formBrand, setFormBrand] = useState('');
+  const [formModelNumber, setFormModelNumber] = useState<string | number>('');
+  const [formModelUnit, setFormModelUnit] = useState<string>('Kg');
 
   // Image Upload States
   const [imagePreview, setImagePreview] = useState('');
@@ -235,6 +262,14 @@ export default function ProductListView({
 
   // Filtered Products
   const filteredProducts = products.filter((p) => {
+    // Exclude mock products entirely so they never clutter your space
+    const isMock = ['prod-1', 'prod-2', 'prod-3', 'prod-4', 'prod-5', 'prod-6'].includes(p.id);
+    if (isMock) return false;
+
+    // รายการพัสดุ (Products) ถ้าไม่ใส่รุ่นไม่ต้องแสดง (ยกเว้นเปิด toggle เพื่อแก้ไขสินค้าเดิม)
+    const hasModel = p.modelNumber !== undefined && p.modelNumber !== null && String(p.modelNumber).trim() !== '';
+    if (!hasModel && !showLegacyProducts) return false;
+
     const matchesSearch =
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.sku.toLowerCase().includes(searchTerm.toLowerCase());
@@ -299,9 +334,10 @@ export default function ProductListView({
     setImagePreview('');
     setShowGallery(false);
     setFormWarehouse('คลังสินค้าหลัก A');
-    setFormExpiryDate('');
     setFormColor('');
     setFormBrand('');
+    setFormModelNumber('');
+    setFormModelUnit('Kg');
     setIsModalOpen(true);
   };
 
@@ -322,9 +358,10 @@ export default function ProductListView({
     setFormSourceUrl(product.sourceUrl || '');
     setShowGallery(false);
     setFormWarehouse(product.warehouse || 'คลังสินค้าหลัก A');
-    setFormExpiryDate(product.expiryDate || '');
     setFormColor(product.color || '');
     setFormBrand(product.brand || '');
+    setFormModelNumber(product.modelNumber ?? '');
+    setFormModelUnit(product.modelUnit ?? 'Kg');
     setIsModalOpen(true);
   };
 
@@ -345,9 +382,10 @@ export default function ProductListView({
     setFormSourceUrl(product.sourceUrl || '');
     setShowGallery(false);
     setFormWarehouse(product.warehouse || 'คลังสินค้าหลัก A');
-    setFormExpiryDate(product.expiryDate || '');
     setFormColor(product.color || '');
     setFormBrand(product.brand || '');
+    setFormModelNumber(product.modelNumber ?? '');
+    setFormModelUnit(product.modelUnit ?? 'Kg');
     setIsModalOpen(true);
   };
 
@@ -369,9 +407,10 @@ export default function ProductListView({
       description: formDescription,
       sourceUrl: formSourceUrl,
       warehouse: formWarehouse,
-      expiryDate: formExpiryDate,
       color: formColor,
       brand: formBrand,
+      modelNumber: formModelNumber !== '' ? formModelNumber : undefined,
+      modelUnit: formModelNumber !== '' ? formModelUnit : undefined,
     };
 
     if (editingProduct) {
@@ -613,7 +652,7 @@ export default function ProductListView({
                 </span>
                 <input
                   type="text"
-                  placeholder="ค้นหาชื่อสินค้า หรือ รหัส SKU..."
+                  placeholder="ค้นหาชื่อสินค้า หรือ Code..."
                   className="w-full pl-8 pr-4 py-1 bg-white border border-slate-200/80 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -760,23 +799,30 @@ export default function ProductListView({
               >
                 หมดคลัง ({products.filter((p) => p.quantity === 0).length})
               </button>
-            </div>
 
-            {/* Organize & Reorder Mode Toggle */}
-            <button
-              onClick={() => setIsReorderMode(!isReorderMode)}
-              className={`px-3 py-1 text-[10px] font-black rounded border transition-all cursor-pointer flex items-center gap-1.5 shadow-sm hover:scale-102 active:scale-98 ${
-                isReorderMode
-                  ? 'bg-rose-50 border-rose-300 text-rose-700 font-extrabold shadow-sm ring-1 ring-rose-200'
-                  : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100/80 dark:bg-slate-800 dark:border-slate-700 dark:text-indigo-400'
-              }`}
-              id="btn-toggle-reorder-mode"
-              type="button"
-              title="จัดระเบียบและสลับช่องสินค้าขึ้นลง"
-            >
-              <ArrowUpDown className="h-3.5 w-3.5" />
-              จัดระเบียบแก้ไข
-            </button>
+              {/* Legacy Products toggle (Show previously saved items without model) */}
+              {products.some(p => !['prod-1', 'prod-2', 'prod-3', 'prod-4', 'prod-5', 'prod-6'].includes(p.id) && (p.modelNumber === undefined || p.modelNumber === null || String(p.modelNumber).trim() === '')) && (
+                <button
+                  type="button"
+                  onClick={() => setShowLegacyProducts(!showLegacyProducts)}
+                  className={`px-2 py-0.5 text-[10px] font-black rounded border transition-all cursor-pointer flex items-center gap-1 ${
+                    showLegacyProducts
+                      ? 'bg-rose-500 border-rose-600 text-white font-extrabold shadow-sm hover:bg-rose-600'
+                      : 'bg-amber-500 border-amber-600 text-white hover:bg-amber-600'
+                  }`}
+                  title="แสดงรายการสินค้าดั้งเดิมที่ยังไม่ได้ระบุรุ่น เพื่อให้สามารถแก้ไขข้อมูลและใส่รุ่นสินค้าได้"
+                >
+                  {showLegacyProducts ? 'ซ่อนสินค้าไม่มีรุ่น 🙈' : 'แสดงสินค้าเดิมไม่มีรุ่นเพื่อแก้ไข ✏️'}
+                  <span className="bg-white/20 px-1 py-0.2 rounded text-[8.5px]">
+                    {products.filter(p => {
+                      const isMock = ['prod-1', 'prod-2', 'prod-3', 'prod-4', 'prod-5', 'prod-6'].includes(p.id);
+                      const hasModel = p.modelNumber !== undefined && p.modelNumber !== null && String(p.modelNumber).trim() !== '';
+                      return !isMock && !hasModel;
+                    }).length}
+                  </span>
+                </button>
+              )}
+            </div>
 
             {/* View Layout Toggle */}
             <div className="flex items-center bg-slate-100 p-0.5 rounded gap-1">
@@ -855,7 +901,7 @@ export default function ProductListView({
           </div>
           <h3 className="text-base font-bold text-slate-700 font-sans">ไม่พบรายการสินค้าที่ค้นหา</h3>
           <p className="text-xs text-slate-400 font-sans mt-1 max-w-sm mx-auto">
-            ลองปรับเปลี่ยนรหัส SKU ชื่อสินค้า หรือเลือกหมวดหมู่ใหม่อีกครั้ง
+            ลองปรับเปลี่ยน Code ชื่อสินค้า หรือเลือกหมวดหมู่ใหม่อีกครั้ง
           </p>
         </div>
       ) : viewMode === 'grouped' ? (
@@ -951,9 +997,10 @@ export default function ProductListView({
                             {isReorderMode && (
                               <th className="py-1 px-2 text-center min-w-[80px] text-indigo-600 dark:text-indigo-400 font-extrabold">จัดลำดับ</th>
                             )}
-                            <th className="py-1 px-2 min-w-[110px]">รหัส SKU</th>
-                            <th className="py-1 px-2 text-right min-w-[90px]">ต้นทุน (฿)</th>
-                            <th className="py-1 px-2 text-center min-w-[130px]">คงเหลือ / เกณฑ์</th>
+                            <th className="py-1 px-2 min-w-[100px]">รุ่น</th>
+                            <th className="py-1 px-2 min-w-[110px]">Code</th>
+                            <th className="py-1 px-2 text-right min-w-[90px]">ราคา</th>
+                            <th className="py-1 px-2 text-center min-w-[130px]">จำนวน</th>
                             <th className="py-1 px-2 text-right min-w-[120px]">การจัดการ</th>
                           </tr>
                         </thead>
@@ -1019,9 +1066,9 @@ export default function ProductListView({
                                   {/* Series Divider Header Row */}
                                   {ps.seriesName !== 'ทั่วไป / ไม่มี Series ย่อย' && (
                                     <tr className={`${colors.bg} ${colors.text} ${colors.border} text-[10px] font-black font-sans border-y border-slate-100/50 transition-all shadow-3xs`}>
-                                      <td colSpan={isReorderMode ? 6 : 5} className="py-2 px-3">
+                                      <td colSpan={isReorderMode ? 7 : 6} className="h-[72px] py-0 px-6">
                                         <div className="flex items-center justify-between">
-                                          <div className="flex items-center gap-2">
+                                          <div className="flex items-center gap-4">
                                             {(() => {
                                               const matchingSubSer = (group.category.subSeries || []).find((s) => s.name === ps.seriesName);
                                               const subSerImg = matchingSubSer?.imageUrl;
@@ -1029,22 +1076,49 @@ export default function ProductListView({
                                                 <img
                                                   src={subSerImg}
                                                   alt={ps.seriesName}
-                                                  className="h-6 w-6 rounded object-cover border border-slate-200 dark:border-slate-800 shrink-0 shadow-3xs"
+                                                  className="h-[70px] w-[70px] rounded-xl object-cover border border-slate-200 dark:border-slate-800 shrink-0 shadow-3xs hover:scale-105 transition-transform duration-200"
                                                   referrerPolicy="no-referrer"
                                                 />
                                               ) : (
-                                                <span className={`p-1 rounded ${colors.badgeBg} flex items-center justify-center`}>
-                                                  <Tag className="h-3 w-3 text-indigo-500 shrink-0" />
+                                                <span className={`p-2 rounded-xl ${colors.badgeBg} flex items-center justify-center h-[70px] w-[70px] shrink-0 border border-slate-200/50`}>
+                                                  <Tag className="h-8 w-8 text-indigo-500 shrink-0" />
                                                 </span>
                                               );
                                             })()}
                                             <div>
-                                              <span className="uppercase tracking-wide font-extrabold text-[11px]">Series: {ps.seriesName}</span>
-                                              <span className="ml-1.5 text-[8.5px] font-normal text-slate-400 dark:text-slate-500 font-sans">
+                                              <span className="uppercase tracking-wide font-extrabold text-[12px] block sm:inline">Series: {ps.seriesName}</span>
+                                              <span className="ml-1.5 text-[9px] font-normal text-slate-400 dark:text-slate-500 font-sans">
                                                 ({ps.products.length} รายการ)
                                               </span>
+                                              {(() => {
+                                                const matchingSubSer = (group.category.subSeries || []).find((s) => s.name === ps.seriesName);
+                                                return matchingSubSer?.pdfUrl && (
+                                                  <button
+                                                    onClick={() => handleOpenPdf(matchingSubSer.pdfUrl)}
+                                                    className="ml-3 px-2 py-0.5 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded text-[9px] font-black flex items-center gap-1 cursor-pointer transition-all inline-flex"
+                                                    title="เปิดเอกสาร/คู่มือ"
+                                                  >
+                                                    <FileText className="h-3 w-3" />
+                                                    เปิดเอกสาร
+                                                  </button>
+                                                );
+                                              })()}
                                             </div>
                                           </div>
+
+                                          {/* Organize/Reorder button on the absolute right of every sub series header */}
+                                          <button
+                                            onClick={() => setIsReorderMode(!isReorderMode)}
+                                            className={`px-3 py-1.5 text-[10px] font-black rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 shadow-sm hover:scale-102 active:scale-98 shrink-0 ${
+                                              isReorderMode
+                                                ? 'bg-rose-600 border-rose-500 text-white font-extrabold shadow-sm'
+                                                : 'bg-white/80 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700'
+                                            }`}
+                                            type="button"
+                                          >
+                                            <ArrowUpDown className="h-3.5 w-3.5" />
+                                            จัดระเบียบแก้ไข
+                                          </button>
                                         </div>
                                       </td>
                                     </tr>
@@ -1067,181 +1141,215 @@ export default function ProductListView({
                                     return (
                                       <tr key={p.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/30 transition-colors group">
                                         {/* Name & Photo */}
-                                        <td className="py-1 px-2">
-                                          <div className="flex items-center gap-2">
+                                        <td className="py-1.5 px-2">
+                                          <div className="flex items-center gap-3">
                                             <img
                                               src={p.image || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'}
                                               alt={p.name}
-                                              className="w-12 h-12 object-cover rounded-lg bg-slate-50 dark:bg-slate-800 shrink-0 border border-slate-200/60 dark:border-slate-800"
+                                              className="w-[40px] h-[40px] object-cover rounded-xl bg-slate-50 dark:bg-slate-800 shrink-0 border border-slate-200 dark:border-slate-800 shadow-3xs"
                                               referrerPolicy="no-referrer"
                                             />
                                             <div className="min-w-0">
                                               {/* Redundant Sub-series badge inside grouped list is hidden to reduce complexity */}
-                                              <h4 className="font-bold text-slate-700 dark:text-slate-200 font-sans leading-none line-clamp-1 text-[11px]" title={p.name}>
-                                                {p.name}
+                                              <h4 className="font-extrabold text-slate-800 dark:text-slate-100 font-sans leading-tight text-xs sm:text-sm flex items-center gap-1.5 flex-wrap" title={p.name}>
+                                                <span className="text-xs sm:text-sm">{p.name}</span>
                                                 {getColorDotAndBadge(p.color)}
                                               </h4>
-                                              <div className="flex flex-wrap gap-1 items-center mt-0.5 leading-none">
+                                              <div className="flex flex-wrap gap-1 items-center mt-0.5 text-[15px] leading-[15px]">
                                                 <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 dark:text-indigo-400 rounded leading-none">
                                                   📍 {p.warehouse || 'A'}
                                                 </span>
                                                 {(() => {
-                                                  const bMatch = brands.find(b => b.name === p.brand);
-                                                  if (bMatch) {
-                                                    return (
-                                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-black text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-md leading-none shrink-0 border border-slate-200/50 dark:border-slate-700/50">
-                                                        {bMatch.logoUrl ? (
-                                                          <img src={bMatch.logoUrl} alt={p.brand} className="h-4 object-contain" referrerPolicy="no-referrer" />
-                                                        ) : (
-                                                          <span>🏷️ {p.brand}</span>
-                                                        )}
-                                                      </span>
-                                                    );
-                                                  }
-                                                  return null;
-                                                })()}
-                                                {p.expiryDate && (
-                                                  <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-rose-700 bg-rose-50/50 dark:bg-rose-950/30 dark:text-rose-400 rounded leading-none">
-                                                    📅 EXP: {new Date(p.expiryDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short' })}
-                                                  </span>
-                                                )}
+                                                   const bMatch = brands.find(b => b.name === p.brand);
+                                                   if (bMatch) {
+                                                     return (
+                                                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-black text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-md leading-none shrink-0 border border-slate-200/50 dark:border-slate-700/50">
+                                                         {bMatch.logoUrl ? (
+                                                           <img src={bMatch.logoUrl} alt={p.brand} className="h-4 object-contain" referrerPolicy="no-referrer" />
+                                                         ) : (
+                                                           <span>🏷️ {p.brand}</span>
+                                                         )}
+                                                       </span>
+                                                     );
+                                                   }
+                                                   return null;
+                                                 })()}
                                               </div>
+                                            </div>
                                           </div>
-                                        </div>
-                                      </td>
+                                        </td>
 
-                                      {/* Custom Reordering Buttons Column cell */}
-                                      {isReorderMode && (
-                                        <td className="py-1 px-2 text-center">
-                                          <div className="flex items-center justify-center gap-1 bg-slate-100 dark:bg-slate-800 rounded p-1 border border-slate-200 dark:border-slate-700 w-fit mx-auto shadow-3xs">
+                                        {/* Custom Reordering Buttons Column cell */}
+                                        {isReorderMode && (
+                                          <td className="py-1 px-2 text-center">
+                                            <div className="flex items-center justify-center gap-1">
+                                              <button
+                                                onClick={() => handleMoveProduct(p.id, 'up')}
+                                                className="p-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-md border border-indigo-100 transition-colors"
+                                                title="เลื่อนขึ้น"
+                                                type="button"
+                                              >
+                                                <ChevronUp className="h-3 w-3" />
+                                              </button>
+                                              <button
+                                                onClick={() => handleMoveProduct(p.id, 'down')}
+                                                className="p-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-md border border-indigo-100 transition-colors"
+                                                title="เลื่อนลง"
+                                                type="button"
+                                              >
+                                                <ChevronDown className="h-3 w-3" />
+                                              </button>
+                                            </div>
+                                          </td>
+                                        )}
+
+                                        {/* Model Number */}
+                                        <td className="py-1.5 px-2 font-mono font-bold text-slate-600 dark:text-slate-300">
+                                          {p.modelNumber !== undefined && p.modelNumber !== null && String(p.modelNumber).trim() !== '' ? (
+                                            <span className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200/50 dark:border-slate-700/50 text-[10.5px]">
+                                              {p.modelNumber} {p.modelUnit || 'Kg'}
+                                            </span>
+                                          ) : (
+                                            <span className="text-slate-300 dark:text-slate-600 text-[10px] italic">ไม่มีข้อมูลรุ่น</span>
+                                          )}
+                                        </td>
+
+                                        {/* Sku/Code */}
+                                        <td className="py-1.5 px-2 font-mono text-slate-500 dark:text-slate-400">
+                                          <span className="bg-slate-50 dark:bg-slate-900 px-2 py-0.5 rounded border border-slate-100 dark:border-slate-800 text-[10px] text-[#000000]">
+                                            {p.sku}
+                                          </span>
+                                        </td>
+
+                                        {/* Price */}
+                                        <td className="py-1.5 px-2 text-right font-mono font-black text-slate-800 dark:text-slate-200 text-xs">
+                                          {formatCurrency(p.price)}
+                                        </td>
+
+                                        {/* Real-time quantity counter / adjusting buttons */}
+                                        <td className="py-1.5 px-2">
+                                          <div className="flex items-center justify-center gap-1.5">
+                                            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 rounded p-0.5 border border-slate-100 dark:border-slate-700">
+                                              <button
+                                                onClick={() => handleQuickMinus(p)}
+                                                disabled={p.quantity <= 0}
+                                                className="text-slate-400 hover:text-rose-600 disabled:opacity-40 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
+                                                title="ลดสต็อก 1 ชิ้น"
+                                                id={`btn-quick-minus-item-grouped-${p.id}`}
+                                                type="button"
+                                              >
+                                                <MinusCircle className="h-3 w-3" />
+                                              </button>
+                                              <span className="font-black text-[10px] text-slate-700 dark:text-slate-300 w-5 text-center font-mono leading-none">
+                                                {p.quantity}
+                                              </span>
+                                              <button
+                                                onClick={() => handleQuickAdd(p)}
+                                                className="text-slate-400 hover:text-emerald-600 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
+                                                title="เพิ่มสต็อก 1 ชิ้น"
+                                                id={`btn-quick-plus-item-grouped-${p.id}`}
+                                                type="button"
+                                              >
+                                                <PlusCircle className="h-3 w-3" />
+                                              </button>
+                                            </div>
+                                            <div className={`text-[8.5px] font-bold px-1 rounded ${stockColor} shrink-0 leading-none`}>
+                                              {stockLabel} ({p.minAlert})
+                                            </div>
+                                          </div>
+                                        </td>
+
+                                        {/* CRUD Actions */}
+                                        <td className="py-1.5 px-2 text-right">
+                                          <div className="flex items-center justify-end gap-1 flex-wrap">
+                                            {p.sourceUrl && (
+                                              <a
+                                                href={p.sourceUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="px-1.5 py-0.5 text-[9px] font-black text-blue-700 hover:bg-blue-50 border border-blue-200 rounded cursor-pointer inline-flex items-center gap-0.5 active:scale-95 transition-all"
+                                                title="ลิงก์สั่งซื้อพัสดุจากตัวแทนจำหน่ายภายนอก"
+                                              >
+                                                <ExternalLink className="h-2.5 w-2.5" /> ลิงก์สั่งซื้อ
+                                              </a>
+                                            )}
+                                            {(() => {
+                                              const matchingSubSer = (group.category.subSeries || []).find((s) => s.name === ps.seriesName);
+                                              return matchingSubSer?.pdfUrl && (
+                                                <button
+                                                  onClick={() => handleOpenPdf(matchingSubSer.pdfUrl)}
+                                                  className="px-1.5 py-0.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 rounded text-[9px] font-black flex items-center gap-1 cursor-pointer transition-all inline-flex active:scale-95"
+                                                  title="เปิดเอกสารรายละเอียดผลิตภัณฑ์"
+                                                  type="button"
+                                                >
+                                                  <FileText className="h-2.5 w-2.5" /> เปิดเอกสาร
+                                                </button>
+                                              );
+                                            })()}
                                             <button
-                                              onClick={() => handleMoveProduct(p.id, 'up')}
-                                              className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer active:scale-90"
-                                              title="เลื่อนขึ้น"
-                                              id={`btn-reorder-up-grp-${p.id}`}
+                                              onClick={() => handleAddToCart(p)}
+                                              className="px-1.5 py-0.2 text-[9px] font-black text-indigo-700 hover:bg-indigo-50 border border-indigo-100 rounded cursor-pointer flex items-center gap-0.5 active:scale-95 transition-all"
+                                              title="หยิบพัสดุลงในตะกร้าจัดซื้อ"
+                                              id={`btn-add-to-cart-item-grouped-${p.id}`}
                                               type="button"
                                             >
-                                              <ChevronUp className="h-4 w-4" />
+                                              <ShoppingCart className="h-2.5 w-2.5 text-indigo-500" /> หยิบลงตะกร้า
                                             </button>
                                             <button
-                                              onClick={() => handleMoveProduct(p.id, 'down')}
-                                              className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer active:scale-90"
-                                              title="เลื่อนลง"
-                                              id={`btn-reorder-down-grp-${p.id}`}
+                                              onClick={() => {
+                                                setPreselectedProductId(p.id);
+                                                setActiveSubTab('ordering');
+                                              }}
+                                              className="px-1 py-0.2 text-[9px] font-black text-emerald-700 hover:bg-emerald-50 border border-emerald-100 rounded cursor-pointer flex items-center gap-0.5"
+                                              title="สร้างใบขอสั่งซื้อพัสดุ"
+                                              id={`btn-purchase-item-grouped-${p.id}`}
                                               type="button"
                                             >
-                                              <ChevronDown className="h-4 w-4" />
+                                              <ShoppingCart className="h-2.5 w-2.5" /> สั่งซื้อ
+                                            </button>
+                                            <button
+                                              onClick={() => handleOpenAdjustDialog(p)}
+                                              className="px-1 py-0.2 text-[9px] font-black text-indigo-700 hover:bg-indigo-50 border border-indigo-100 rounded cursor-pointer"
+                                              id={`btn-adjust-details-item-grouped-${p.id}`}
+                                              type="button"
+                                            >
+                                              รับ/จ่าย
+                                            </button>
+                                            <button
+                                              onClick={() => handleOpenEditModal(p)}
+                                              className="p-0.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded cursor-pointer"
+                                              title="แก้ไข"
+                                              id={`btn-edit-item-grouped-${p.id}`}
+                                              type="button"
+                                            >
+                                              <Edit3 className="h-3 w-3" />
+                                            </button>
+                                            <button
+                                              onClick={() => handleOpenCloneModal(p)}
+                                              className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                                              title="คัดลอกพัสดุ (Clone)"
+                                              id={`btn-clone-item-grouped-${p.id}`}
+                                              type="button"
+                                            >
+                                              <Copy className="h-3.5 w-3.5" />
+                                            </button>
+                                            <button
+                                              onClick={() => onDeleteProduct(p.id)}
+                                              className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                                              title="ลบ"
+                                              id={`btn-delete-item-grouped-${p.id}`}
+                                              type="button"
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5" />
                                             </button>
                                           </div>
                                         </td>
-                                      )}
-
-                                      {/* SKU */}
-                                      <td className="py-0.5 px-1.5">
-                                        <div className="text-[10px] font-mono font-bold text-slate-500 tracking-tight leading-none">
-                                          {p.sku}
-                                        </div>
-                                      </td>
-
-                                      {/* Cost */}
-                                      <td className="py-0.5 px-1.5 text-right">
-                                        <div className="font-bold text-slate-700 dark:text-slate-200 font-sans text-[11px] leading-none">
-                                          {formatCurrency(p.costPrice)}
-                                        </div>
-                                      </td>
-
-                                      {/* Real-time quantity counter / adjusting buttons */}
-                                      <td className="py-0.5 px-1.5">
-                                        <div className="flex items-center justify-center gap-1.5">
-                                          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 rounded p-0.5 border border-slate-100 dark:border-slate-700">
-                                            <button
-                                              onClick={() => handleQuickMinus(p)}
-                                              disabled={p.quantity <= 0}
-                                              className="text-slate-400 hover:text-rose-600 disabled:opacity-40 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
-                                              title="ลดสต็อก 1 ชิ้น"
-                                              id={`btn-quick-minus-item-grp-${p.id}`}
-                                            >
-                                              <MinusCircle className="h-3 w-3" />
-                                            </button>
-                                            <span className="font-black text-[10px] text-slate-700 dark:text-slate-200 w-5 text-center font-mono leading-none">
-                                              {p.quantity}
-                                            </span>
-                                            <button
-                                              onClick={() => handleQuickAdd(p)}
-                                              className="text-slate-400 hover:text-emerald-600 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
-                                              title="เพิ่มสต็อก 1 ชิ้น"
-                                              id={`btn-quick-plus-item-grp-${p.id}`}
-                                            >
-                                              <PlusCircle className="h-3 w-3" />
-                                            </button>
-                                          </div>
-                                          <div className={`text-[8.5px] font-bold px-1 rounded ${stockColor} shrink-0 leading-none`}>
-                                            {stockLabel} ({p.minAlert})
-                                          </div>
-                                        </div>
-                                      </td>
-
-                                      {/* CRUD Actions */}
-                                      <td className="py-0.5 px-2 text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                          <button
-                                            onClick={() => handleAddToCart(p)}
-                                            className="px-1.5 py-0.2 text-[9px] font-black text-indigo-700 dark:text-indigo-450 hover:bg-indigo-50 border border-indigo-100 rounded cursor-pointer flex items-center gap-0.5 active:scale-95 transition-all"
-                                            title="หยิบพัสดุลงในตะกร้าจัดซื้อ"
-                                            id={`btn-add-to-cart-item-grp-${p.id}`}
-                                          >
-                                            <ShoppingCart className="h-2.5 w-2.5 text-indigo-500" /> หยิบลงตะกร้า
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              setPreselectedProductId(p.id);
-                                              setActiveSubTab('ordering');
-                                            }}
-                                            className="px-1 py-0.2 text-[9px] font-black text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/25 border border-emerald-100 dark:border-emerald-900 rounded cursor-pointer flex items-center gap-0.5"
-                                            title="สร้างใบขอสั่งซื้อพัสดุ"
-                                            id={`btn-purchase-item-grp-${p.id}`}
-                                          >
-                                            <ShoppingCart className="h-2.5 w-2.5" /> สั่งซื้อ
-                                          </button>
-                                          <button
-                                            onClick={() => handleOpenAdjustDialog(p)}
-                                            className="px-1 py-0.2 text-[9px] font-black text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/25 border border-indigo-100 dark:border-indigo-900 rounded cursor-pointer"
-                                            id={`btn-adjust-details-item-grp-${p.id}`}
-                                          >
-                                            รับ/จ่าย
-                                          </button>
-                                          <button
-                                            onClick={() => handleOpenEditModal(p)}
-                                            className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded cursor-pointer"
-                                            title="แก้ไข"
-                                            id={`btn-edit-item-grp-${p.id}`}
-                                          >
-                                            <Edit3 className="h-3 w-3" />
-                                          </button>
-                                          <button
-                                            onClick={() => handleOpenCloneModal(p)}
-                                            className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded cursor-pointer"
-                                            title="คัดลอกพัสดุ (Clone)"
-                                            id={`btn-clone-item-grp-${p.id}`}
-                                          >
-                                            <Copy className="h-3 w-3" />
-                                          </button>
-                                          <button
-                                            onClick={() => onDeleteProduct(p.id)}
-                                            className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 rounded cursor-pointer"
-                                            title="ลบ"
-                                            id={`btn-delete-item-grp-${p.id}`}
-                                          >
-                                            <Trash2 className="h-3 w-3" />
-                                          </button>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </React.Fragment>
-                            );
-                          });
+                                      </tr>
+                                    );
+                                  })}
+                                </React.Fragment>
+                              );
+                            })
                           })()}
                         </tbody>
                       </table>
@@ -1266,9 +1374,10 @@ export default function ProductListView({
                   {isReorderMode && (
                     <th className="py-1 px-2 text-center min-w-[80px] text-indigo-600 dark:text-indigo-400 font-extrabold">จัดลำดับ</th>
                   )}
-                  <th className="py-1 px-2 min-w-[120px]">หมวดหมู่ / รหัส SKU</th>
-                  <th className="py-1 px-2 text-right min-w-[90px]">ต้นทุน (฿)</th>
-                  <th className="py-1 px-2 text-center min-w-[130px]">คงเหลือ / เกณฑ์</th>
+                  <th className="py-1 px-2 min-w-[100px]">รุ่น</th>
+                  <th className="py-1 px-2 min-w-[120px]">หมวดหมู่ / Code</th>
+                  <th className="py-1 px-2 text-right min-w-[90px]">ราคา</th>
+                  <th className="py-1 px-2 text-center min-w-[130px]">จำนวน</th>
                   <th className="py-1 px-2 text-right min-w-[120px]">การจัดการ</th>
                 </tr>
               </thead>
@@ -1290,12 +1399,12 @@ export default function ProductListView({
                   return (
                     <tr key={p.id} className="hover:bg-slate-50/40 transition-colors group">
                       {/* Name & Photo */}
-                      <td className="py-1 px-2">
-                        <div className="flex items-center gap-2">
+                      <td className="py-1.5 px-2">
+                        <div className="flex items-center gap-3">
                           <img
                             src={p.image || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'}
                             alt={p.name}
-                            className="w-12 h-12 object-cover rounded-lg bg-slate-50 dark:bg-slate-800 shrink-0 border border-slate-200/60 dark:border-slate-800"
+                            className="w-[40px] h-[40px] object-cover rounded-xl bg-slate-50 dark:bg-slate-800 shrink-0 border border-slate-200/60 dark:border-slate-800 shadow-3xs"
                             referrerPolicy="no-referrer"
                           />
                           <div className="min-w-0">
@@ -1304,8 +1413,8 @@ export default function ProductListView({
                                 🏷️ {p.series}
                               </span>
                             )}
-                            <h4 className="font-bold text-slate-700 dark:text-slate-200 font-sans leading-none line-clamp-1 text-[11px]" title={p.name}>
-                              {p.name}
+                            <h4 className="font-extrabold text-slate-800 dark:text-slate-100 font-sans leading-tight text-xs sm:text-sm flex items-center gap-1.5 flex-wrap" title={p.name}>
+                              <span className="text-xs sm:text-sm">{p.name}</span>
                               {getColorDotAndBadge(p.color)}
                             </h4>
                             <div className="flex flex-wrap gap-1 items-center mt-0.5 leading-none">
@@ -1324,11 +1433,7 @@ export default function ProductListView({
                                 }
                                 return null;
                               })()}
-                              {p.expiryDate && (
-                                <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-rose-700 bg-rose-50/50 dark:bg-rose-950/30 dark:text-rose-400 rounded leading-none">
-                                  📅 EXP: {new Date(p.expiryDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short' })}
-                                </span>
-                              )}
+
                             </div>
                           </div>
                         </div>
@@ -1359,6 +1464,17 @@ export default function ProductListView({
                           </div>
                         </td>
                       )}
+
+                      {/* รุ่น (Model) */}
+                      <td className="py-0.5 px-1.5">
+                        {p.modelNumber !== undefined && p.modelNumber !== null && String(p.modelNumber).trim() !== '' ? (
+                          <span className="inline-block px-1.5 py-0.5 text-[9px] font-black text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/40 rounded leading-none shrink-0">
+                            รุ่น {p.modelNumber} {p.modelUnit || 'Kg'}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 dark:text-slate-700 font-sans text-[10px]">-</span>
+                        )}
+                      </td>
 
                       {/* Category & SKU */}
                       <td className="py-0.5 px-1.5">
@@ -1432,12 +1548,38 @@ export default function ProductListView({
 
                       {/* CRUD Actions */}
                       <td className="py-0.5 px-2 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-1 flex-wrap">
+                          {p.sourceUrl && (
+                            <a
+                              href={p.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-1.5 py-0.5 text-[9px] font-black text-blue-700 hover:bg-blue-50 border border-blue-200 rounded cursor-pointer inline-flex items-center gap-0.5 active:scale-95 transition-all"
+                              title="ลิงก์สั่งซื้อพัสดุจากตัวแทนจำหน่ายภายนอก"
+                            >
+                              <ExternalLink className="h-2.5 w-2.5" /> ลิงก์สั่งซื้อ
+                            </a>
+                          )}
+                          {(() => {
+                            const parentCat = mergedCategories.find(c => c.id === p.category);
+                            const matchingSubSer = parentCat?.subSeries?.find(s => s.name === p.series);
+                            return matchingSubSer?.pdfUrl && (
+                              <button
+                                onClick={() => handleOpenPdf(matchingSubSer.pdfUrl)}
+                                className="px-1.5 py-0.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 rounded text-[9px] font-black flex items-center gap-1 cursor-pointer transition-all inline-flex active:scale-95"
+                                title="เปิดเอกสารรายละเอียดผลิตภัณฑ์"
+                                type="button"
+                              >
+                                <FileText className="h-2.5 w-2.5" /> เปิดเอกสาร
+                              </button>
+                            );
+                          })()}
                           <button
                             onClick={() => handleAddToCart(p)}
                             className="px-1.5 py-0.2 text-[9px] font-black text-indigo-700 hover:bg-indigo-50 border border-indigo-100 rounded cursor-pointer flex items-center gap-0.5 active:scale-95 transition-all"
                             title="หยิบพัสดุลงในตะกร้าจัดซื้อ"
                             id={`btn-add-to-cart-item-${p.id}`}
+                            type="button"
                           >
                             <ShoppingCart className="h-2.5 w-2.5 text-indigo-500" /> หยิบลงตะกร้า
                           </button>
@@ -1515,395 +1657,388 @@ export default function ProductListView({
             </div>
 
             {/* Modal Body */}
-            <form onSubmit={handleFormSubmit} className="space-y-5 py-4 flex-grow">
-              
+            <form onSubmit={handleFormSubmit} className="space-y-3 py-2 flex-grow text-[11px]">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Product Name */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 font-sans">ชื่อสินค้า <span className="text-rose-500">*</span></label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="เช่น สมาร์ทโฟน X1 Neo"
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all"
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                  />
-                </div>
-
-                {/* SKU Code */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 font-sans">รหัสสินค้า / SKU <span className="text-rose-500">*</span></label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="เช่น EL-SP-001"
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans font-mono uppercase transition-all"
-                    value={formSku}
-                    onChange={(e) => setFormSku(e.target.value.toUpperCase())}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Category Selection */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">หมวดหมู่กลุ่มสินค้า <span className="text-rose-500">*</span></label>
-                  <select
-                    required
-                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
-                    value={formCategory}
-                    onChange={(e) => {
-                      setFormCategory(e.target.value);
-                      setFormSeries(''); // Reset series when category changes
-                    }}
-                  >
-                    {mergedCategories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Series Selection */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">Series ย่อย</label>
-                  {(() => {
-                    const selectedCat = mergedCategories.find((c) => c.id === formCategory);
-                    const listFromSeries = selectedCat?.series || [];
-                    const listFromSubSeries = (selectedCat?.subSeries || []).map((s) => s.name);
-                    const availableSeries = Array.from(new Set([...listFromSeries, ...listFromSubSeries])).filter(Boolean);
-                    
-                    if (availableSeries.length > 0) {
-                      return (
-                        <div className="space-y-1.5">
-                          <select
-                            className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
-                            value={formSeries}
-                            onChange={(e) => setFormSeries(e.target.value)}
-                          >
-                            <option value="">-- ทั่วไป / ไม่มี Series --</option>
-                            {availableSeries.map((s, idx) => (
-                              <option key={idx} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      );
-                    } else {
-                      return (
-                        <div>
-                          <input
-                            type="text"
-                            placeholder="ระบุชื่อ Series ย่อยเอง หรือเว้นว่างไว้ (เช่น 1 Pole)"
-                            className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
-                            value={formSeries}
-                            onChange={(e) => setFormSeries(e.target.value)}
-                          />
-                        </div>
-                      );
-                    }
-                  })()}
-                </div>
-              </div>
-
-              {/* Brand Selection */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans flex items-center gap-1">
-                  <Tag className="h-3 w-3 text-indigo-500" />
-                  <span>แบรนด์สินค้า (Brand)</span>
-                </label>
-                <select
-                  className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
-                  value={formBrand}
-                  onChange={(e) => setFormBrand(e.target.value)}
-                >
-                  <option value="">-- ไม่ระบุแบรนด์สินค้า / ทั่วไป --</option>
-                  {brands.map((b) => (
-                    <option key={b.id} value={b.name}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-                {formBrand && (
-                  <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                    <span>แบรนด์ที่เลือก:</span>
-                    {(() => {
-                      const bMatch = brands.find(b => b.name === formBrand);
-                      if (bMatch?.logoUrl) {
-                        return (
-                          <div className="h-5 bg-white dark:bg-slate-950 px-1.5 py-0.5 rounded border border-slate-200/60 dark:border-slate-800 flex items-center gap-1 shrink-0">
-                            <img src={bMatch.logoUrl} alt={formBrand} className="h-full object-contain" referrerPolicy="no-referrer" />
-                            <span>{formBrand}</span>
-                          </div>
-                        );
-                      }
-                      return <span className="text-slate-700 dark:text-slate-300 font-black">{formBrand}</span>;
-                    })()}
+                
+                {/* Column 1 (Left): General Info */}
+                <div className="space-y-3">
+                  {/* Product Name */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-600 font-sans">ชื่อสินค้า <span className="text-rose-500">*</span></label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="เช่น สมาร์ทโฟน X1 Neo"
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all"
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
+                    />
                   </div>
-                )}
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Cost price */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">ราคาทุนสินค้า (฿) <span className="text-rose-500">*</span></label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    placeholder="0"
-                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
-                    value={formCostPrice}
-                    onChange={(e) => setFormCostPrice(Math.max(0, Number(e.target.value)))}
-                  />
-                </div>
-
-                {/* Minimum Alert level */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">จำนวนแจ้งเตือนขั้นต่ำ (Min Alarm) <span className="text-rose-500">*</span></label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    placeholder="เช่น 5"
-                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
-                    value={formMinAlert}
-                    onChange={(e) => setFormMinAlert(Math.max(1, Number(e.target.value)))}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Initial Stock level */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">
-                    {editingProduct ? 'จำนวนคงเหลือปัจจุบัน' : 'จำนวนสต็อกเริ่มต้น'} <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    placeholder="0"
-                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
-                    value={formQuantity}
-                    onChange={(e) => setFormQuantity(Math.max(0, Number(e.target.value)))}
-                  />
-                </div>
-
-                {/* Warehouse Selection */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">สถานที่จัดเก็บ / คลังสินค้า <span className="text-rose-500">*</span></label>
-                  <select
-                    required
-                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
-                    value={formWarehouse}
-                    onChange={(e) => setFormWarehouse(e.target.value)}
-                  >
-                    <option value="คลังสินค้าหลัก A">คลังสินค้าหลัก A</option>
-                    <option value="คลังสำรอง B">คลังสำรอง B</option>
-                    <option value="คลังสินค้าหน้าร้าน C">คลังสินค้าหน้าร้าน C</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Expiry Date */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">วันหมดอายุของสินค้า (Expiry Date)</label>
-                  <input
-                    type="date"
-                    className="w-full px-3.5 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
-                    value={formExpiryDate}
-                    onChange={(e) => setFormExpiryDate(e.target.value)}
-                  />
-                </div>
-
-                {/* Color Selection */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">สีหลักของสินค้า (คลิกเพื่อเลือก/ยกเลิก)</label>
-                  <div className="flex flex-wrap gap-1.5 items-center">
-                    {PRODUCT_COLORS.map((colorObj) => {
-                      const isSelected = formColor === colorObj.name;
-                      return (
-                        <button
-                          key={colorObj.name}
-                          type="button"
-                          onClick={() => setFormColor(isSelected ? '' : colorObj.name)}
-                          className={`group relative w-7 h-7 rounded-full border transition-all flex items-center justify-center cursor-pointer ${
-                            isSelected 
-                              ? 'ring-2 ring-indigo-500 dark:ring-indigo-400 ring-offset-2 dark:ring-offset-slate-900 scale-110 shadow-sm' 
-                              : 'hover:scale-105 border-slate-200 dark:border-slate-700'
-                          }`}
-                          style={{
-                            background: colorObj.hex,
-                            borderColor: isSelected ? undefined : (colorObj.name === 'ขาว' ? '#CBD5E1' : 'transparent')
-                          }}
-                          title={colorObj.name}
-                        >
-                          {isSelected && (
-                            <span className={`text-[10px] font-black leading-none ${
-                              ['ขาว', 'เหลือง', 'เขียว-เหลือง'].includes(colorObj.name) ? 'text-slate-900' : 'text-white'
-                            }`}>
-                              ✓
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {formColor ? (
-                    <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
-                      สีปัจจุบัน: {formColor}
-                    </div>
-                  ) : (
-                    <div className="text-[10px] text-slate-400 italic">ยังไม่ได้ระบุสีสินค้า</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Description */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 font-sans">คำอธิบาย/รายละเอียดสินค้า</label>
-                <textarea
-                  placeholder="เช่น สเปคสินค้า รายละเอียดบรรจุภัณฑ์ การรับประกัน..."
-                  rows={2}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all resize-none"
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  id="input-product-desc"
-                />
-              </div>
-
-              {/* Source/Reference URL */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 font-sans flex items-center gap-1">
-                  <ExternalLink className="h-3.5 w-3.5 text-slate-400" /> ลิงก์ที่มา/แหล่งอ้างอิงสินค้า (URL)
-                </label>
-                <input
-                  type="url"
-                  placeholder="เช่น https://shopee.co.th/... หรือเว็บซัพพลายเออร์"
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all"
-                  value={formSourceUrl}
-                  onChange={(e) => setFormSourceUrl(e.target.value)}
-                  id="input-product-source-url"
-                />
-              </div>
-
-              {/* Advanced Image upload / drag and drop */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-600 font-sans">รูปภาพประกอบสินค้า</label>
-                  <button
-                    type="button"
-                    onClick={() => setShowGallery(!showGallery)}
-                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
-                  >
-                    <ImageIcon className="h-3.5 w-3.5" /> {showGallery ? 'ปิดคลังรูปภาพสำเร็จ' : 'เลือกจากคลังภาพสำเร็จรูป'}
-                  </button>
-                </div>
-
-                {showGallery && (
-                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 animate-in slide-in-from-top-2 duration-200">
-                    <p className="text-[11px] text-slate-400 font-sans mb-3">คลิกเลือกภาพคุณภาพสูงสำหรับหมวดสินค้าประเภทต่างๆ:</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      {PRESET_IMAGES.map((img, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => selectPresetImage(img.url)}
-                          className="group relative rounded-xl overflow-hidden border border-slate-200 h-16 text-left focus:outline-none cursor-pointer"
-                        >
-                          <img src={img.url} alt={img.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
-                          <div className="absolute inset-0 bg-black/40 flex items-end p-1.5">
-                            <span className="text-[9px] font-bold text-white line-clamp-1">{img.name}</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Drag / Drop Area */}
-                <div
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all relative overflow-hidden flex flex-col sm:flex-row items-center gap-4 ${
-                    isDragOver ? 'border-indigo-500 bg-indigo-50/50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100/50'
-                  }`}
-                >
-                  {/* File input */}
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept="image/*"
-                    className="hidden"
-                  />
-
-                  {/* Image Preview or Icon */}
-                  <div className="relative flex-shrink-0">
-                    {imagePreview ? (
-                      <div className="relative group">
-                        <img
-                          src={imagePreview}
-                          alt="Preview"
-                          className="w-20 h-20 object-cover rounded-xl border border-slate-200"
+                  {/* Model Number / Unit and SKU */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-1">
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-xs font-bold text-slate-600 font-sans">รุ่น (ตัวเลข)</label>
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="ระบุรุ่น"
+                          className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all"
+                          value={formModelNumber}
+                          onChange={(e) => setFormModelNumber(e.target.value)}
                         />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFormImage('');
-                            setImagePreview('');
-                          }}
-                          className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white p-1 rounded-full shadow-sm hover:bg-rose-600 cursor-pointer"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
                       </div>
-                    ) : (
-                      <div className="w-20 h-20 bg-white border border-slate-100 rounded-xl flex items-center justify-center text-slate-400">
-                        <ImageIcon className="h-8 w-8" />
+                      <div className="col-span-1 space-y-1">
+                        <label className="text-xs font-bold text-slate-600 font-sans">หน่วย</label>
+                        <select
+                          className="w-full px-1 py-1.5 border border-slate-200 bg-white rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans cursor-pointer"
+                          value={formModelUnit}
+                          onChange={(e) => setFormModelUnit(e.target.value)}
+                        >
+                          <option value="Kg">Kg</option>
+                          <option value="mm">mm</option>
+                          <option value="A">A</option>
+                          <option value="W">W</option>
+                          <option value="V">V</option>
+                          <option value="Hp">Hp</option>
+                          <option value="Pin">Pin</option>
+                          <option value="Ch">Ch</option>
+                          <option value="Rpm">Rpm</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-600 font-sans">Code <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="เช่น EL-SP-001"
+                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans font-mono uppercase transition-all"
+                        value={formSku}
+                        onChange={(e) => setFormSku(e.target.value.toUpperCase())}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Category and Series */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">หมวดหมู่กลุ่ม <span className="text-rose-500">*</span></label>
+                      <select
+                        required
+                        className="w-full px-2 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
+                        value={formCategory}
+                        onChange={(e) => {
+                          setFormCategory(e.target.value);
+                          setFormSeries('');
+                        }}
+                      >
+                        {mergedCategories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">Series ย่อย</label>
+                      {(() => {
+                        const selectedCat = mergedCategories.find((c) => c.id === formCategory);
+                        const listFromSeries = selectedCat?.series || [];
+                        const listFromSubSeries = (selectedCat?.subSeries || []).map((s) => s.name);
+                        const availableSeries = Array.from(new Set([...listFromSeries, ...listFromSubSeries])).filter(Boolean);
+                        
+                        if (availableSeries.length > 0) {
+                          return (
+                            <select
+                              className="w-full px-2 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
+                              value={formSeries}
+                              onChange={(e) => setFormSeries(e.target.value)}
+                            >
+                              <option value="">-- ไม่มี Series --</option>
+                              {availableSeries.map((s, idx) => (
+                                <option key={idx} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          );
+                        } else {
+                          return (
+                            <input
+                              type="text"
+                              placeholder="ระบุชื่อ Series ย่อยเอง"
+                              className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
+                              value={formSeries}
+                              onChange={(e) => setFormSeries(e.target.value)}
+                            />
+                          );
+                        }
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Brand Selection */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans flex items-center gap-1">
+                      <Tag className="h-3 w-3 text-indigo-500" />
+                      <span>แบรนด์สินค้า (Brand)</span>
+                    </label>
+                    <select
+                      className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
+                      value={formBrand}
+                      onChange={(e) => setFormBrand(e.target.value)}
+                    >
+                      <option value="">-- ไม่ระบุแบรนด์สินค้า / ทั่วไป --</option>
+                      {brands.map((b) => (
+                        <option key={b.id} value={b.name}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Color Selection */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">สีหลักของสินค้า</label>
+                    <div className="flex flex-wrap gap-1 items-center">
+                      {PRODUCT_COLORS.map((colorObj) => {
+                        const isSelected = formColor === colorObj.name;
+                        return (
+                          <button
+                            key={colorObj.name}
+                            type="button"
+                            onClick={() => setFormColor(isSelected ? '' : colorObj.name)}
+                            className={"group relative w-6 h-6 rounded-full border transition-all flex items-center justify-center cursor-pointer " + (
+                              isSelected 
+                                ? "ring-2 ring-indigo-500 dark:ring-indigo-400 ring-offset-1 scale-110 shadow-sm" 
+                                : "hover:scale-105 border-slate-200 dark:border-slate-700"
+                            )}
+                            style={{
+                              background: colorObj.hex,
+                              borderColor: isSelected ? undefined : (colorObj.name === "ขาว" ? "#CBD5E1" : "transparent")
+                            }}
+                            title={colorObj.name}
+                          >
+                            {isSelected && (
+                              <span className={"text-[9px] font-black leading-none " + (
+                                ["ขาว", "เหลือง", "เขียว-เหลือง"].includes(colorObj.name) ? "text-slate-900" : "text-white"
+                              )}>
+                                ✓
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Column 2 (Right): Inventory, Specs & Images */}
+                <div className="space-y-3">
+                  
+                  {/* Prices & Alarm Level */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">ราคาทุนสินค้า (฿) <span className="text-rose-500">*</span></label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        placeholder="0"
+                        className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
+                        value={formCostPrice}
+                        onChange={(e) => setFormCostPrice(Math.max(0, Number(e.target.value)))}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">แจ้งเตือนขั้นต่ำ (Min Alarm) <span className="text-rose-500">*</span></label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        placeholder="เช่น 5"
+                        className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
+                        value={formMinAlert}
+                        onChange={(e) => setFormMinAlert(Math.max(1, Number(e.target.value)))}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Stock & Warehouse */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">
+                        {editingProduct ? "จำนวนคงเหลือปัจจุบัน" : "จำนวนสต็อกเริ่มต้น"} <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        placeholder="0"
+                        className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
+                        value={formQuantity}
+                        onChange={(e) => setFormQuantity(Math.max(0, Number(e.target.value)))}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">สถานที่จัดเก็บ/คลังสินค้า <span className="text-rose-500">*</span></label>
+                      <select
+                        required
+                        className="w-full px-2 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
+                        value={formWarehouse}
+                        onChange={(e) => setFormWarehouse(e.target.value)}
+                      >
+                        <option value="คลังสินค้าหลัก A">คลังสินค้าหลัก A</option>
+                        <option value="คลังสำรอง B">คลังสำรอง B</option>
+                        <option value="คลังสินค้าหน้าร้าน C">คลังสินค้าหน้าร้าน C</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-600 font-sans">คำอธิบาย/รายละเอียดสินค้า</label>
+                    <textarea
+                      placeholder="ระบุสเปคสินค้า รายละเอียดบรรจุภัณฑ์ การรับประกัน..."
+                      rows={1.5}
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all resize-none"
+                      value={formDescription}
+                      onChange={(e) => setFormDescription(e.target.value)}
+                      id="input-product-desc"
+                    />
+                  </div>
+
+                  {/* Reference URL */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-600 font-sans flex items-center gap-1">
+                      <ExternalLink className="h-3 w-3 text-slate-400" /> ลิงก์สั่งซื้อ/แหล่งอ้างอิงสินค้า (URL)
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="เช่น https://shopee.co.th/... หรือลิงก์สั่งซื้ออื่นๆ"
+                      className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all"
+                      value={formSourceUrl}
+                      onChange={(e) => setFormSourceUrl(e.target.value)}
+                      id="input-product-source-url"
+                    />
+                  </div>
+
+                  {/* Image Drag & Drop Compact */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-600 font-sans">รูปภาพสินค้า</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowGallery(!showGallery)}
+                        className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                      >
+                        <ImageIcon className="h-3 w-3" /> {showGallery ? 'ปิดคลังภาพ' : 'เลือกจากคลังภาพสำเร็จรูป'}
+                      </button>
+                    </div>
+
+                    {showGallery && (
+                      <div className="bg-slate-50 rounded-xl p-2 border border-slate-100 max-h-[100px] overflow-y-auto">
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {PRESET_IMAGES.map((img, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => selectPresetImage(img.url)}
+                              className="group relative rounded-lg overflow-hidden border border-slate-200 h-10 text-left focus:outline-none cursor-pointer"
+                            >
+                              <img src={img.url} alt={img.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                              <div className="absolute inset-0 bg-black/30 flex items-end p-0.5">
+                                <span className="text-[8px] font-bold text-white line-clamp-1">{img.name}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
+
+                    {/* Compact Drag & Drop Zone */}
+                    <div
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={"border border-dashed rounded-xl p-1.5 text-center transition-all flex items-center gap-3 " + (
+                        isDragOver ? "border-indigo-500 bg-indigo-50/50" : "border-slate-200 bg-slate-50 hover:bg-slate-100/50"
+                      )}
+                    >
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        accept="image/*"
+                        className="hidden"
+                      />
+
+                      {/* Preview Thumb */}
+                      <div className="relative flex-shrink-0">
+                        {imagePreview ? (
+                          <div className="relative">
+                            <img
+                              src={imagePreview}
+                              alt="Preview"
+                              className="w-10 h-10 object-cover rounded-lg border border-slate-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormImage('');
+                                setImagePreview('');
+                              }}
+                              className="absolute -top-1 -right-1 bg-rose-500 text-white p-0.5 rounded-full shadow-sm hover:bg-rose-600 cursor-pointer"
+                            >
+                              <X className="h-2 w-2" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 bg-white border border-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                            <ImageIcon className="h-4 w-4" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-left">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                        >
+                          อัปโหลดรูปภาพสินค้า
+                        </button>
+                        <p className="text-[8px] text-slate-400 font-sans">ลากไฟล์มาวาง หรือคลิกเพื่อเลือก</p>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Upload Info */}
-                  <div className="text-left flex-grow">
-                    <h5 className="text-xs font-bold text-slate-700 font-sans">ลากไฟล์รูปภาพมาวางที่นี่ หรือ</h5>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 underline mt-1 cursor-pointer"
-                    >
-                      คลิกเพื่อเลือกไฟล์จากอุปกรณ์คอมพิวเตอร์ของคุณ
-                    </button>
-                    <p className="text-[10px] text-slate-400 mt-1 font-sans">รองรับ JPG, PNG และ WebP (แนะนำไฟล์ขนาดเล็กลงคลังได้เร็วขึ้น)</p>
-                  </div>
                 </div>
+
               </div>
 
               {/* Form Footer Actions */}
-              <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4 mt-2">
+              <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-3 mt-3">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4.5 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 border border-slate-200 rounded-xl cursor-pointer"
+                  className="px-4 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm hover:shadow transition-all cursor-pointer"
+                  className="px-5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
                   id="btn-submit-product-form"
                 >
-                  {editingProduct ? 'บันทึกการแก้ไข' : 'เพิ่มสินค้าเข้าสต็อก'}
+                  {editingProduct ? 'บันทึกการแก้ไข' : 'เพิ่มสินค้าใหม่'}
                 </button>
               </div>
-
             </form>
           </div>
         </div>

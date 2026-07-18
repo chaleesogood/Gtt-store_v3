@@ -254,52 +254,49 @@ export default function JobAssignmentView({
   const completedTasksCount = jobs.filter(t => t.status === 'completed').length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-2 text-left">
       
       {/* Tab Header Selector */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-slate-900 text-slate-100 p-6 rounded-3xl shadow-lg relative overflow-hidden">
+      <div className="flex flex-row items-center justify-between gap-3 bg-slate-900 text-slate-100 p-2 px-3.5 rounded-xl relative overflow-hidden">
         
         {/* Background Accent Gradients */}
-        <div className="absolute right-0 top-0 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute left-1/3 bottom-0 w-60 h-60 bg-emerald-600/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute right-0 top-0 w-48 h-48 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute left-1/3 bottom-0 w-32 h-32 bg-emerald-600/5 rounded-full blur-2xl pointer-events-none" />
 
-        <div className="z-10">
-          <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-widest font-mono">
-            <Activity className="h-4 w-4 text-indigo-400" />
+        <div className="z-10 text-left">
+          <div className="flex items-center gap-1.5 text-indigo-400 font-bold text-[8px] uppercase tracking-widest font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>Operational Center</span>
           </div>
-          <h2 className="text-xl font-black text-white font-sans flex items-center gap-2 mt-1.5">
-            <Briefcase className="h-6 w-6 text-indigo-400" />
+          <h2 className="text-sm font-black text-white font-sans flex items-center gap-1.5 mt-0.5">
+            <Briefcase className="h-4 w-4 text-indigo-400" />
             ระบบจ่ายงาน & รายงานความคืบหน้าประจำวัน
           </h2>
-          <p className="text-xs text-slate-400 font-sans mt-1 max-w-xl">
-            มอบหมายและติดตามความคืบหน้างานย่อยรายมอดูล และพนักงานเขียนรายงานการปฏิบัติงานประจำวันพร้อมภาพถ่ายแนบเข้าระบบอย่างเป็นระเบียบ
-          </p>
         </div>
 
         {/* Tab Controls */}
-        <div className="flex flex-wrap gap-1 bg-slate-800/80 p-1.5 rounded-2xl border border-slate-700/60 shrink-0 self-start xl:self-center z-10">
+        <div className="flex bg-slate-800/80 p-0.5 rounded gap-1 shrink-0 z-10">
           <button
             onClick={() => setSubTab('tasks')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
               subTab === 'tasks' 
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
+                ? 'bg-indigo-600 text-white shadow-3xs' 
+                : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Briefcase className="h-4 w-4" />
+            <Briefcase className="h-3 w-3" />
             <span>งานมอบหมาย ({jobs.length})</span>
           </button>
           <button
             onClick={() => setSubTab('daily_reports')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
               subTab === 'daily_reports' 
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' 
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
+                ? 'bg-indigo-600 text-white shadow-3xs' 
+                : 'text-slate-400 hover:text-slate-200'
             }`}
             id="tab-daily-reports"
           >
-            <ClipboardList className="h-4 w-4" />
+            <ClipboardList className="h-3 w-3" />
             <span>รายงานประจำวัน ({dailyReports.length})</span>
           </button>
         </div>

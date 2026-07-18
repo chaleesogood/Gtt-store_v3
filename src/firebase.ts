@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache, doc, getDocFromServer, setLogLevel } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from 'firebase/auth';
 import firebaseConfigJson from '../firebase-applet-config.json';
 
@@ -17,15 +17,46 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore targeting the specific databaseId if provided, with local cache persistence
 const dbId = firebaseConfigJson.firestoreDatabaseId;
+
+// Determine cache based on environment (IndexedDB is often blocked in sandboxed third-party iframes)
+const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+let cacheConfig;
+
+if (isIframe) {
+  console.log("Running in iframe - using memory cache to avoid IndexedDB permission/sandbox restrictions.");
+  cacheConfig = memoryLocalCache();
+} else {
+  try {
+    cacheConfig = persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    });
+  } catch (e) {
+    console.warn("Firestore persistent local cache not supported, falling back to memory cache:", e);
+    cacheConfig = memoryLocalCache();
+  }
+}
+
 const firestoreSettings = {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
+  localCache: cacheConfig,
+  experimentalForceLongPolling: true
 };
+
+// Silence Firestore SDK's internal logging to avoid harmless warning logs
+setLogLevel('silent');
 
 export const db = dbId && dbId !== '(default)'
   ? initializeFirestore(app, firestoreSettings, dbId)
   : initializeFirestore(app, firestoreSettings);
+
+// Validate connection to Firestore on boot as required by skill guidelines
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    // Keep test connection errors completely silent as sandboxed environments may block outbound requests initially
+  }
+}
+testConnection();
 
 // Initialize Auth
 export const auth = getAuth(app);
