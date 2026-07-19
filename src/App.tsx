@@ -260,6 +260,39 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser]);
 
+  // Auto-delete cat-2t7zj33 on startup if present as requested by user
+  useEffect(() => {
+    if (!currentUser || categories.length === 0) return;
+    const hasTargetCat = categories.some(c => c.id === 'cat-2t7zj33');
+    if (hasTargetCat) {
+      const deleteTargetCategory = async () => {
+        try {
+          const id = 'cat-2t7zj33';
+          const updatedCategories = categories.filter((cat) => cat.id !== id);
+          setCategories(updatedCategories);
+          localStorage.setItem('stock_manager_categories', JSON.stringify(updatedCategories));
+
+          const updatedProducts = products.map((p) => p.category === id ? { ...p, category: '' } : p);
+          setProducts(updatedProducts);
+          localStorage.setItem('stock_manager_products', JSON.stringify(updatedProducts));
+
+          const batch = writeBatch(db);
+          const associatedProducts = products.filter((p) => p.category === id);
+          associatedProducts.forEach((p) => {
+            batch.update(doc(db, 'products', p.id), { category: '' });
+          });
+          batch.delete(doc(db, 'categories', id));
+          await batch.commit();
+          
+          addToast('success', 'ระบบคลีนข้อมูลอัตโนมัติ', 'ลบรหัสกลุ่มสินค้าเดิม cat-2t7zj33 สำเร็จเรียบร้อยแล้ว');
+        } catch (err) {
+          console.error("Error auto-deleting cat-2t7zj33:", err);
+        }
+      };
+      deleteTargetCategory();
+    }
+  }, [currentUser, categories, products]);
+
   // Auto-seed database if empty on login/boot
   useEffect(() => {
     if (!currentUser) return;
@@ -1255,9 +1288,29 @@ export default function App() {
     setJobProjects(updatedProjs);
     localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(updatedProjs));
 
+    // Create companion BOM worksheet automatically
+    const bomId = `bom-${Math.random().toString(36).substring(2, 9)}`;
+    const newBom: Bom = {
+      id: bomId,
+      name: `BOM - ${proj.projectName}`,
+      jobNo: proj.jobNo,
+      description: `ใบงานประกอบ BOM อัตโนมัติสำหรับโครงการ ${proj.projectName}`,
+      requiredQuantity: 1,
+      status: 'pending',
+      items: [],
+      stockDeducted: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const updatedBoms = [newBom, ...boms];
+    setBoms(updatedBoms);
+    localStorage.setItem('stock_manager_boms', JSON.stringify(updatedBoms));
+
     try {
       await setDoc(doc(db, 'jobProjects', proj.id), cleanUndefined(proj));
-      addToast('success', 'เพิ่มโปรเจกต์สำเร็จ', `หมายเลขงาน ${proj.jobNo} ของลูกค้า "${proj.customer}" ถูกบันทึกแล้ว`);
+      await setDoc(doc(db, 'boms', bomId), cleanUndefined(newBom));
+      addToast('success', 'เพิ่มโปรเจกต์และสร้าง BOM สำเร็จ', `หมายเลขงาน ${proj.jobNo} ถูกบันทึก และระบบสร้างใบงาน "BOM - ${proj.projectName}" อัตโนมัติเรียบร้อยแล้ว`);
     } catch (error: any) {
       console.error(error);
       addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถเพิ่มโปรเจกต์ได้: ${error.message}`);
@@ -1440,6 +1493,8 @@ export default function App() {
             employees={employees}
             jobProjects={jobProjects}
             brands={brands}
+            boms={boms}
+            setBoms={setBoms}
           />
         );
       case 'logs':

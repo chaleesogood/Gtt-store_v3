@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Product, Employee, JobProject } from '../types';
+import { Product, Employee, JobProject, Bom, BomItem } from '../types';
 import { 
   ShoppingCart, 
   Trash2, 
@@ -17,7 +17,8 @@ import {
   MessageCircle, 
   ExternalLink, 
   Send, 
-  Sliders 
+  Sliders,
+  FileSpreadsheet
 } from 'lucide-react';
 import { collection, doc, setDoc } from 'firebase/firestore';
 import { db, cleanUndefined } from '../firebase';
@@ -29,6 +30,8 @@ interface ShoppingCartViewProps {
   jobProjects: JobProject[];
   addToast: (type: 'success' | 'warning' | 'info', title: string, message: string) => void;
   setActiveSubTab: (tab: 'products' | 'categories' | 'ordering' | 'cart') => void;
+  boms?: Bom[];
+  setBoms?: React.Dispatch<React.SetStateAction<Bom[]>>;
 }
 
 export default function ShoppingCartView({
@@ -38,6 +41,8 @@ export default function ShoppingCartView({
   jobProjects = [],
   addToast,
   setActiveSubTab,
+  boms = [],
+  setBoms,
 }: ShoppingCartViewProps) {
   // Global / Bulk form states
   const [globalRequester, setGlobalRequester] = useState('');
@@ -163,6 +168,119 @@ export default function ShoppingCartView({
     } catch (error) {
       console.error('Error checking out cart:', error);
       addToast('warning', 'เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'ไม่สามารถบันทึกรายการขอจัดซื้อลงในระบบคลาวด์ได้');
+    }
+  };
+
+  const handleSendToBom = async () => {
+    if (cartItems.length === 0) {
+      addToast('warning', 'ไม่สามารถส่งรายการเข้า BOM ได้', 'ตะกร้าจัดซื้อของคุณยังว่างเปล่า');
+      return;
+    }
+
+    // Validate that each item has a job assigned
+    const missingJobItems = cartItems.filter((item) => !item.jobNo?.trim());
+    if (missingJobItems.length > 0) {
+      addToast(
+        'warning',
+        'ข้อมูลไม่ครบถ้วน',
+        'กรุณาระบุ "JOB No." ให้ครบถ้วนทุกรายการ เพื่อส่งรายการเข้า BOM'
+      );
+      return;
+    }
+
+    try {
+      // Get current BOMs
+      const currentBoms = [...(boms || [])];
+      
+      // Keep track of updated/created BOMs
+      const bomsToSave: Record<string, Bom> = {};
+
+      for (const item of cartItems) {
+        const jobNo = item.jobNo.trim();
+        
+        // Find existing BOM in currentBoms or in temporary save map
+        let targetBom = Object.values(bomsToSave).find(b => b.jobNo === jobNo) || 
+                        currentBoms.find(b => b.jobNo === jobNo);
+
+        const newItem: BomItem = {
+          productId: item.product.id,
+          productName: item.product.name,
+          quantity: item.quantity,
+          unit: item.unit?.trim() || item.product.unit || 'ชิ้น',
+          remark: item.remark?.trim() || 'ส่งจากตะกร้าจัดซื้อ',
+          brand: item.product.brand || '',
+          priceUnit: Number(item.pricePerUnit) || Number(item.product.costPrice) || 0,
+          group: item.product.category || 'ทั่วไป'
+        };
+
+        if (targetBom) {
+          // Merge items in BOM
+          const updatedItems = [...targetBom.items];
+          const existingItemIdx = updatedItems.findIndex(it => it.productId === newItem.productId && it.group === newItem.group);
+          
+          if (existingItemIdx > -1) {
+            updatedItems[existingItemIdx] = {
+              ...updatedItems[existingItemIdx],
+              quantity: updatedItems[existingItemIdx].quantity + newItem.quantity
+            };
+          } else {
+            updatedItems.push(newItem);
+          }
+
+          bomsToSave[targetBom.id] = {
+            ...targetBom,
+            items: updatedItems,
+            updatedAt: new Date().toISOString()
+          };
+        } else {
+          // Create new BOM
+          const bomId = `bom-${Math.random().toString(36).substring(2, 9)}`;
+          const selectedProject = jobProjects.find((p) => p.jobNo === jobNo);
+          const bomName = selectedProject ? `BOM - ${selectedProject.projectName}` : `BOM - Job ${jobNo}`;
+          
+          const newBom: Bom = {
+            id: bomId,
+            name: bomName,
+            description: `ใบงานประกอบ BOM อัตโนมัติจากตะกร้าจัดซื้อ`,
+            requiredQuantity: 1,
+            status: 'pending',
+            items: [newItem],
+            stockDeducted: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            jobNo: jobNo
+          };
+
+          bomsToSave[bomId] = newBom;
+        }
+      }
+
+      // Save all updated/created BOMs to Firestore
+      for (const bom of Object.values(bomsToSave)) {
+        await setDoc(doc(db, 'boms', bom.id), cleanUndefined(bom));
+      }
+
+      // Update local react state
+      if (setBoms) {
+        setBoms(prev => {
+          const next = prev.map(b => bomsToSave[b.id] ? bomsToSave[b.id] : b);
+          const newBomsOnly = Object.values(bomsToSave).filter(b => !prev.some(p => p.id === b.id));
+          const finalBoms = [...newBomsOnly, ...next];
+          localStorage.setItem('stock_manager_boms', JSON.stringify(finalBoms));
+          return finalBoms;
+        });
+      }
+
+      // Clear the cart
+      setCartItems([]);
+      addToast(
+        'success',
+        'ส่งรายการเข้า BOM สำเร็จ!',
+        `นำรายการสินค้าในตะกร้าเข้าใบงาน BOM ตาม Job No. เรียบร้อยแล้ว (${cartItems.length} รายการ)`
+      );
+    } catch (error) {
+      console.error('Error sending items to BOM:', error);
+      addToast('warning', 'เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกรายการสินค้าเข้าสู่ใบงาน BOM ได้');
     }
   };
 
@@ -725,6 +843,15 @@ export default function ShoppingCartView({
                 >
                   <CheckCircle2 className="h-4.5 w-4.5" />
                   ส่งบันทึกขอจัดซื้อรวม ({cartItems.length} รายการ)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendToBom}
+                  disabled={cartItems.some((item) => !item.jobNo?.trim())}
+                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black rounded-lg text-xs cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-98 shadow-sm"
+                >
+                  <FileSpreadsheet className="h-4.5 w-4.5" />
+                  ส่งรายการเข้า BOM ตาม Job no. ({cartItems.length} รายการ)
                 </button>
                 <button
                   type="button"

@@ -549,7 +549,7 @@ export default function ProjectBomView({
   const [worksheetAddQty, setWorksheetAddQty] = useState<number>(1);
   const [worksheetAddUnit, setWorksheetAddUnit] = useState('ชิ้น');
   const [worksheetAddRemark, setWorksheetAddRemark] = useState('');
-  const [worksheetAddGroup, setWorksheetAddGroup] = useState('ทั่วไป');
+  const [worksheetAddGroup, setWorksheetAddGroup] = useState('โมดูลทั่วไป');
   const [isAddingGroup, setIsAddingGroup] = useState(false);
   const [newGroupNameInput, setNewGroupNameInput] = useState('');
 
@@ -625,9 +625,12 @@ export default function ProjectBomView({
   const getBomGroups = (bom: Bom) => {
     const list = new Set<string>();
     bom.items.forEach(item => {
-      if (item.group) list.add(item.group);
+      const g = item.group || 'โมดูลทั่วไป';
+      if (g && g !== 'ทั่วไป' && g !== 'โมดูลทั่วไป') {
+        list.add(g);
+      }
     });
-    return Array.from(list).filter(g => g !== 'ทั่วไป');
+    return Array.from(list);
   };
 
   const filteredProjects = useMemo(() => {
@@ -661,7 +664,7 @@ export default function ProjectBomView({
           projectName: projName.trim(),
           modules: []
         });
-        addToast('success', 'เพิ่มโครงการหลักสำเร็จ', `สร้างรหัสโครงการ ${projJobNo} เรียบร้อยแล้ว`);
+        addToast('success', 'เพิ่มตั้งค่าโปรเจ็คสำเร็จ', `สร้างรหัสโครงการ ${projJobNo} เรียบร้อยแล้ว`);
         setIsProjAddModalOpen(false);
       }
     } catch (err: any) {
@@ -681,7 +684,7 @@ export default function ProjectBomView({
           customer: projCustomer.trim(),
           projectName: projName.trim()
         });
-        addToast('success', 'ปรับปรุงโครงการสำเร็จ', `อัปเดตข้อมูลโครงการหลักเรียบร้อย`);
+        addToast('success', 'ปรับปรุงโครงการสำเร็จ', `อัปเดตข้อมูลตั้งค่าโปรเจ็คเรียบร้อย`);
         setIsProjEditModalOpen(false);
       }
     } catch (err: any) {
@@ -715,7 +718,7 @@ export default function ProjectBomView({
     if (!gName.trim()) return;
     setWorksheetAddGroup(gName.trim());
     setIsAddingGroup(false);
-    addToast('success', 'เพิ่มกลุ่มชั่วคราวสำเร็จ', `ตั้งกลุ่มใหม่เป็น "${gName.trim()}"`);
+    addToast('success', 'เพิ่มโมดูลชั่วคราวสำเร็จ', `ตั้งโมดูลใหม่เป็น "${gName.trim()}"`);
   };
 
   const handleSelectWorksheetProduct = (pId: string) => {
@@ -754,7 +757,7 @@ export default function ProjectBomView({
         items: updatedItems,
         updatedAt: new Date().toISOString()
       });
-      addToast('success', 'เพิ่มพัสดุลง BOM สำเร็จ', `บรรจุ "${matchedProd.name}" เข้ากลุ่ม "${worksheetAddGroup}" แล้ว`);
+      addToast('success', 'เพิ่มพัสดุลง BOM สำเร็จ', `บรรจุ "${matchedProd.name}" เข้าโมดูล "${worksheetAddGroup}" แล้ว`);
       
       // reset forms
       setWorksheetSelectedProductId('');
@@ -789,7 +792,7 @@ export default function ProjectBomView({
   const handleDeleteItem = async (indexToDelete: number) => {
     if (!activeBom) return;
     const item = activeBom.items[indexToDelete];
-    if (!confirm(`ต้องการนำ "${item.productName}" ออกจากสูตรประกอบนี้หรือไม่?`)) return;
+    if (!confirm(`ต้องการนำ "${item.productName}" ออกจากใบงาน BOM นี้หรือไม่?`)) return;
 
     const updatedItems = activeBom.items.filter((_, idx) => idx !== indexToDelete);
     updateLocalBoms(prev => prev.map(b => b.id === activeBom.id ? { ...b, items: updatedItems, updatedAt: new Date().toISOString() } : b));
@@ -809,7 +812,7 @@ export default function ProjectBomView({
   const handleCreateBomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBomName.trim()) {
-      addToast('warning', 'กรอกข้อมูลไม่ครบ', 'กรุณาระบุชื่อใบเสนอสูตรพัสดุ BOM');
+      addToast('warning', 'กรอกข้อมูลไม่ครบ', 'กรุณาระบุชื่อใบเสนอสเปรตชีต BOM');
       return;
     }
 
@@ -831,7 +834,7 @@ export default function ProjectBomView({
 
     try {
       await setDoc(doc(db, 'boms', bomId), cleanUndefined(newBom));
-      addToast('success', 'สร้างสูตรประกอบ BOM สำเร็จ', `เริ่มต้นใบงานประกอบ "${newBomName}" เรียบร้อยแล้ว`);
+      addToast('success', 'สร้างใบงาน BOM สำเร็จ', `เริ่มต้นใบงานประกอบ "${newBomName}" เรียบร้อยแล้ว`);
       setSelectedBom(newBom);
       setIsCreateModalOpen(false);
       setNewBomName('');
@@ -861,7 +864,7 @@ export default function ProjectBomView({
 
     try {
       await setDoc(doc(db, 'boms', bomId), cleanUndefined(newBom));
-      addToast('success', 'ทำสำเนา BOM สำเร็จ', `คัดลอกรายการวัตถุดิบและกลุ่มประกอบไปยังใบงานใหม่แล้ว`);
+      addToast('success', 'ทำสำเนา BOM สำเร็จ', `คัดลอกรายการวัตถุดิบและโมดูลประกอบไปยังใบงานใหม่แล้ว`);
       setSelectedBom(newBom);
     } catch (err: any) {
       addToast('warning', 'ผิดพลาด', err.message);
@@ -904,7 +907,7 @@ export default function ProjectBomView({
   };
 
   const handleDeleteBom = async (targetBom: Bom) => {
-    if (!confirm(`คุณแน่ใจว่าต้องการลบใบงานประกอบสูตร BOM "${targetBom.name}" หรือไม่? ข้อมูลทั้งหมดจะถูกลบ`)) return;
+    if (!confirm(`คุณแน่ใจว่าต้องการลบใบงาน BOM "${targetBom.name}" หรือไม่? ข้อมูลทั้งหมดจะถูกลบ`)) return;
 
     updateLocalBoms(prev => prev.filter(b => b.id !== targetBom.id));
 
@@ -933,7 +936,7 @@ export default function ProjectBomView({
     setReqPriceUnit(initialCost);
     setReqRequester(localStorage.getItem('admin_email') || 'ฝ่ายวิศวกรรม/ประกอบ');
     setReqPrNo(`PR-${activeBom.jobNo || 'BOM'}-${Math.floor(1000 + Math.random() * 9000)}`);
-    setReqRemark(`ขอจัดซื้อสำหรับประกอบสูตร BOM: ${activeBom.name} (Job: ${activeBom.jobNo || 'ไม่ระบุ'})`);
+    setReqRemark(`ขอจัดซื้อสำหรับประกอบใบงาน BOM: ${activeBom.name} (Job: ${activeBom.jobNo || 'ไม่ระบุ'})`);
     
     setIsRequisitionModalOpen(true);
   };
@@ -1126,7 +1129,7 @@ export default function ProjectBomView({
             }`}
           >
             <FileSpreadsheet className="h-3 w-3" />
-            <span>สูตรประกอบ BOM ({boms.length})</span>
+            <span>BOM ({boms.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('projects')}
@@ -1135,7 +1138,7 @@ export default function ProjectBomView({
             }`}
           >
             <Settings className="h-3 w-3" />
-            <span>โครงการหลัก ({jobProjects.length})</span>
+            <span>ตั้งค่าโปรเจ็ค ({jobProjects.length})</span>
           </button>
         </div>
       </div>
@@ -1198,7 +1201,7 @@ export default function ProjectBomView({
               className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-black cursor-pointer flex items-center gap-0.5 ml-auto shrink-0"
             >
               <Plus className="h-3 w-3" />
-              <span>สร้างสูตร BOM ใหม่</span>
+              <span>สร้าง BOM ใหม่</span>
             </button>
           </div>
 
@@ -1206,7 +1209,7 @@ export default function ProjectBomView({
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
             <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider shrink-0 mr-1">เลือกใบงาน BOM:</span>
             {filteredBoms.length === 0 ? (
-              <span className="text-[10px] text-slate-400 italic">ไม่พบสูตร BOM</span>
+              <span className="text-[10px] text-slate-400 italic">ไม่พบรายการ BOM</span>
             ) : (
               filteredBoms.map(bom => {
                 const isActive = activeBom?.id === bom.id;
@@ -1274,7 +1277,7 @@ export default function ProjectBomView({
                     <button
                       onClick={handleOpenEditModal}
                       className="p-0.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-200/80 rounded border border-slate-200/60 bg-slate-100"
-                      title="แก้ไขสูตรประกอบ"
+                      title="แก้ไขรายละเอียด BOM"
                     >
                       <Edit3 className="h-3.5 w-3.5" />
                     </button>
@@ -1373,7 +1376,7 @@ export default function ProjectBomView({
               {/* Inline Expandable Form (Flat & Compact) */}
               <div className="bg-slate-50 p-2 rounded-lg border border-slate-200/60 text-[11px] font-sans space-y-1.5">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-1">
-                  <span className="font-black text-slate-700 flex items-center gap-1">📋 บรรจุพัสดุอุปกรณ์ลงสูตรประกอบ:</span>
+                  <span className="font-black text-slate-700 flex items-center gap-1">📋 บรรจุพัสดุอุปกรณ์ลงรายการ BOM:</span>
                   
                   {isAddingGroup ? (
                     <div className="flex items-center gap-1">
@@ -1381,7 +1384,7 @@ export default function ProjectBomView({
                         type="text"
                         value={newGroupNameInput}
                         onChange={(e) => setNewGroupNameInput(e.target.value)}
-                        placeholder="กลุ่มย่อย เช่น PLC, หน้าจอ"
+                        placeholder="โมดูลย่อย เช่น PLC, หน้าจอ"
                         className="px-1.5 py-0.2 border border-indigo-300 rounded text-[10.5px] w-36"
                         onKeyDown={handleAddNewGroupNameInput}
                         autoFocus
@@ -1402,7 +1405,7 @@ export default function ProjectBomView({
                       onClick={() => setIsAddingGroup(true)}
                       className="px-1.5 py-0.2 text-indigo-700 hover:bg-indigo-50 border border-indigo-150 rounded text-[9.5px] font-bold"
                     >
-                      + เพิ่มกลุ่มพัสดุใหม่ใน BOM
+                      + เพิ่มโมดูลใหม่ใน BOM
                     </button>
                   )}
                 </div>
@@ -1424,9 +1427,9 @@ export default function ProjectBomView({
                     <select
                       value={worksheetAddGroup}
                       onChange={(e) => setWorksheetAddGroup(e.target.value)}
-                      className="w-full py-0.8 px-2 bg-white border border-slate-200 rounded text-[11px] focus:outline-none"
+                      className="w-full py-0.8 px-2 bg-white border border-slate-200 rounded text-[11px] focus:outline-none font-bold"
                     >
-                      <option value="ทั่วไป">ทั่วไป (General)</option>
+                      <option value="โมดูลทั่วไป">โมดูลทั่วไป (General)</option>
                       {projectModules.map(pm => {
                         const val = `${pm.code} - ${pm.name}`;
                         return (
@@ -1480,13 +1483,14 @@ export default function ProjectBomView({
               <div className="overflow-x-auto">
                 {activeBom.items.length === 0 ? (
                   <div className="py-8 text-center text-slate-400 text-xs">
-                    ยังไม่มีรายการพัสดุในใบเสนอสูตร BOM นี้ เลือกพัสดุและจัดกลุ่มเพื่อบันทึกรายการ
+                    ยังไม่มีรายการพัสดุในใบงาน BOM นี้ เลือกพัสดุและจัดโมดูลเพื่อบันทึกรายการ
                   </div>
                 ) : (
                   (() => {
                     const itemsByGroup: { [grp: string]: { originalIndex: number; item: BomItem }[] } = {};
                     activeBom.items.forEach((item, originalIndex) => {
-                      const grpName = item.group || 'ทั่วไป';
+                      const rawGrpName = item.group || 'โมดูลทั่วไป';
+                      const grpName = rawGrpName === 'ทั่วไป' ? 'โมดูลทั่วไป' : rawGrpName;
                       if (!itemsByGroup[grpName]) {
                         itemsByGroup[grpName] = [];
                       }
@@ -1494,8 +1498,8 @@ export default function ProjectBomView({
                     });
 
                     const groups = Object.keys(itemsByGroup).sort((a, b) => {
-                      if (a === 'ทั่วไป') return 1;
-                      if (b === 'ทั่วไป') return -1;
+                      if (a === 'โมดูลทั่วไป') return 1;
+                      if (b === 'โมดูลทั่วไป') return -1;
                       return a.localeCompare(b);
                     });
 
@@ -1506,19 +1510,19 @@ export default function ProjectBomView({
                           return (
                             <div key={grp} className="py-1 px-0.5 text-left space-y-1">
                               <div className="flex items-center gap-1 font-black text-slate-700 text-[10px] uppercase border-b border-slate-100 pb-1">
-                                <span>📦 กลุ่ม: {grp}</span>
+                                <span>📦 โมดูล: {grp}</span>
                                 <span className="text-slate-400">({list.length} รายการพัสดุ)</span>
                               </div>
 
-                              <table className="w-full text-left border-collapse text-[11px] font-sans min-w-[700px]">
+                              <table className="w-full text-left border-collapse text-[11px] font-sans min-w-[850px]">
                                 <thead>
                                   <tr className="border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                                    <th className="py-0.5 px-1 w-[120px] text-center">ติดตามเสนอซื้อ</th>
+                                    <th className="py-0.5 px-1 w-[270px] text-center">ลำดับติดตามสถานะจัดซื้อ</th>
                                     <th className="py-0.5 px-1 min-w-[200px]">รายละเอียดชิ้นส่วน / Code</th>
                                     <th className="py-0.5 px-1 text-center w-[90px]">จำนวนใช้ต่อชุด</th>
                                     <th className="py-0.5 px-1 text-center w-[70px]">หน่วย</th>
                                     <th className="py-0.5 px-1 text-right w-[100px]">ราคาทุนรวม</th>
-                                    <th className="py-0.5 px-1 text-center w-[120px]">ย้ายกลุ่ม</th>
+                                    <th className="py-0.5 px-1 text-center w-[120px]">ย้ายโมดูล</th>
                                     <th className="py-0.5 px-1 text-right w-[40px]">ลบ</th>
                                   </tr>
                                 </thead>
@@ -1540,26 +1544,83 @@ export default function ProjectBomView({
                                       <tr key={originalIndex} className="hover:bg-slate-50/40 transition-colors">
                                         
                                         {/* PO Tracking Button */}
-                                        <td className="py-0.5 px-1 text-center">
-                                          {matchedOrders.length > 0 ? (
-                                            <button
-                                              type="button"
-                                              onClick={() => setViewingOrder(matchedOrders[0])}
-                                              className={`inline-flex items-center gap-0.5 text-[8px] font-bold px-1.5 py-0.2 rounded border cursor-pointer ${getOrderBadgeStyle(matchedOrders[0].status)}`}
-                                            >
-                                              {getOrderThaiLabel(matchedOrders[0].status)}
-                                            </button>
-                                          ) : (
+                                        <td className="py-1 px-1">
+                                          {matchedOrders.length > 0 ? (() => {
+                                            const firstOrder = matchedOrders[0];
+                                            let statusStepIndex = 0;
+                                            switch (firstOrder.status) {
+                                              case 'pending': statusStepIndex = 1; break;
+                                              case 'quotation': statusStepIndex = 2; break;
+                                              case 'ordered': statusStepIndex = 3; break;
+                                              case 'approved': statusStepIndex = 4; break;
+                                              case 'paid': statusStepIndex = 5; break;
+                                              case 'received': statusStepIndex = 6; break;
+                                              case 'cancelled': statusStepIndex = -1; break;
+                                            }
+
+                                            if (statusStepIndex === -1) {
+                                              return (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setViewingOrder(firstOrder)}
+                                                  className="text-[8.5px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded cursor-pointer w-full text-center hover:bg-rose-100 transition-colors"
+                                                >
+                                                  ยกเลิกจัดซื้อ
+                                                </button>
+                                              );
+                                            }
+
+                                            const steps = [
+                                              { step: 1, label: 'ขอซื้อ' },
+                                              { step: 2, label: 'เสนอราคา' },
+                                              { step: 3, label: 'PR/PO' },
+                                              { step: 4, label: 'อนุมัติ' },
+                                              { step: 5, label: 'โอนเงิน' },
+                                              { step: 6, label: 'รับพัสดุ' }
+                                            ];
+
+                                            return (
+                                              <div 
+                                                className="flex items-center justify-center gap-0.5 bg-slate-50 border border-slate-100 p-0.5 rounded-md cursor-pointer hover:bg-slate-100 transition-all select-none"
+                                                onClick={() => setViewingOrder(firstOrder)}
+                                                title={`คลิกเพื่อดูรายละเอียด: ${firstOrder.orderTitle}`}
+                                              >
+                                                {steps.map((st, idx) => {
+                                                  const isCompleted = statusStepIndex >= st.step;
+                                                  const isCurrent = statusStepIndex === st.step;
+                                                  return (
+                                                    <React.Fragment key={st.step}>
+                                                      <span 
+                                                        className={`px-0.8 py-0.2 text-[7.5px] leading-none rounded-2xs font-sans font-black transition-all ${
+                                                          isCurrent 
+                                                            ? 'bg-indigo-600 text-white font-black border border-indigo-600 shadow-3xs'
+                                                            : isCompleted
+                                                              ? 'bg-emerald-100 text-emerald-800 font-extrabold border border-emerald-100'
+                                                              : 'bg-white text-slate-400 border border-slate-200 font-normal'
+                                                        }`}
+                                                        title={st.label}
+                                                      >
+                                                        {st.label}
+                                                      </span>
+                                                      {idx < steps.length - 1 && (
+                                                        <span className="text-[7px] text-slate-300 font-normal select-none">→</span>
+                                                      )}
+                                                    </React.Fragment>
+                                                  );
+                                                })}
+                                              </div>
+                                            );
+                                          })() : (
                                             <button
                                               type="button"
                                               onClick={() => handleOpenQuickRequisition(originalIndex)}
-                                              className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[8.5px] font-black rounded-sm cursor-pointer shadow-3xs border ${
+                                              className={`w-full py-1 text-[8.5px] font-black rounded-md cursor-pointer shadow-3xs border transition-all hover:scale-102 flex items-center justify-center gap-0.5 ${
                                                 currentQtyInStock < requiredTotal
-                                                  ? 'bg-amber-500 text-white border-amber-500'
-                                                  : 'bg-white text-indigo-700 border-indigo-200'
+                                                  ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500 font-extrabold'
+                                                  : 'bg-white hover:bg-indigo-50/50 text-indigo-700 border-indigo-200'
                                               }`}
                                             >
-                                              <Plus className="h-2 w-2" /> เปิดใบติดตาม
+                                              <Plus className="h-2.5 w-2.5" /> เปิดใบติดตาม
                                             </button>
                                           )}
                                         </td>
@@ -1606,11 +1667,11 @@ export default function ProjectBomView({
                                         {/* Group selector */}
                                         <td className="py-0.5 px-1 text-center">
                                           <select
-                                            value={item.group || 'ทั่วไป'}
+                                            value={item.group === 'ทั่วไป' ? 'โมดูลทั่วไป' : (item.group || 'โมดูลทั่วไป')}
                                             onChange={(e) => handleUpdateItemField(originalIndex, 'group', e.target.value)}
                                             className="px-1 py-0.2 bg-slate-100 border border-slate-200 rounded text-[9.5px] font-bold focus:outline-none cursor-pointer"
                                           >
-                                            <option value="ทั่วไป">ทั่วไป</option>
+                                            <option value="โมดูลทั่วไป">โมดูลทั่วไป</option>
                                             {getBomGroups(activeBom).map(g => (
                                               <option key={g} value={g}>{g}</option>
                                             ))}
@@ -1656,7 +1717,7 @@ export default function ProjectBomView({
           {/* Projects sidebar */}
           <div className="lg:col-span-5 bg-slate-50/20 p-2.5 rounded-lg border border-slate-100 space-y-2.5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-              <span className="font-black text-slate-800">📂 ทะเบียนโครงการหลัก:</span>
+              <span className="font-black text-slate-800">📂 ทะเบียนโครงการ:</span>
               <button
                 onClick={() => {
                   setProjJobNo('');
@@ -1816,7 +1877,7 @@ export default function ProjectBomView({
               </div>
             ) : (
               <div className="py-20 text-center text-slate-400 text-xs">
-                กรุณาคลิกเลือกทะเบียนโครงการหลักด้านซ้าย เพื่อจัดการโมดูลชิ้นส่วนประกอบร่วม
+                กรุณาคลิกเลือกทะเบียนโครงการด้านซ้าย เพื่อจัดการโมดูลชิ้นส่วนประกอบร่วม
               </div>
             )}
           </div>
@@ -1828,7 +1889,7 @@ export default function ProjectBomView({
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-              <span className="text-xs font-black text-slate-800 flex items-center gap-1">➕ สร้างสูตรประกอบ BOM แผ่นงานใหม่</span>
+              <span className="text-xs font-black text-slate-800 flex items-center gap-1">➕ สร้างแผ่นงาน BOM ใบใหม่</span>
               <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
             </div>
             <form onSubmit={handleCreateBomSubmit} className="space-y-3 text-[11px] font-sans">
@@ -1890,7 +1951,7 @@ export default function ProjectBomView({
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-              <span className="text-xs font-black text-slate-800">📝 แก้ไขข้อมูลสูตร BOM</span>
+              <span className="text-xs font-black text-slate-800">📝 แก้ไขข้อมูลใบงาน BOM</span>
               <button onClick={() => setIsEditModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
             </div>
             <form onSubmit={handleEditBomSubmit} className="space-y-3 text-[11px] font-sans">
@@ -2068,7 +2129,7 @@ export default function ProjectBomView({
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-              <span className="text-xs font-black text-slate-800">➕ ทะเบียนโครงการหลักตัวใหม่</span>
+              <span className="text-xs font-black text-slate-800">➕ ลงทะเบียนตั้งค่าโปรเจ็คใหม่</span>
               <button onClick={() => setIsProjAddModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
             </div>
             <form onSubmit={handleAddProjectSubmit} className="space-y-3 text-[11px] font-sans">
@@ -2106,7 +2167,7 @@ export default function ProjectBomView({
                 />
               </div>
               <div className="space-y-1">
-                <label className="font-bold text-slate-600">ชื่องานควบคุม / โครงการหลัก *</label>
+                <label className="font-bold text-slate-600">ชื่องานควบคุม / ตั้งค่าโปรเจ็ค *</label>
                 <input
                   type="text"
                   required
@@ -2130,7 +2191,7 @@ export default function ProjectBomView({
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-              <span className="text-xs font-black text-slate-800">📝 แก้ไขข้อมูลโครงการหลัก</span>
+              <span className="text-xs font-black text-slate-800">📝 แก้ไขข้อมูลตั้งค่าโปรเจ็ค</span>
               <button onClick={() => setIsProjEditModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
             </div>
             <form onSubmit={handleEditProjectSubmit} className="space-y-3 text-[11px] font-sans">
@@ -2166,7 +2227,7 @@ export default function ProjectBomView({
                 />
               </div>
               <div className="space-y-1">
-                <label className="font-bold text-slate-600">ชื่องานควบคุม / โครงการหลัก *</label>
+                <label className="font-bold text-slate-600">ชื่องานควบคุม / ตั้งค่าโปรเจ็ค *</label>
                 <input
                   type="text"
                   required

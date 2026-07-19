@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Product, Category, Employee, JobProject, Brand, sortProducts } from '../types';
+import { Product, Category, Employee, JobProject, Brand, sortProducts, Bom } from '../types';
 import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag, Copy, ArrowUpDown, FileText } from 'lucide-react';
 import CategoryView from './CategoryView';
 import OrderingSystemView from './OrderingSystemView';
@@ -23,6 +23,8 @@ interface ProductListViewProps {
   employees: Employee[];
   jobProjects: JobProject[];
   brands?: Brand[];
+  boms?: Bom[];
+  setBoms?: React.Dispatch<React.SetStateAction<Bom[]>>;
 }
 
 // Curated stock photos for quick selection
@@ -85,7 +87,9 @@ export default function ProductListView({
   addToast,
   employees,
   jobProjects,
-  brands = []
+  brands = [],
+  boms = [],
+  setBoms
 }: ProductListViewProps) {
   // Filters & Search
   const [activeSubTab, setActiveSubTab] = useState<'products' | 'categories' | 'ordering' | 'cart'>('products');
@@ -638,6 +642,8 @@ export default function ProductListView({
           jobProjects={jobProjects}
           addToast={addToast}
           setActiveSubTab={setActiveSubTab}
+          boms={boms}
+          setBoms={setBoms}
         />
       ) : (
         <>
