@@ -67,6 +67,7 @@ export default function App() {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [isDemoBypass, setIsDemoBypass] = useState(false);
   const [isOperationNotAllowed, setIsOperationNotAllowed] = useState(false);
+  const [showPopupBlockedHelp, setShowPopupBlockedHelp] = useState(false);
 
   // Firestore status / Quota state
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
@@ -1562,15 +1563,24 @@ export default function App() {
     const provider = new GoogleAuthProvider();
     try {
       setIsOperationNotAllowed(false);
+      setShowPopupBlockedHelp(false);
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       addToast('success', 'เข้าสู่ระบบสำเร็จ', `ยินดีต้อนรับคุณ ${user.email} เข้าสู่ระบบควบคุมคลังสินค้า`);
     } catch (error: any) {
       console.error("Google login error:", error);
-      if (error.code === 'auth/operation-not-allowed' || error.message?.includes('operation-not-allowed')) {
+      const isPopupBlocked = error.code === 'auth/popup-blocked' || 
+                             error.message?.toLowerCase().includes('popup-blocked') || 
+                             error.message?.toLowerCase().includes('popup blocked') || 
+                             error.message?.toLowerCase().includes('cancelled-popup-request');
+      
+      if (isPopupBlocked) {
+        setShowPopupBlockedHelp(true);
+        addToast('warning', 'ป๊อปอัปเข้าสู่ระบบถูกบล็อก', 'เบราว์เซอร์หรือกรอบพรีวิวบล็อกป๊อปอัปเข้าสู่ระบบของ Google โปรดดูวิธีแก้ไขที่แสดงขึ้นมาใหม่ด้านล่าง');
+      } else if (error.code === 'auth/operation-not-allowed' || error.message?.includes('operation-not-allowed')) {
         setIsOperationNotAllowed(true);
         addToast('error', 'ระบบยังไม่เปิดใช้', 'ผู้ให้บริการ Google Login ยังไม่ได้เปิดใช้ใน Firebase Console');
-      } else if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
+      } else if (error.code === 'auth/popup-closed-by-user') {
         addToast('warning', 'ยกเลิกการล็อกอิน', 'คุณได้ยกเลิกหรือปิดหน้าต่างป๊อปอัปเข้าสู่ระบบ Google');
       } else {
         addToast('error', 'ข้อผิดพลาดการเข้าสู่ระบบ', `ไม่สามารถเข้าสู่ระบบด้วย Google: ${error.message}`);
@@ -1690,6 +1700,48 @@ export default function App() {
                 <li>คลิกเปิดใช้งาน (Enable) <strong className="text-white">Email/Password</strong> และ <strong className="text-white">Google</strong></li>
                 <li>บันทึกการเปลี่ยนแปลง แล้วกลับมารีเฟรชหน้านี้ใหม่</li>
               </ol>
+            </div>
+          )}
+
+          {showPopupBlockedHelp && (
+            <div className="p-4 bg-amber-950/40 border border-amber-800/80 rounded-2xl text-xs space-y-3.5 text-slate-200 text-left leading-relaxed">
+              <div className="flex items-center gap-2 font-bold text-amber-400">
+                <AlertTriangle className="h-4.5 w-4.5 shrink-0" />
+                <span>ตรวจพบป๊อปอัปถูกปิดกั้นหรือยกเลิก (Popup Blocked / Cancelled)</span>
+              </div>
+              
+              <div className="space-y-2 font-sans">
+                <p className="text-[11px] font-bold text-amber-300">💡 1. หากเปิดใช้งานบนเว็บจริง Vercel.app (Custom Domain):</p>
+                <p className="text-[10.5px] text-slate-300 pl-2">
+                  คุณจำเป็นต้องเพิ่มโดเมน Vercel ของคุณเข้าไปในรายการ <strong className="text-white">Authorized Domains</strong> (โดเมนที่ได้รับอนุญาต) ในระบบ Firebase Console:
+                </p>
+                <ol className="list-decimal pl-6 space-y-1 text-[10.5px] text-slate-300">
+                  <li>เปิดหน้า <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline inline-flex items-center gap-0.5 font-bold font-sans">Firebase Console <ExternalLink className="h-3 w-3" /></a> แล้วเลือกโปรเจกต์ของคุณ</li>
+                  <li>ไปที่เมนู <strong className="text-white">Authentication</strong> &gt; <strong className="text-white">Settings</strong> &gt; แท็บ <strong className="text-white">Authorized domains</strong> (โดเมนที่ได้รับอนุญาต)</li>
+                  <li>คลิกปุ่ม <strong className="text-white">Add domain</strong> (เพิ่มโดเมน) แล้วกรอกชื่อโดเมนของคุณลงไป (เช่น <code className="bg-slate-950 text-emerald-400 px-1 py-0.5 rounded text-[10px] font-mono">xxx.vercel.app</code>) แล้วกด Save</li>
+                </ol>
+              </div>
+
+              <div className="space-y-2 border-t border-slate-800/80 pt-2 font-sans">
+                <p className="text-[11px] font-bold text-amber-300">💡 2. หากเปิดแอปผ่านกรอบพรีวิว AI Studio ในตอนนี้:</p>
+                <p className="text-[10.5px] text-slate-300 pl-2">
+                  ระบบความปลอดภัยของเว็บเบราว์เซอร์จะบล็อกการเปิดหน้าต่างป๊อปอัปเมื่อทำงานอยู่ภายในกรอบ iframe ของแผงควบคุมหลัก
+                </p>
+                <div className="pt-1 flex flex-col gap-2 pl-2">
+                  <a
+                    href={window.location.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shadow-indigo-600/15"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    เปิดแอปในหน้าต่างใหม่ (Open in New Tab) เพื่อล็อกอิน
+                  </a>
+                  <p className="text-[10px] text-slate-400 text-center">
+                    เมื่อรันบนเบราว์เซอร์แท็บปกติแล้ว จะสามารถกดลงชื่อเข้าใช้ด้วยบัญชี Google ได้ทันที!
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
