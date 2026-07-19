@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Product, Bom, BomItem, Category, JobProject, ProductOrder, normalizeModules } from '../types';
+import { Product, Bom, BomItem, Category, JobProject, ProductOrder, normalizeModules, Employee } from '../types';
 import Logo from './Logo';
 import { 
   FileSpreadsheet, 
@@ -39,6 +39,7 @@ interface ProjectBomViewProps {
   onAddJobProject?: (proj: Omit<JobProject, 'id' | 'createdAt'>) => Promise<void>;
   onEditJobProject?: (id: string, updatedFields: Partial<JobProject>) => Promise<void>;
   onDeleteJobProject?: (id: string) => Promise<void>;
+  employees?: Employee[];
 }
 
 // Typings for backward compatibility
@@ -506,7 +507,8 @@ export default function ProjectBomView({
   jobProjects = [],
   onAddJobProject,
   onEditJobProject,
-  onDeleteJobProject
+  onDeleteJobProject,
+  employees = []
 }: ProjectBomViewProps) {
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<'bom' | 'projects'>('bom');
@@ -591,6 +593,24 @@ export default function ProjectBomView({
   const [reqRequester, setReqRequester] = useState<string>('');
   const [reqPrNo, setReqPrNo] = useState<string>('');
   const [reqRemark, setReqRemark] = useState<string>('');
+  const [reqPurchaserName, setReqPurchaserName] = useState<string>('');
+  const [reqJobNo, setReqJobNo] = useState<string>('');
+  const [reqJobName, setReqJobName] = useState<string>('');
+  const [reqSelectedProductId, setReqSelectedProductId] = useState<string>('');
+  const [reqOrderTitle, setReqOrderTitle] = useState<string>('');
+  const [reqUnit, setReqUnit] = useState<string>('ชิ้น');
+
+  // Autofill quick requisition form if product selected
+  useEffect(() => {
+    if (reqSelectedProductId) {
+      const prod = products.find(p => p.id === reqSelectedProductId);
+      if (prod) {
+        setReqOrderTitle(prod.name);
+        setReqPriceUnit(prod.costPrice || prod.price || 0);
+        setReqUnit(prod.unit || 'ชิ้น');
+      }
+    }
+  }, [reqSelectedProductId, products]);
 
   // Viewing Order states
   const [viewingOrder, setViewingOrder] = useState<ProductOrder | null>(null);
@@ -934,7 +954,13 @@ export default function ProjectBomView({
     setReqItemIndex(originalIndex);
     setReqQty(initialQty);
     setReqPriceUnit(initialCost);
-    setReqRequester(localStorage.getItem('admin_email') || 'ฝ่ายวิศวกรรม/ประกอบ');
+    setReqRequester(localStorage.getItem('admin_email') || '');
+    setReqPurchaserName('');
+    setReqJobNo(activeBom.jobNo || '');
+    setReqJobName(activeBom.name || '');
+    setReqSelectedProductId(item.productId || '');
+    setReqOrderTitle(item.productName || '');
+    setReqUnit(item.unit || 'ชิ้น');
     setReqPrNo(`PR-${activeBom.jobNo || 'BOM'}-${Math.floor(1000 + Math.random() * 9000)}`);
     setReqRemark(`ขอจัดซื้อสำหรับประกอบใบงาน BOM: ${activeBom.name} (Job: ${activeBom.jobNo || 'ไม่ระบุ'})`);
     
@@ -952,20 +978,38 @@ export default function ProjectBomView({
     const newOrder: any = {
       id: orderId,
       requesterName: reqRequester.trim() || 'ฝ่ายวิศวกรรม/ประกอบ',
-      orderTitle: item.productName,
+      orderTitle: reqOrderTitle.trim(),
       status: 'pending',
       quantity: reqQty,
-      unit: item.unit || 'ชิ้น',
-      pricePerUnit: reqPriceUnit,
-      totalPrice: reqPriceUnit * reqQty,
-      productId: item.productId,
-      productName: item.productName,
-      jobNo: activeBom.jobNo || '',
-      jobName: activeBom.name || '',
-      prNo: reqPrNo.trim(),
-      remark: reqRemark.trim(),
+      unit: reqUnit.trim() || 'ชิ้น',
       createdAt: new Date().toISOString()
     };
+
+    if (reqJobNo.trim()) {
+      newOrder.jobNo = reqJobNo.trim();
+    }
+    if (reqJobName.trim()) {
+      newOrder.jobName = reqJobName.trim();
+    }
+    if (reqPurchaserName.trim()) {
+      newOrder.purchaserName = reqPurchaserName.trim();
+    }
+    if (reqPriceUnit > 0) {
+      newOrder.pricePerUnit = reqPriceUnit;
+      newOrder.totalPrice = reqPriceUnit * reqQty;
+    }
+    if (reqSelectedProductId) {
+      newOrder.productId = reqSelectedProductId;
+    }
+    if (item) {
+      newOrder.productName = item.productName;
+    }
+    if (reqPrNo.trim()) {
+      newOrder.prNo = reqPrNo.trim();
+    }
+    if (reqRemark.trim()) {
+      newOrder.remark = reqRemark.trim();
+    }
 
     const updatedItems = [...activeBom.items];
     updatedItems[reqItemIndex] = {
@@ -1120,31 +1164,9 @@ export default function ProjectBomView({
           </h2>
         </div>
 
-        {/* Dense Tabs Navigation */}
-        <div className="flex bg-slate-800/80 p-0.5 rounded gap-1 shrink-0 z-10">
-          <button
-            onClick={() => setActiveTab('bom')}
-            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
-              activeTab === 'bom' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FileSpreadsheet className="h-3 w-3" />
-            <span>BOM ({boms.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('projects')}
-            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
-              activeTab === 'projects' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Settings className="h-3 w-3" />
-            <span>ตั้งค่าโปรเจ็ค ({jobProjects.length})</span>
-          </button>
-        </div>
       </div>
 
-      {activeTab === 'bom' && (
-        <div className="space-y-3 animate-in fade-in duration-150">
+      <div className="space-y-3 animate-in fade-in duration-150">
           
           {/* Bento Scoreboard Bar (Flat & Compact Metrics) */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
@@ -1509,21 +1531,21 @@ export default function ProjectBomView({
                           const list = itemsByGroup[grp];
                           return (
                             <div key={grp} className="py-1 px-0.5 text-left space-y-1">
-                              <div className="flex items-center gap-1 font-black text-slate-700 text-[10px] uppercase border-b border-slate-100 pb-1">
+                              <div className="flex items-center gap-1 font-black text-slate-700 text-[12px] uppercase border-b border-slate-100 pb-1">
                                 <span>📦 โมดูล: {grp}</span>
                                 <span className="text-slate-400">({list.length} รายการพัสดุ)</span>
                               </div>
 
-                              <table className="w-full text-left border-collapse text-[11px] font-sans min-w-[850px]">
+                              <table className="w-full text-left border-collapse text-[13px] font-sans min-w-[850px]">
                                 <thead>
-                                  <tr className="border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                                    <th className="py-0.5 px-1 w-[270px] text-center">ลำดับติดตามสถานะจัดซื้อ</th>
-                                    <th className="py-0.5 px-1 min-w-[200px]">รายละเอียดชิ้นส่วน / Code</th>
-                                    <th className="py-0.5 px-1 text-center w-[90px]">จำนวนใช้ต่อชุด</th>
-                                    <th className="py-0.5 px-1 text-center w-[70px]">หน่วย</th>
-                                    <th className="py-0.5 px-1 text-right w-[100px]">ราคาทุนรวม</th>
-                                    <th className="py-0.5 px-1 text-center w-[120px]">ย้ายโมดูล</th>
-                                    <th className="py-0.5 px-1 text-right w-[40px]">ลบ</th>
+                                  <tr className="border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                                    <th className="py-1 px-1.5 min-w-[200px]">รายละเอียดชิ้นส่วน / Code</th>
+                                    <th className="py-1 px-1.5 w-[290px] text-center">ลำดับติดตามสถานะจัดซื้อ</th>
+                                    <th className="py-1 px-1.5 text-center w-[100px]">จำนวนใช้ต่อชุด</th>
+                                    <th className="py-1 px-1.5 text-center w-[80px]">หน่วย</th>
+                                    <th className="py-1 px-1.5 text-right w-[110px]">ราคาทุนรวม</th>
+                                    <th className="py-1 px-1.5 text-center w-[135px]">ย้ายโมดูล</th>
+                                    <th className="py-1 px-1.5 text-right w-[45px]">ลบ</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -1543,8 +1565,23 @@ export default function ProjectBomView({
                                     return (
                                       <tr key={originalIndex} className="hover:bg-slate-50/40 transition-colors">
                                         
-                                        {/* PO Tracking Button */}
-                                        <td className="py-1 px-1">
+                                        {/* Product info (Now First Column) */}
+                                        <td className="py-1.5 px-1.5 font-bold text-slate-800">
+                                          <div className="flex items-center gap-2">
+                                            {p?.image && (
+                                              <img src={p.image} alt="" className="w-6 h-6 rounded object-cover border border-slate-200 shrink-0" referrerPolicy="no-referrer" />
+                                            )}
+                                            <div>
+                                              <div className="line-clamp-1 text-[13px]">{item.productName}</div>
+                                              <div className="text-[11px] text-slate-400 font-normal">
+                                                Code: {p?.sku || '-'} | <span className={currentQtyInStock < requiredTotal ? 'text-rose-600 font-extrabold' : 'text-emerald-700 font-extrabold'}>คงเหลือสต็อก: {currentQtyInStock} {item.unit || 'ชิ้น'}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </td>
+
+                                        {/* PO Tracking Button (Now Second Column, Right after Part Details) */}
+                                        <td className="py-1.5 px-1.5">
                                           {matchedOrders.length > 0 ? (() => {
                                             const firstOrder = matchedOrders[0];
                                             let statusStepIndex = 0;
@@ -1563,7 +1600,7 @@ export default function ProjectBomView({
                                                 <button
                                                   type="button"
                                                   onClick={() => setViewingOrder(firstOrder)}
-                                                  className="text-[8.5px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded cursor-pointer w-full text-center hover:bg-rose-100 transition-colors"
+                                                  className="text-[10.5px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded cursor-pointer w-full text-center hover:bg-rose-100 transition-colors"
                                                 >
                                                   ยกเลิกจัดซื้อ
                                                 </button>
@@ -1591,7 +1628,7 @@ export default function ProjectBomView({
                                                   return (
                                                     <React.Fragment key={st.step}>
                                                       <span 
-                                                        className={`px-0.8 py-0.2 text-[7.5px] leading-none rounded-2xs font-sans font-black transition-all ${
+                                                        className={`px-1 py-0.2 text-[9.5px] leading-none rounded-2xs font-sans font-black transition-all ${
                                                           isCurrent 
                                                             ? 'bg-indigo-600 text-white font-black border border-indigo-600 shadow-3xs'
                                                             : isCompleted
@@ -1603,7 +1640,7 @@ export default function ProjectBomView({
                                                         {st.label}
                                                       </span>
                                                       {idx < steps.length - 1 && (
-                                                        <span className="text-[7px] text-slate-300 font-normal select-none">→</span>
+                                                        <span className="text-[8.5px] text-slate-300 font-normal select-none">→</span>
                                                       )}
                                                     </React.Fragment>
                                                   );
@@ -1614,7 +1651,7 @@ export default function ProjectBomView({
                                             <button
                                               type="button"
                                               onClick={() => handleOpenQuickRequisition(originalIndex)}
-                                              className={`w-full py-1 text-[8.5px] font-black rounded-md cursor-pointer shadow-3xs border transition-all hover:scale-102 flex items-center justify-center gap-0.5 ${
+                                              className={`w-full py-1 text-[10.5px] font-black rounded-md cursor-pointer shadow-3xs border transition-all hover:scale-102 flex items-center justify-center gap-0.5 ${
                                                 currentQtyInStock < requiredTotal
                                                   ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500 font-extrabold'
                                                   : 'bg-white hover:bg-indigo-50/50 text-indigo-700 border-indigo-200'
@@ -1625,51 +1662,36 @@ export default function ProjectBomView({
                                           )}
                                         </td>
 
-                                        {/* Product info */}
-                                        <td className="py-0.5 px-1 font-bold text-slate-800">
-                                          <div className="flex items-center gap-1.5">
-                                            {p?.image && (
-                                              <img src={p.image} alt="" className="w-5 h-5 rounded object-cover border border-slate-200 shrink-0" referrerPolicy="no-referrer" />
-                                            )}
-                                            <div>
-                                              <div className="line-clamp-1">{item.productName}</div>
-                                              <div className="text-[9px] text-slate-400 font-normal">
-                                                Code: {p?.sku || '-'} | <span className={currentQtyInStock < requiredTotal ? 'text-rose-600 font-extrabold' : 'text-emerald-700 font-extrabold'}>คงเหลือสต็อก: {currentQtyInStock} {item.unit || 'ชิ้น'}</span>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </td>
-
                                         {/* Quantity */}
-                                        <td className="py-0.5 px-1 text-center">
+                                        <td className="py-1 px-1.5 text-center">
                                           <InlineInput
                                             type="number"
                                             value={item.quantity}
-                                            className="text-center font-bold text-slate-800 bg-slate-50 w-12 mx-auto py-0"
+                                            className="text-center font-bold text-slate-800 bg-slate-50 w-12 mx-auto py-0 text-[13px]"
                                             onSave={(val) => handleUpdateItemField(originalIndex, 'quantity', Math.max(1, parseInt(val) || 1))}
                                           />
                                         </td>
 
                                         {/* Unit */}
-                                        <td className="py-0.5 px-1 text-center">
+                                        <td className="py-1 px-1.5 text-center">
                                           <InlineInput
                                             value={item.unit || 'ชิ้น'}
-                                            className="text-center bg-slate-50 py-0"
+                                            className="text-center bg-slate-50 py-0 text-[13px]"
                                             onSave={(val) => handleUpdateItemField(originalIndex, 'unit', val.trim() || 'ชิ้น')}
                                           />
                                         </td>
 
                                         {/* Cost */}
-                                        <td className="py-0.5 px-1 text-right font-bold text-slate-700 font-mono">
+                                        <td className="py-1 px-1.5 text-right font-bold text-slate-700 font-mono text-[13px]">
                                           ฿{costTotal.toLocaleString('th-TH')}
                                         </td>
 
                                         {/* Group selector */}
-                                        <td className="py-0.5 px-1 text-center">
+                                        <td className="py-1 px-1.5 text-center">
                                           <select
                                             value={item.group === 'ทั่วไป' ? 'โมดูลทั่วไป' : (item.group || 'โมดูลทั่วไป')}
                                             onChange={(e) => handleUpdateItemField(originalIndex, 'group', e.target.value)}
-                                            className="px-1 py-0.2 bg-slate-100 border border-slate-200 rounded text-[9.5px] font-bold focus:outline-none cursor-pointer"
+                                            className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-[11px] font-bold focus:outline-none cursor-pointer"
                                           >
                                             <option value="โมดูลทั่วไป">โมดูลทั่วไป</option>
                                             {getBomGroups(activeBom).map(g => (
@@ -1679,12 +1701,12 @@ export default function ProjectBomView({
                                         </td>
 
                                         {/* Delete */}
-                                        <td className="py-0.5 px-1 text-right">
+                                        <td className="py-1 px-1.5 text-right">
                                           <button
                                             onClick={() => handleDeleteItem(originalIndex)}
-                                            className="p-0.5 text-slate-300 hover:text-rose-600 rounded"
+                                            className="p-1 text-slate-300 hover:text-rose-600 rounded"
                                           >
-                                            <Trash2 className="h-3 w-3" />
+                                            <Trash2 className="h-3.5 w-3.5" />
                                           </button>
                                         </td>
 
@@ -1710,179 +1732,6 @@ export default function ProjectBomView({
           )}
 
         </div>
-      )}
-
-      {activeTab === 'projects' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 animate-in fade-in duration-150 text-[11px] font-sans">
-          {/* Projects sidebar */}
-          <div className="lg:col-span-5 bg-slate-50/20 p-2.5 rounded-lg border border-slate-100 space-y-2.5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-              <span className="font-black text-slate-800">📂 ทะเบียนโครงการ:</span>
-              <button
-                onClick={() => {
-                  setProjJobNo('');
-                  setProjCustomer('');
-                  setProjName('');
-                  setProjYear(new Date().getFullYear().toString());
-                  setIsProjAddModalOpen(true);
-                }}
-                className="px-2 py-0.5 bg-indigo-600 text-white text-[9.5px] rounded font-black cursor-pointer"
-              >
-                + เพิ่มโครงการ
-              </button>
-            </div>
-
-            {/* Filter Search */}
-            <input
-              type="text"
-              value={projSearch}
-              onChange={(e) => setProjSearch(e.target.value)}
-              placeholder="สืบค้น Job No หรือหน่วยงานโครงการ..."
-              className="w-full px-2.5 py-0.5 bg-white border border-slate-200 rounded text-[11px] focus:outline-none"
-            />
-
-            {/* Project rows */}
-            <div className="space-y-1 max-h-[380px] overflow-y-auto">
-              {filteredProjects.length === 0 ? (
-                <div className="p-4 text-center text-slate-400 text-xs">ไม่พบทะเบียนโครงการ</div>
-              ) : (
-                filteredProjects.map(p => {
-                  const isSelected = selectedProj?.id === p.id;
-                  return (
-                    <div
-                      key={p.id}
-                      onClick={() => setSelectedProj(p)}
-                      className={`p-2.5 rounded-xl border transition-all cursor-pointer text-left space-y-2 ${
-                        isSelected 
-                          ? 'bg-indigo-50 border-indigo-200 shadow-xs' 
-                          : 'bg-slate-100 border-slate-150 hover:bg-slate-200/50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-1.5">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          {p.projectImageUrl ? (
-                            <img 
-                              src={p.projectImageUrl} 
-                              alt={p.jobNo} 
-                              className="w-6 h-6 object-cover rounded border border-slate-300 shrink-0 bg-white" 
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : (
-                            <div className="w-6 h-6 rounded bg-slate-200 border border-slate-300 flex items-center justify-center shrink-0">
-                              <FolderGit2 className="h-3 w-3 text-slate-400" />
-                            </div>
-                          )}
-                          <span className="font-mono text-[11px] font-black px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-md shrink-0">
-                            {p.jobNo}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-0.5">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedProj(p);
-                              setProjJobNo(p.jobNo);
-                              setProjCustomer(p.customer);
-                              setProjName(p.projectName);
-                              setProjYear(p.year || new Date().getFullYear().toString());
-                              setIsProjEditModalOpen(true);
-                            }}
-                            className="p-0.5 text-slate-400 hover:text-indigo-600 rounded"
-                          >
-                            <Edit3 className="h-3 w-3" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteProject(p.id, p.jobNo);
-                            }}
-                            className="p-0.5 text-slate-400 hover:text-rose-600 rounded"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="font-extrabold text-slate-800 line-clamp-1">{p.projectName}</div>
-                      <div className="text-[10px] text-slate-400 font-bold truncate">หน่วยงาน: {p.customer} | ปี: {p.year || '-'}</div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Project modules content details */}
-          <div className="lg:col-span-7 bg-slate-50/20 p-2.5 rounded-xl border border-slate-100 text-left">
-            {selectedProj ? (
-              <div className="space-y-3.5 text-left">
-                <div className="border-b border-slate-150 pb-2.5 flex items-center gap-3 bg-white p-2.5 rounded-xl border border-slate-100">
-                  {/* Brand Logo & Job Image */}
-                  <div className="relative shrink-0">
-                    {selectedProj.projectImageUrl ? (
-                      <img 
-                        src={selectedProj.projectImageUrl} 
-                        alt={selectedProj.projectName} 
-                        className="w-11 h-11 object-cover rounded-lg border border-slate-200 bg-white" 
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-11 h-11 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center bg-slate-50">
-                        <FolderGit2 className="h-5 w-5 text-slate-400" />
-                      </div>
-                    )}
-                    <div className="absolute -bottom-1 -right-1 bg-white p-0.5 rounded-full border shadow-3xs">
-                      <Logo size={14} className="h-3.5 w-3.5" />
-                    </div>
-                  </div>
-
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-[11px] font-black px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-indigo-700 rounded-md">
-                        {selectedProj.jobNo}
-                      </span>
-                      <span className="text-[9.5px] text-slate-400 font-bold">ปี {selectedProj.year || '-'}</span>
-                    </div>
-                    <h3 className="font-black text-slate-800 text-[11.5px] mt-1 leading-snug truncate">{selectedProj.projectName}</h3>
-                    <p className="text-[9.5px] text-slate-400 font-semibold truncate leading-none mt-0.5">ลูกค้า/หน่วยงาน: {selectedProj.customer}</p>
-                  </div>
-
-                  <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                    <label className="cursor-pointer px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[9px] font-bold text-slate-600 transition-colors flex items-center gap-1">
-                      <Upload className="h-2.5 w-2.5 text-slate-400" />
-                      <span>อัปโหลดรูปภาพ</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          const reader = new FileReader();
-                          reader.onloadend = async () => {
-                            if (onEditJobProject) {
-                              await onEditJobProject(selectedProj.id, { projectImageUrl: reader.result as string });
-                            }
-                          };
-                          reader.readAsDataURL(file);
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-                <ProjectModulesManager
-                  proj={selectedProj}
-                  onEditJobProject={onEditJobProject || (async () => {})}
-                  addToast={addToast}
-                />
-              </div>
-            ) : (
-              <div className="py-20 text-center text-slate-400 text-xs">
-                กรุณาคลิกเลือกทะเบียนโครงการด้านซ้าย เพื่อจัดการโมดูลชิ้นส่วนประกอบร่วม
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Modal: Create BOM */}
       {isCreateModalOpen && (
@@ -2020,73 +1869,213 @@ export default function ProjectBomView({
       {/* Modal: Quick Purchase Requisition Form */}
       {isRequisitionModalOpen && (
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-              <span className="text-xs font-black text-slate-800">📋 เปิดใบงานเสนอขอจัดซื้อสำหรับชิ้นส่วน BOM</span>
-              <button onClick={() => setIsRequisitionModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xl max-w-2xl w-full text-left relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 mb-3">
+              <span className="text-xs font-black text-slate-850 flex items-center gap-1.5">
+                <Plus className="h-4 w-4 text-indigo-600" /> กรอกข้อมูลใบเสนอจัดซื้อพัสดุ (เชื่อมโยง BOM)
+              </span>
+              <button onClick={() => setIsRequisitionModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-4 w-4" />
+              </button>
             </div>
             <form onSubmit={handleSubmitQuickRequisition} className="space-y-3 text-[11px] font-sans">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600">ชื่อพัสดุที่จะสั่ง:</label>
-                <div className="text-slate-900 font-extrabold text-xs">
-                  {reqItemIndex !== null && activeBom?.items[reqItemIndex]?.productName}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                
+                {/* Requester name */}
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-600">จำนวนที่สั่งจัดซื้อ *</label>
+                  <label className="font-bold text-slate-600">ผู้ขอซื้อ / แผนกงาน *</label>
+                  <select
+                    required
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer"
+                    value={reqRequester}
+                    onChange={(e) => setReqRequester(e.target.value)}
+                  >
+                    <option value="">-- เลือกผู้ขอซื้อ --</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.name}>
+                        {emp.name} ({emp.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Purchaser name */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">คนจัดซื้อ / ผู้ดำเนินการ</label>
+                  <select
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer"
+                    value={reqPurchaserName}
+                    onChange={(e) => setReqPurchaserName(e.target.value)}
+                  >
+                    <option value="">-- เลือกคนจัดซื้อ --</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.name}>
+                        {emp.name} ({emp.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Job Number */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">Job.No (หมายเลขงาน)</label>
+                  <select
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer font-mono font-bold"
+                    value={reqJobNo}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setReqJobNo(val);
+                      const matchedProj = jobProjects.find(p => p.jobNo === val);
+                      if (matchedProj) {
+                        setReqJobName(matchedProj.projectName);
+                      } else {
+                        setReqJobName('');
+                      }
+                      if (val) {
+                        setReqPrNo(`PR-${val}-${Math.floor(1000 + Math.random() * 9000)}`);
+                      } else {
+                        setReqPrNo('');
+                      }
+                    }}
+                  >
+                    <option value="">-- เลือกหมายเลขงาน --</option>
+                    {jobProjects.map((p) => (
+                      <option key={p.id} value={p.jobNo}>
+                        {p.jobNo} {p.projectName ? `- ${p.projectName}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Job Name */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">Job.Name (ชื่องาน)</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="จะเลือกตามหมายเลขงานอัตโนมัติ"
+                    className="w-full px-2.5 py-1.5 bg-slate-100 border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs text-slate-600 font-medium"
+                    value={reqJobName}
+                  />
+                </div>
+
+                {/* Link to Inventory Product */}
+                <div className="space-y-1 md:col-span-2">
+                  <label className="font-bold text-slate-600">เชื่อมโยงสินค้าที่มีอยู่ในคลังสต็อก</label>
+                  <select
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer"
+                    value={reqSelectedProductId}
+                    onChange={(e) => setReqSelectedProductId(e.target.value)}
+                  >
+                    <option value="">-- เป็นสินค้าพัสดุภายนอก (ไม่ได้เก็บสต็อก) --</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.sku ? `[${p.sku}]` : ''} - คลัง: {p.quantity} {p.unit || 'ชิ้น'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Order item title */}
+                <div className="space-y-1 md:col-span-2">
+                  <label className="font-bold text-slate-600">ชื่อรายการพัสดุที่ขอสั่งซื้อ *</label>
+                  <input
+                    type="text"
+                    required
+                    disabled={!!reqSelectedProductId}
+                    placeholder="ระบุชื่อพัสดุ อุปกรณ์ หรืออะไหล่"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                    value={reqOrderTitle}
+                    onChange={(e) => setReqOrderTitle(e.target.value)}
+                  />
+                </div>
+
+                {/* Qty */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">จำนวนสั่ง *</label>
                   <input
                     type="number"
                     required
                     min={1}
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-mono font-bold"
                     value={reqQty}
                     onChange={(e) => setReqQty(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-full px-2.5 py-1 border border-slate-200 rounded text-xs font-mono font-bold"
                   />
                 </div>
+
+                {/* Unit */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">หน่วยนับ</label>
+                  <input
+                    type="text"
+                    disabled={!!reqSelectedProductId}
+                    placeholder="ชิ้น, ตัว, ม้วน"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                    value={reqUnit}
+                    onChange={(e) => setReqUnit(e.target.value)}
+                  />
+                </div>
+
+                {/* Price Per Unit */}
                 <div className="space-y-1">
                   <label className="font-bold text-slate-600">ราคาประเมินต่อหน่วย (฿)</label>
                   <input
                     type="number"
                     min={0}
-                    value={reqPriceUnit}
+                    placeholder="เช่น 150"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-mono font-bold text-indigo-700"
+                    value={reqPriceUnit || ''}
                     onChange={(e) => setReqPriceUnit(Math.max(0, parseFloat(e.target.value) || 0))}
-                    className="w-full px-2.5 py-1 border border-slate-200 rounded text-xs font-mono font-bold text-indigo-700"
                   />
                 </div>
+
+                {/* PR No. */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">เลขที่ใบเสนอซื้อ (PR No.) *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="ระบุเลขที่ใบเสนอซื้อ PR"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-mono font-bold"
+                    value={reqPrNo}
+                    onChange={(e) => setReqPrNo(e.target.value)}
+                  />
+                </div>
+
+                {/* Remark / Link */}
+                <div className="space-y-1 md:col-span-2">
+                  <label className="font-bold text-slate-600">หมายเหตุ / รายละเอียดจัดซื้อเพิ่มเติม</label>
+                  <input
+                    type="text"
+                    placeholder="ระบุรายละเอียดแนบเพิ่มเติม หรือลิงก์เสนอซื้อ"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                    value={reqRemark}
+                    onChange={(e) => setReqRemark(e.target.value)}
+                  />
+                </div>
+
               </div>
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600">เลขที่ใบเสนอซื้อ (PR No.) *</label>
-                <input
-                  type="text"
-                  required
-                  value={reqPrNo}
-                  onChange={(e) => setReqPrNo(e.target.value)}
-                  className="w-full px-2.5 py-1 border border-slate-200 rounded text-xs font-mono font-bold"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600">ผู้เสนอขอซื้อ *</label>
-                <input
-                  type="text"
-                  required
-                  value={reqRequester}
-                  onChange={(e) => setReqRequester(e.target.value)}
-                  className="w-full px-2.5 py-1 border border-slate-200 rounded text-xs font-bold text-slate-800"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600">รายละเอียดแนบเพิ่มเติม</label>
-                <textarea
-                  rows={2}
-                  value={reqRemark}
-                  onChange={(e) => setReqRemark(e.target.value)}
-                  className="w-full px-2.5 py-1 border border-slate-200 rounded text-xs focus:outline-none"
-                />
-              </div>
-              <div className="flex justify-end gap-1.5 pt-2 border-t border-slate-100">
-                <button type="button" onClick={() => setIsRequisitionModalOpen(false)} className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded">ยกเลิก</button>
-                <button type="submit" className="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded">สร้างคำเสนอซื้อ</button>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                {reqPriceUnit > 0 && (
+                  <span className="text-xs text-slate-500 font-bold mr-auto self-center font-sans">
+                    ประมาณราคารวม: <strong className="text-indigo-600 font-mono">฿{(reqPriceUnit * reqQty).toLocaleString('th-TH')}</strong>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsRequisitionModalOpen(false)}
+                  className="px-3.5 py-1.5 bg-white border border-slate-250 rounded text-xs font-bold text-slate-600 cursor-pointer hover:bg-slate-50"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-black cursor-pointer flex items-center gap-1 shadow-sm"
+                >
+                  <Plus className="h-3 w-3" /> สร้างคำเสนอซื้อ
+                </button>
               </div>
             </form>
           </div>
@@ -2120,127 +2109,6 @@ export default function ProjectBomView({
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Add Project Form */}
-      {isProjAddModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-              <span className="text-xs font-black text-slate-800">➕ ลงทะเบียนตั้งค่าโปรเจ็คใหม่</span>
-              <button onClick={() => setIsProjAddModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
-            </div>
-            <form onSubmit={handleAddProjectSubmit} className="space-y-3 text-[11px] font-sans">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-600">รหัส Job No. *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="เช่น JOB-2026-001"
-                    value={projJobNo}
-                    onChange={(e) => setProjJobNo(e.target.value)}
-                    className="w-full px-2 py-1 border border-slate-200 rounded text-xs font-mono font-bold"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-600">ปีที่ผลิต</label>
-                  <input
-                    type="text"
-                    value={projYear}
-                    onChange={(e) => setProjYear(e.target.value)}
-                    className="w-full px-2 py-1 border border-slate-200 rounded text-xs font-mono"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600">หน่วยงาน / ชื่อลูกค้า *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="ชื่อลูกค้า หรือส่วนงานที่จ้างผลิต"
-                  value={projCustomer}
-                  onChange={(e) => setProjCustomer(e.target.value)}
-                  className="w-full px-2 py-1 border border-slate-200 rounded text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600">ชื่องานควบคุม / ตั้งค่าโปรเจ็ค *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="เช่น ตู้ควบคุมระบบระบายอากาศตึก C"
-                  value={projName}
-                  onChange={(e) => setProjName(e.target.value)}
-                  className="w-full px-2 py-1 border border-slate-200 rounded text-xs"
-                />
-              </div>
-              <div className="flex justify-end gap-1.5 pt-2 border-t border-slate-100">
-                <button type="button" onClick={() => setIsProjAddModalOpen(false)} className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded">ยกเลิก</button>
-                <button type="submit" className="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded">บันทึกโครงการ</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Edit Project Form */}
-      {isProjEditModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-              <span className="text-xs font-black text-slate-800">📝 แก้ไขข้อมูลตั้งค่าโปรเจ็ค</span>
-              <button onClick={() => setIsProjEditModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
-            </div>
-            <form onSubmit={handleEditProjectSubmit} className="space-y-3 text-[11px] font-sans">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-600">รหัส Job No. *</label>
-                  <input
-                    type="text"
-                    required
-                    value={projJobNo}
-                    onChange={(e) => setProjJobNo(e.target.value)}
-                    className="w-full px-2 py-1 border border-slate-200 rounded text-xs font-mono font-bold"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-600">ปีที่ผลิต</label>
-                  <input
-                    type="text"
-                    value={projYear}
-                    onChange={(e) => setProjYear(e.target.value)}
-                    className="w-full px-2 py-1 border border-slate-200 rounded text-xs font-mono"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600">หน่วยงาน / ลูกค้า *</label>
-                <input
-                  type="text"
-                  required
-                  value={projCustomer}
-                  onChange={(e) => setProjCustomer(e.target.value)}
-                  className="w-full px-2 py-1 border border-slate-200 rounded text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600">ชื่องานควบคุม / ตั้งค่าโปรเจ็ค *</label>
-                <input
-                  type="text"
-                  required
-                  value={projName}
-                  onChange={(e) => setProjName(e.target.value)}
-                  className="w-full px-2 py-1 border border-slate-200 rounded text-xs"
-                />
-              </div>
-              <div className="flex justify-end gap-1.5 pt-2 border-t border-slate-100">
-                <button type="button" onClick={() => setIsProjEditModalOpen(false)} className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded">ยกเลิก</button>
-                <button type="submit" className="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded">บันทึกปรับปรุง</button>
-              </div>
-            </form>
           </div>
         </div>
       )}

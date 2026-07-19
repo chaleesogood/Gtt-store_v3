@@ -1511,6 +1511,7 @@ export default function App() {
             onAddJobProject={handleAddJobProject}
             onEditJobProject={handleEditJobProject}
             onDeleteJobProject={handleDeleteJobProject}
+            employees={employees}
           />
         );
       case 'reports':
