@@ -106,9 +106,6 @@ export default function App() {
   const [dailyReports, setDailyReports] = useState<DailyReport[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [isSyncComplete, setIsSyncComplete] = useState<boolean>(true);
-  const [isAutoSyncEnabled, setIsAutoSyncEnabled] = useState<boolean>(() => {
-    return localStorage.getItem('stock_manager_auto_sync_enabled') === 'true';
-  });
 
   // Helper to upload list in 500-item chunks using Firestore batches
   const uploadListToFirestoreInBatches = async (collectionName: string, list: any[]) => {
@@ -125,6 +122,46 @@ export default function App() {
       });
       await batch.commit();
     }
+  };
+
+  // Helper to merge lists based on item ID (preserve existing if newer, or overwrite)
+  const mergeListsWithExisting = (canonicalKey: string, restoredList: any[]) => {
+    let existingList: any[] = [];
+    try {
+      const stored = localStorage.getItem(canonicalKey);
+      if (stored) {
+        existingList = JSON.parse(stored);
+      }
+    } catch (e) {
+      console.warn("Failed parsing existing storage for merging:", e);
+    }
+
+    if (!Array.isArray(existingList)) {
+      existingList = [];
+    }
+
+    const map = new Map();
+    existingList.forEach(item => {
+      if (item && item.id) map.set(item.id, item);
+    });
+
+    restoredList.forEach(item => {
+      if (item && item.id) {
+        const prev = map.get(item.id);
+        if (prev) {
+          const prevTime = prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
+          const incomingTime = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
+          // If incoming item is newer, or if no updatedAt exists, update it.
+          if (incomingTime >= prevTime) {
+            map.set(item.id, { ...prev, ...item });
+          }
+        } else {
+          map.set(item.id, item);
+        }
+      }
+    });
+
+    return Array.from(map.values());
   };
 
 
@@ -408,119 +445,18 @@ export default function App() {
         const jpList = savedJobProjects ? (JSON.parse(savedJobProjects) as JobProject[]) : [];
         const drList = savedDailyReports ? (JSON.parse(savedDailyReports) as DailyReport[]) : [];
 
-        if (isAutoSyncEnabled) {
-          console.log("Checking if local offline data needs to be merged with Firestore (Auto-Sync enabled)...");
-          // Check if Firestore products are empty
-          const querySnapshot = await getDocs(collection(db, 'products'));
-
-          if (querySnapshot.empty) {
-            // Firestore is completely empty!
-            // Check if there is local data to upload
-            if (
-              productsList.length > 0 ||
-              categoriesList.length > 0 ||
-              activitiesList.length > 0 ||
-              bomsList.length > 0 ||
-              projectsList.length > 0 ||
-              jobsList.length > 0 ||
-              employeesList.length > 0 ||
-              brandsList.length > 0 ||
-              jpList.length > 0 ||
-              drList.length > 0
-            ) {
-              console.log("Firestore is empty but local storage has data. Uploading offline data via batches...");
-              addToast('info', 'กำลังกู้คืนและซิงค์ข้อมูล...', 'ระบบตรวจพบว่าฐานข้อมูลคลาวด์ว่าง แต่เครื่องนี้มีข้อมูลอยู่ ระบบกำลังกู้ข้อมูลออฟไลน์ทั้งหมดของคุณขึ้นคลาวด์เพื่อป้องกันข้อมูลสูญหาย...');
-
-              await uploadListToFirestoreInBatches('categories', categoriesList);
-              await uploadListToFirestoreInBatches('products', productsList);
-              await uploadListToFirestoreInBatches('activities', activitiesList);
-              await uploadListToFirestoreInBatches('boms', bomsList);
-              await uploadListToFirestoreInBatches('projects', projectsList);
-              await uploadListToFirestoreInBatches('jobs', jobsList);
-              await uploadListToFirestoreInBatches('employees', employeesList);
-              await uploadListToFirestoreInBatches('brands', brandsList);
-              await uploadListToFirestoreInBatches('jobProjects', jpList);
-              await uploadListToFirestoreInBatches('dailyReports', drList);
-
-              addToast('success', 'รวมข้อมูลออนไลน์สำเร็จ!', 'กู้คืนและรวมข้อมูลออฟไลน์ทั้งหมดขึ้นสู่ระบบคลาวด์เรียบร้อยแล้ว');
-            } else {
-              // Both are empty, auto-seed default products
-              console.log("No data found anywhere. Auto-seeding initial data to Firestore...");
-              for (const cat of INITIAL_CATEGORIES) {
-                await setDoc(doc(db, 'categories', cat.id), cleanUndefined(cat));
-              }
-              for (const prod of INITIAL_PRODUCTS) {
-                await setDoc(doc(db, 'products', prod.id), cleanUndefined(prod));
-              }
-              for (const act of INITIAL_ACTIVITIES) {
-                await setDoc(doc(db, 'activities', act.id), cleanUndefined(act));
-              }
-            }
-          } else {
-            // Firestore is NOT empty, let's merge any offline-only data with online (non-destructive) using fast batches
-            const queryCategories = await getDocs(collection(db, 'categories'));
-            const queryActivities = await getDocs(collection(db, 'activities'));
-            const queryBoms = await getDocs(collection(db, 'boms'));
-            const queryProjects = await getDocs(collection(db, 'projects'));
-            const queryJobs = await getDocs(collection(db, 'jobs'));
-            const queryEmployees = await getDocs(collection(db, 'employees'));
-            const queryBrands = await getDocs(collection(db, 'brands'));
-            const queryJobProjects = await getDocs(collection(db, 'jobProjects'));
-            const queryDailyReports = await getDocs(collection(db, 'dailyReports'));
-
-            const onlineProductIds = new Set(querySnapshot.docs.map(doc => doc.id));
-            const onlineCategoryIds = new Set(queryCategories.docs.map(doc => doc.id));
-            const onlineActivityIds = new Set(queryActivities.docs.map(doc => doc.id));
-            const onlineBomIds = new Set(queryBoms.docs.map(doc => doc.id));
-            const onlineProjectIds = new Set(queryProjects.docs.map(doc => doc.id));
-            const onlineJobIds = new Set(queryJobs.docs.map(doc => doc.id));
-            const onlineEmployeeIds = new Set(queryEmployees.docs.map(doc => doc.id));
-            const onlineBrandIds = new Set(queryBrands.docs.map(doc => doc.id));
-            const onlineJobProjectIds = new Set(queryJobProjects.docs.map(doc => doc.id));
-            const onlineDailyReportIds = new Set(queryDailyReports.docs.map(doc => doc.id));
-
-            const categoriesToUpload = categoriesList.filter(c => !onlineCategoryIds.has(c.id));
-            const productsToUpload = productsList.filter(p => !onlineProductIds.has(p.id));
-            const activitiesToUpload = activitiesList.filter(a => !onlineActivityIds.has(a.id));
-            const bomsToUpload = bomsList.filter(b => !onlineBomIds.has(b.id));
-            const projectsToUpload = projectsList.filter(p => !onlineProjectIds.has(p.id));
-            const jobsToUpload = jobsList.filter(j => !onlineJobIds.has(j.id));
-            const employeesToUpload = employeesList.filter(e => !onlineEmployeeIds.has(e.id));
-            const brandsToUpload = brandsList.filter(b => !onlineBrandIds.has(b.id));
-            const jpToUpload = jpList.filter(jp => !onlineJobProjectIds.has(jp.id));
-            const drToUpload = drList.filter(dr => !onlineDailyReportIds.has(dr.id));
-
-            const totalMerge = categoriesToUpload.length + productsToUpload.length + activitiesToUpload.length + bomsToUpload.length + projectsToUpload.length + jobsToUpload.length + employeesToUpload.length + brandsToUpload.length + jpToUpload.length + drToUpload.length;
-
-            if (totalMerge > 0) {
-              await uploadListToFirestoreInBatches('categories', categoriesToUpload);
-              await uploadListToFirestoreInBatches('products', productsToUpload);
-              await uploadListToFirestoreInBatches('activities', activitiesToUpload);
-              await uploadListToFirestoreInBatches('boms', bomsToUpload);
-              await uploadListToFirestoreInBatches('projects', projectsToUpload);
-              await uploadListToFirestoreInBatches('jobs', jobsToUpload);
-              await uploadListToFirestoreInBatches('employees', employeesToUpload);
-              await uploadListToFirestoreInBatches('brands', brandsToUpload);
-              await uploadListToFirestoreInBatches('jobProjects', jpToUpload);
-              await uploadListToFirestoreInBatches('dailyReports', drToUpload);
-
-              addToast('success', 'เชื่อมและรวมข้อมูลเสร็จสิ้น', `รวมข้อมูลออฟไลน์ใหม่จำนวน ${totalMerge} รายการเข้ากับระบบคลาวด์เรียบร้อยแล้ว`);
-            }
-          }
-        } else {
-          console.log("Auto-Sync is disabled on startup. Instantly loading cached local storage data into React states.");
-          // Instantly load local storage to prevent blanks before snapshots load
-          if (productsList.length > 0) setProducts(productsList);
-          if (categoriesList.length > 0) setCategories(categoriesList);
-          if (activitiesList.length > 0) setActivities(activitiesList);
-          if (bomsList.length > 0) setBoms(bomsList);
-          if (projectsList.length > 0) setProjects(projectsList);
-          if (jobsList.length > 0) setJobs(jobsList);
-          if (employeesList.length > 0) setEmployees(employeesList);
-          if (brandsList.length > 0) setBrands(brandsList);
-          if (jpList.length > 0) setJobProjects(jpList);
-          if (drList.length > 0) setDailyReports(drList);
-        }
+        console.log("Loading cached local storage data into React states on startup.");
+        // Instantly load local storage to prevent blanks before snapshots load
+        if (productsList.length > 0) setProducts(productsList);
+        if (categoriesList.length > 0) setCategories(categoriesList);
+        if (activitiesList.length > 0) setActivities(activitiesList);
+        if (bomsList.length > 0) setBoms(bomsList);
+        if (projectsList.length > 0) setProjects(projectsList);
+        if (jobsList.length > 0) setJobs(jobsList);
+        if (employeesList.length > 0) setEmployees(employeesList);
+        if (brandsList.length > 0) setBrands(brandsList);
+        if (jpList.length > 0) setJobProjects(jpList);
+        if (drList.length > 0) setDailyReports(drList);
       } catch (err: any) {
         console.warn("Offline-online bidirectional merge skipped or failed:", err);
         // Fallback to load localStorage into states if we are empty
@@ -538,7 +474,7 @@ export default function App() {
       }
     };
     mergeOfflineAndOnline();
-  }, [currentUser, isAutoSyncEnabled]);
+  }, [currentUser]);
 
   // Manual database seeding function to restore saved/initial demo items
   const handleSeedDatabase = async () => {
@@ -1012,8 +948,9 @@ export default function App() {
               return item;
             });
 
-            normalizedData[canonicalKey] = updatedList;
-            localStorage.setItem(canonicalKey, JSON.stringify(updatedList));
+            const mergedList = mergeListsWithExisting(canonicalKey, updatedList);
+            normalizedData[canonicalKey] = mergedList;
+            localStorage.setItem(canonicalKey, JSON.stringify(mergedList));
             restoredCount++;
           }
         });
@@ -1024,7 +961,7 @@ export default function App() {
 
         // Upload to Firestore if logged in
         if (currentUser && currentUser.uid !== 'demo-user') {
-          addToast('info', 'กำลังกู้คืนข้อมูลขึ้นระบบคลาวด์...', 'กำลังซิงค์รายการสำรองทั้งหมดขึ้นระบบคลาวด์ กรุณารอสักครู่...');
+          addToast('info', 'กำลังนำเข้าและรวมข้อมูลขึ้นระบบคลาวด์...', 'กำลังอัปโหลดข้อมูลใหม่ทั้งหมดขึ้นระบบคลาวด์...');
           
           const keyToCollection: Record<string, string> = {
             'stock_manager_products': 'products',
@@ -1043,12 +980,13 @@ export default function App() {
             for (const [key, list] of Object.entries(normalizedData)) {
               const colName = keyToCollection[key];
               if (colName && Array.isArray(list) && list.length > 0) {
+                // Upload the merged list without clearing, avoiding any data loss
                 await uploadListToFirestoreInBatches(colName, list);
               }
             }
           } catch (firestoreErr: any) {
             console.warn("Firestore upload failed during restore backup:", firestoreErr);
-            addToast('warning', 'เชื่อมต่อคลาวด์ไม่สมบูรณ์ (อาจเกินโควต้า)', 'ข้อมูลบางส่วนไม่สามารถอัปโหลดขึ้นคลาวด์ได้ในขณะนี้เนื่องจากโควต้าเต็ม แต่ระบบได้กู้คืนและเซฟข้อมูลทั้งหมดลงเบราว์เซอร์เครื่องนี้ให้คุณใช้งานได้ปกติแล้ว!');
+            addToast('warning', 'เชื่อมต่อคลาวด์ไม่สมบูรณ์ (อาจเกินโควต้า)', 'ข้อมูลบางส่วนไม่สามารถอัปโหลดขึ้นคลาวด์ได้ในขณะนี้เนื่องจากโควต้าเต็ม แต่ระบบได้กู้คืนและรวมข้อมูลทั้งหมดลงเบราว์เซอร์เครื่องนี้ให้คุณใช้งานได้ปกติแล้ว!');
           }
         }
 
@@ -1098,28 +1036,36 @@ export default function App() {
   const handleRestoreCacheGroup = async (groupData: Record<string, any[]>) => {
     try {
       setIsSyncComplete(false);
-      addToast('info', 'กำลังคืนค่าระบบคลังพัสดุ...', 'ระบบกำลังเขียนข้อมูลที่กู้คืนลงหน่วยความจำของเครื่อง...');
+      addToast('info', 'กำลังนำเข้าและรวมข้อมูล...', 'ระบบกำลังนำข้อมูลกลุ่มอื่นมารวมเข้ากับข้อมูลปัจจุบันของคุณ...');
 
-      // Save to active localStorage shadowed key
+      const mergedData: Record<string, any[]> = {};
+
+      // Merge and save to active localStorage shadowed keys
       Object.entries(groupData).forEach(([canonicalKey, list]) => {
-        localStorage.setItem(canonicalKey, JSON.stringify(list));
+        if (Array.isArray(list)) {
+          const mergedList = mergeListsWithExisting(canonicalKey, list);
+          mergedData[canonicalKey] = mergedList;
+          localStorage.setItem(canonicalKey, JSON.stringify(mergedList));
+        } else {
+          mergedData[canonicalKey] = [];
+        }
       });
 
-      // Update local React states
-      if (groupData['stock_manager_products']) setProducts(groupData['stock_manager_products']);
-      if (groupData['stock_manager_categories']) setCategories(groupData['stock_manager_categories']);
-      if (groupData['stock_manager_activities']) setActivities(groupData['stock_manager_activities']);
-      if (groupData['stock_manager_boms']) setBoms(groupData['stock_manager_boms']);
-      if (groupData['stock_manager_projects_list']) setProjects(groupData['stock_manager_projects_list']);
-      if (groupData['stock_manager_jobs_list']) setJobs(groupData['stock_manager_jobs_list']);
-      if (groupData['stock_manager_employees_list']) setEmployees(groupData['stock_manager_employees_list']);
-      if (groupData['stock_manager_brands_list']) setBrands(groupData['stock_manager_brands_list']);
-      if (groupData['stock_manager_job_projects_list']) setJobProjects(groupData['stock_manager_job_projects_list']);
-      if (groupData['stock_manager_daily_reports_list']) setDailyReports(groupData['stock_manager_daily_reports_list']);
+      // Update local React states with the merged lists
+      if (mergedData['stock_manager_products']) setProducts(mergedData['stock_manager_products']);
+      if (mergedData['stock_manager_categories']) setCategories(mergedData['stock_manager_categories']);
+      if (mergedData['stock_manager_activities']) setActivities(mergedData['stock_manager_activities']);
+      if (mergedData['stock_manager_boms']) setBoms(mergedData['stock_manager_boms']);
+      if (mergedData['stock_manager_projects_list']) setProjects(mergedData['stock_manager_projects_list']);
+      if (mergedData['stock_manager_jobs_list']) setJobs(mergedData['stock_manager_jobs_list']);
+      if (mergedData['stock_manager_employees_list']) setEmployees(mergedData['stock_manager_employees_list']);
+      if (mergedData['stock_manager_brands_list']) setBrands(mergedData['stock_manager_brands_list']);
+      if (mergedData['stock_manager_job_projects_list']) setJobProjects(mergedData['stock_manager_job_projects_list']);
+      if (mergedData['stock_manager_daily_reports_list']) setDailyReports(mergedData['stock_manager_daily_reports_list']);
 
       // Upload to Firestore if logged in
       if (currentUser && currentUser.uid !== 'demo-user') {
-        addToast('info', 'กำลังบันทึกข้อมูลกู้คืนขึ้นคลาวด์...', 'ซิงค์ข้อมูลที่ตรวจพบขึ้นฐานข้อมูลออนไลน์ เพื่อความปลอดภัยถาวร...');
+        addToast('info', 'กำลังบันทึกข้อมูลและอัปเดตระบบคลาวด์...', 'ซิงค์ข้อมูลชุดที่รวมกันเรียบร้อยแล้วขึ้นฐานข้อมูลออนไลน์ เพื่อความปลอดภัยถาวร...');
         
         const keyToCollection: Record<string, string> = {
           'stock_manager_products': 'products',
@@ -1134,15 +1080,16 @@ export default function App() {
           'stock_manager_daily_reports_list': 'dailyReports'
         };
 
-        for (const [key, list] of Object.entries(groupData)) {
+        for (const [key, list] of Object.entries(mergedData)) {
           const colName = keyToCollection[key];
           if (colName && Array.isArray(list) && list.length > 0) {
+            // Upload the merged list directly without clearing to keep existing different items
             await uploadListToFirestoreInBatches(colName, list);
           }
         }
       }
 
-      addToast('success', 'กู้คืนและคืนค่าข้อมูลเสร็จสมบูรณ์!', 'ระบบนำข้อมูลทั้งหมดที่เคยบันทึกไว้กลับมาเรียบร้อยแล้ว ทุกระบบทำงานปกติ');
+      addToast('success', 'รวมข้อมูลกลุ่มนี้เข้าระบบเสร็จสิ้น!', 'ระบบนำข้อมูลทั้งหมดมารวมกันเรียบร้อยแล้ว โดยไม่ลบหรือทับข้อมูลเดิมที่มีอยู่');
     } catch (err: any) {
       console.error(err);
       addToast('warning', 'การกู้คืนล้มเหลว', `เกิดข้อผิดพลาด: ${err.message}`);
@@ -2225,13 +2172,6 @@ export default function App() {
             onSeedDatabase={handleSeedDatabase}
             onDownloadBackup={handleDownloadBackup}
             onRestoreBackup={handleRestoreBackup}
-            onUploadLocalStorageToCloud={handleUploadLocalStorageToCloud}
-            isAutoSyncEnabled={isAutoSyncEnabled}
-            onToggleAutoSync={(enabled) => {
-              setIsAutoSyncEnabled(enabled);
-              localStorage.setItem('stock_manager_auto_sync_enabled', enabled ? 'true' : 'false');
-              addToast('success', enabled ? 'เปิดใช้งานซิงค์ออโต้แล้ว' : 'ปิดใช้งานซิงค์ออโต้แล้ว', enabled ? 'ระบบจะเริ่มซิงค์ข้อมูลจากเครื่องนี้ขึ้นระบบคลาวด์โดยอัตโนมัติเมื่อเริ่มทำงาน' : 'ระบบจะไม่ซิงค์ข้อมูลจากเครื่องขึ้นคลาวด์เองในเบื้องหลัง เพื่อประหยัดโควต้าฐานข้อมูล');
-            }}
             activities={activities}
             onRollbackDatabase={handleRollbackDatabase}
             onRestoreCacheGroup={handleRestoreCacheGroup}
