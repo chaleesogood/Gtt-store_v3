@@ -487,6 +487,8 @@ interface SettingsViewProps {
   onDownloadBackup?: () => void;
   onRestoreBackup?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onUploadLocalStorageToCloud?: () => Promise<void>;
+  isAutoSyncEnabled?: boolean;
+  onToggleAutoSync?: (enabled: boolean) => void;
 }
 
 type SubTab = 'projects' | 'employees' | 'brands' | 'database';
@@ -509,7 +511,9 @@ export default function SettingsView({
   onSeedDatabase,
   onDownloadBackup,
   onRestoreBackup,
-  onUploadLocalStorageToCloud
+  onUploadLocalStorageToCloud,
+  isAutoSyncEnabled = false,
+  onToggleAutoSync
 }: SettingsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('projects');
 
@@ -3159,23 +3163,37 @@ export default function SettingsView({
               </div>
             </div>
 
-            {/* Box 3: Local Storage to Cloud Migration */}
-            {onUploadLocalStorageToCloud && (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs">
-                <div className="flex items-start gap-3">
-                  <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 rounded-xl">
-                    <CloudUpload className="h-5 w-5 animate-pulse" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 font-sans">
-                      ซิงค์คลังพัสดุจากเครื่องเดิมขึ้นคลาวด์ (Sync Local to Cloud)
-                    </h4>
-                    <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                      หากข้อมูลพัสดุและสต็อกของคุณสูญหายหรือย้อนกลับมาไม่ครบหลังเปลี่ยนบัญชี คุณสามารถกดปุ่มนี้เพื่อดึงข้อมูลทั้งหมดที่เคยบันทึกไว้ในเบราว์เซอร์เครื่องนี้ขึ้นฐานข้อมูลคลาวด์ออนไลน์เพื่อใช้งานต่อได้ทันที!
-                    </p>
-                  </div>
+            {/* Box 3: Auto Sync & Local Storage to Cloud Migration */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 rounded-xl">
+                  <CloudUpload className={`h-5 w-5 ${isAutoSyncEnabled ? 'animate-pulse' : ''}`} />
                 </div>
-                
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 font-sans">
+                    ซิงค์คลังพัสดุขึ้นคลาวด์ (Sync Local to Cloud)
+                  </h4>
+                  <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                    เมื่อปิดใช้งาน ระบบจะไม่นำเข้าข้อมูลออฟไลน์จากเบราว์เซอร์ของคุณขึ้นคลาวด์โดยอัตโนมัติขณะเริ่มทำงาน เพื่อประหยัดพื้นที่คลาวด์และโควต้าฐานข้อมูลของคุณ แต่คุณยังสามารถกู้คืนหรือซิงค์ข้อมูลขึ้นด้วยตนเองได้ทุกเมื่อ
+                  </p>
+                </div>
+              </div>
+
+              {/* Auto Sync Toggle */}
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-between font-sans">
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">ซิงค์อัตโนมัติเมื่อเริ่มทำงาน (Auto-Sync on Startup)</span>
+                <button
+                  type="button"
+                  onClick={() => onToggleAutoSync?.(!isAutoSyncEnabled)}
+                  className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isAutoSyncEnabled ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-800'}`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${isAutoSyncEnabled ? 'translate-x-5' : 'translate-x-0'}`}
+                  />
+                </button>
+              </div>
+              
+              {onUploadLocalStorageToCloud && (
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex justify-end font-sans">
                   <button
                     type="button"
@@ -3183,11 +3201,11 @@ export default function SettingsView({
                     className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/10 cursor-pointer"
                   >
                     <CloudUpload className="h-3.5 w-3.5" />
-                    อัปโหลดรายการจากเครื่องนี้ขึ้นระบบคลาวด์ด่วน
+                    อัปโหลดรายการเครื่องนี้ขึ้นระบบคลาวด์ตอนนี้ (Manual Sync)
                   </button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
           </div>
         </div>

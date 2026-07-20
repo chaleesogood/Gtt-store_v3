@@ -52,6 +52,27 @@ export default function App() {
   const [jobProjects, setJobProjects] = useState<JobProject[]>([]);
   const [dailyReports, setDailyReports] = useState<DailyReport[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [isSyncComplete, setIsSyncComplete] = useState<boolean>(true);
+  const [isAutoSyncEnabled, setIsAutoSyncEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('stock_manager_auto_sync_enabled') === 'true';
+  });
+
+  // Helper to upload list in 500-item chunks using Firestore batches
+  const uploadListToFirestoreInBatches = async (collectionName: string, list: any[]) => {
+    if (!list || list.length === 0) return;
+    const chunkSize = 500;
+    for (let i = 0; i < list.length; i += chunkSize) {
+      const chunk = list.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach((item) => {
+        if (item && item.id) {
+          const { id, ...data } = item;
+          batch.set(doc(db, collectionName, id), cleanUndefined(data), { merge: true });
+        }
+      });
+      await batch.commit();
+    }
+  };
 
 
   // Real Firebase Auth states
@@ -211,7 +232,7 @@ export default function App() {
 
   // Sync products from Firestore (no seeding)
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
+    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
     const q = query(collection(db, 'products'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Product[] = [];
@@ -233,11 +254,11 @@ export default function App() {
       setProducts(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, isSyncComplete]);
 
   // Sync categories from Firestore (no seeding)
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
+    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
     const q = query(collection(db, 'categories'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Category[] = [];
@@ -258,7 +279,7 @@ export default function App() {
       setCategories(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, isSyncComplete]);
 
   // Auto-delete cat-2t7zj33 on startup if present as requested by user
   useEffect(() => {
@@ -293,30 +314,156 @@ export default function App() {
     }
   }, [currentUser, categories, products]);
 
-  // Auto-seed database if empty on login/boot
+  // Bidirectional offline and online merge on login / boot
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
-    const checkAndSeed = async () => {
+    if (!currentUser || currentUser.uid === 'demo-user') {
+      setIsSyncComplete(true);
+      return;
+    }
+
+    const mergeOfflineAndOnline = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'products'));
-        if (querySnapshot.empty) {
-          console.log("No products found in Firestore. Auto-seeding initial data...");
-          // Seed categories
-          for (const cat of INITIAL_CATEGORIES) {
-            await setDoc(doc(db, 'categories', cat.id), cleanUndefined(cat));
+        setIsSyncComplete(false);
+
+        // Fetch offline data from localStorage
+        const savedProducts = localStorage.getItem('stock_manager_products');
+        const savedCategories = localStorage.getItem('stock_manager_categories');
+        const savedActivities = localStorage.getItem('stock_manager_activities');
+        const savedBoms = localStorage.getItem('stock_manager_boms');
+        const savedProjects = localStorage.getItem('stock_manager_projects_list');
+        const savedJobs = localStorage.getItem('stock_manager_jobs_list');
+        const savedEmployees = localStorage.getItem('stock_manager_employees_list');
+        const savedBrands = localStorage.getItem('stock_manager_brands_list');
+        const savedJobProjects = localStorage.getItem('stock_manager_job_projects_list');
+        const savedDailyReports = localStorage.getItem('stock_manager_daily_reports_list');
+
+        const productsList = savedProducts ? (JSON.parse(savedProducts) as Product[]) : [];
+        const categoriesList = savedCategories ? (JSON.parse(savedCategories) as Category[]) : [];
+        const activitiesList = savedActivities ? (JSON.parse(savedActivities) as StockActivity[]) : [];
+        const bomsList = savedBoms ? (JSON.parse(savedBoms) as Bom[]) : [];
+        const projectsList = savedProjects ? (JSON.parse(savedProjects) as Project[]) : [];
+        const jobsList = savedJobs ? (JSON.parse(savedJobs) as Job[]) : [];
+        const employeesList = savedEmployees ? (JSON.parse(savedEmployees) as Employee[]) : [];
+        const brandsList = savedBrands ? (JSON.parse(savedBrands) as Brand[]) : [];
+        const jpList = savedJobProjects ? (JSON.parse(savedJobProjects) as JobProject[]) : [];
+        const drList = savedDailyReports ? (JSON.parse(savedDailyReports) as DailyReport[]) : [];
+
+        if (isAutoSyncEnabled) {
+          console.log("Checking if local offline data needs to be merged with Firestore (Auto-Sync enabled)...");
+          // Check if Firestore products are empty
+          const querySnapshot = await getDocs(collection(db, 'products'));
+
+          if (querySnapshot.empty) {
+            // Firestore is completely empty!
+            // Check if there is local data to upload
+            if (
+              productsList.length > 0 ||
+              categoriesList.length > 0 ||
+              activitiesList.length > 0 ||
+              bomsList.length > 0 ||
+              projectsList.length > 0 ||
+              jobsList.length > 0 ||
+              employeesList.length > 0 ||
+              brandsList.length > 0 ||
+              jpList.length > 0 ||
+              drList.length > 0
+            ) {
+              console.log("Firestore is empty but local storage has data. Uploading offline data via batches...");
+              addToast('info', 'กำลังกู้คืนและซิงค์ข้อมูล...', 'ระบบตรวจพบว่าฐานข้อมูลคลาวด์ว่าง แต่เครื่องนี้มีข้อมูลอยู่ ระบบกำลังกู้ข้อมูลออฟไลน์ทั้งหมดของคุณขึ้นคลาวด์เพื่อป้องกันข้อมูลสูญหาย...');
+
+              await uploadListToFirestoreInBatches('categories', categoriesList);
+              await uploadListToFirestoreInBatches('products', productsList);
+              await uploadListToFirestoreInBatches('activities', activitiesList);
+              await uploadListToFirestoreInBatches('boms', bomsList);
+              await uploadListToFirestoreInBatches('projects', projectsList);
+              await uploadListToFirestoreInBatches('jobs', jobsList);
+              await uploadListToFirestoreInBatches('employees', employeesList);
+              await uploadListToFirestoreInBatches('brands', brandsList);
+              await uploadListToFirestoreInBatches('jobProjects', jpList);
+              await uploadListToFirestoreInBatches('dailyReports', drList);
+
+              addToast('success', 'รวมข้อมูลออนไลน์สำเร็จ!', 'กู้คืนและรวมข้อมูลออฟไลน์ทั้งหมดขึ้นสู่ระบบคลาวด์เรียบร้อยแล้ว');
+            } else {
+              // Both are empty, auto-seed default products
+              console.log("No data found anywhere. Auto-seeding initial data to Firestore...");
+              for (const cat of INITIAL_CATEGORIES) {
+                await setDoc(doc(db, 'categories', cat.id), cleanUndefined(cat));
+              }
+              for (const prod of INITIAL_PRODUCTS) {
+                await setDoc(doc(db, 'products', prod.id), cleanUndefined(prod));
+              }
+              for (const act of INITIAL_ACTIVITIES) {
+                await setDoc(doc(db, 'activities', act.id), cleanUndefined(act));
+              }
+            }
+          } else {
+            // Firestore is NOT empty, let's merge any offline-only data with online (non-destructive) using fast batches
+            const queryCategories = await getDocs(collection(db, 'categories'));
+            const queryActivities = await getDocs(collection(db, 'activities'));
+            const queryBoms = await getDocs(collection(db, 'boms'));
+            const queryProjects = await getDocs(collection(db, 'projects'));
+            const queryJobs = await getDocs(collection(db, 'jobs'));
+            const queryEmployees = await getDocs(collection(db, 'employees'));
+            const queryBrands = await getDocs(collection(db, 'brands'));
+            const queryJobProjects = await getDocs(collection(db, 'jobProjects'));
+            const queryDailyReports = await getDocs(collection(db, 'dailyReports'));
+
+            const onlineProductIds = new Set(querySnapshot.docs.map(doc => doc.id));
+            const onlineCategoryIds = new Set(queryCategories.docs.map(doc => doc.id));
+            const onlineActivityIds = new Set(queryActivities.docs.map(doc => doc.id));
+            const onlineBomIds = new Set(queryBoms.docs.map(doc => doc.id));
+            const onlineProjectIds = new Set(queryProjects.docs.map(doc => doc.id));
+            const onlineJobIds = new Set(queryJobs.docs.map(doc => doc.id));
+            const onlineEmployeeIds = new Set(queryEmployees.docs.map(doc => doc.id));
+            const onlineBrandIds = new Set(queryBrands.docs.map(doc => doc.id));
+            const onlineJobProjectIds = new Set(queryJobProjects.docs.map(doc => doc.id));
+            const onlineDailyReportIds = new Set(queryDailyReports.docs.map(doc => doc.id));
+
+            const categoriesToUpload = categoriesList.filter(c => !onlineCategoryIds.has(c.id));
+            const productsToUpload = productsList.filter(p => !onlineProductIds.has(p.id));
+            const activitiesToUpload = activitiesList.filter(a => !onlineActivityIds.has(a.id));
+            const bomsToUpload = bomsList.filter(b => !onlineBomIds.has(b.id));
+            const projectsToUpload = projectsList.filter(p => !onlineProjectIds.has(p.id));
+            const jobsToUpload = jobsList.filter(j => !onlineJobIds.has(j.id));
+            const employeesToUpload = employeesList.filter(e => !onlineEmployeeIds.has(e.id));
+            const brandsToUpload = brandsList.filter(b => !onlineBrandIds.has(b.id));
+            const jpToUpload = jpList.filter(jp => !onlineJobProjectIds.has(jp.id));
+            const drToUpload = drList.filter(dr => !onlineDailyReportIds.has(dr.id));
+
+            const totalMerge = categoriesToUpload.length + productsToUpload.length + activitiesToUpload.length + bomsToUpload.length + projectsToUpload.length + jobsToUpload.length + employeesToUpload.length + brandsToUpload.length + jpToUpload.length + drToUpload.length;
+
+            if (totalMerge > 0) {
+              await uploadListToFirestoreInBatches('categories', categoriesToUpload);
+              await uploadListToFirestoreInBatches('products', productsToUpload);
+              await uploadListToFirestoreInBatches('activities', activitiesToUpload);
+              await uploadListToFirestoreInBatches('boms', bomsToUpload);
+              await uploadListToFirestoreInBatches('projects', projectsToUpload);
+              await uploadListToFirestoreInBatches('jobs', jobsToUpload);
+              await uploadListToFirestoreInBatches('employees', employeesToUpload);
+              await uploadListToFirestoreInBatches('brands', brandsToUpload);
+              await uploadListToFirestoreInBatches('jobProjects', jpToUpload);
+              await uploadListToFirestoreInBatches('dailyReports', drToUpload);
+
+              addToast('success', 'เชื่อมและรวมข้อมูลเสร็จสิ้น', `รวมข้อมูลออฟไลน์ใหม่จำนวน ${totalMerge} รายการเข้ากับระบบคลาวด์เรียบร้อยแล้ว`);
+            }
           }
-          // Seed products
-          for (const prod of INITIAL_PRODUCTS) {
-            await setDoc(doc(db, 'products', prod.id), cleanUndefined(prod));
-          }
-          // Seed activities
-          for (const act of INITIAL_ACTIVITIES) {
-            await setDoc(doc(db, 'activities', act.id), cleanUndefined(act));
-          }
+        } else {
+          console.log("Auto-Sync is disabled on startup. Instantly loading cached local storage data into React states.");
+          // Instantly load local storage to prevent blanks before snapshots load
+          if (productsList.length > 0) setProducts(productsList);
+          if (categoriesList.length > 0) setCategories(categoriesList);
+          if (activitiesList.length > 0) setActivities(activitiesList);
+          if (bomsList.length > 0) setBoms(bomsList);
+          if (projectsList.length > 0) setProjects(projectsList);
+          if (jobsList.length > 0) setJobs(jobsList);
+          if (employeesList.length > 0) setEmployees(employeesList);
+          if (brandsList.length > 0) setBrands(brandsList);
+          if (jpList.length > 0) setJobProjects(jpList);
+          if (drList.length > 0) setDailyReports(drList);
         }
       } catch (err: any) {
-        console.warn("Auto-seeding skipped or failed (perhaps offline or quota exceeded):", err);
-        // If Firestore fails (e.g. quota exceeded) and local storage is empty, initialize with default values
+        console.warn("Offline-online bidirectional merge skipped or failed:", err);
+        // Fallback to load localStorage into states if we are empty
         const localProducts = localStorage.getItem('stock_manager_products');
         if (!localProducts || JSON.parse(localProducts).length === 0) {
           setProducts(INITIAL_PRODUCTS);
@@ -326,10 +473,12 @@ export default function App() {
           localStorage.setItem('stock_manager_categories', JSON.stringify(INITIAL_CATEGORIES));
           localStorage.setItem('stock_manager_activities', JSON.stringify(INITIAL_ACTIVITIES));
         }
+      } finally {
+        setIsSyncComplete(true);
       }
     };
-    checkAndSeed();
-  }, [currentUser]);
+    mergeOfflineAndOnline();
+  }, [currentUser, isAutoSyncEnabled]);
 
   // Manual database seeding function to restore saved/initial demo items
   const handleSeedDatabase = async () => {
@@ -402,7 +551,7 @@ export default function App() {
 
   // Sync activities from Firestore (no seeding)
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
+    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
     const q = query(collection(db, 'activities'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: StockActivity[] = [];
@@ -423,11 +572,11 @@ export default function App() {
       setActivities(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, isSyncComplete]);
 
   // Sync boms from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
+    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
     const q = query(collection(db, 'boms'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Bom[] = [];
@@ -443,11 +592,11 @@ export default function App() {
       setBoms(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, isSyncComplete]);
 
   // Sync projects from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
+    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
     const q = query(collection(db, 'projects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Project[] = [];
@@ -463,11 +612,11 @@ export default function App() {
       setProjects(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, isSyncComplete]);
 
   // Sync jobs from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
+    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
     const q = query(collection(db, 'jobs'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Job[] = [];
@@ -483,11 +632,11 @@ export default function App() {
       setJobs(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, isSyncComplete]);
 
   // Sync employees from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
+    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
     const q = query(collection(db, 'employees'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Employee[] = [];
@@ -503,11 +652,11 @@ export default function App() {
       setEmployees(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, isSyncComplete]);
 
   // Sync brands from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
+    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
     const q = query(collection(db, 'brands'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Brand[] = [];
@@ -523,11 +672,11 @@ export default function App() {
       setBrands(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, isSyncComplete]);
 
   // Sync job projects from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
+    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
     const q = query(collection(db, 'jobProjects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: JobProject[] = [];
@@ -543,11 +692,11 @@ export default function App() {
       setJobProjects(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, isSyncComplete]);
 
   // Sync daily reports from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
+    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
     const q = query(collection(db, 'dailyReports'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: DailyReport[] = [];
@@ -563,7 +712,7 @@ export default function App() {
       setDailyReports(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, isSyncComplete]);
 
 
 
@@ -648,37 +797,174 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
+        setIsSyncComplete(false);
         const content = event.target?.result as string;
-        const backupData = JSON.parse(content);
         
-        const keys = [
-          'stock_manager_products',
-          'stock_manager_categories',
-          'stock_manager_activities',
-          'stock_manager_boms',
-          'stock_manager_projects_list',
-          'stock_manager_jobs_list',
-          'stock_manager_employees_list',
-          'stock_manager_brands_list',
-          'stock_manager_job_projects_list',
-          'stock_manager_daily_reports_list'
-        ];
+        let backupData: any = null;
+        const cleanedContent = content.trim();
+        try {
+          backupData = JSON.parse(cleanedContent);
+        } catch (jsonErr) {
+          // If direct parsing fails, let's try to extract JSON from any enclosing brackets/braces
+          const jsonMatch = cleanedContent.match(/[\{\[][\s\S]*[\}\]]/);
+          if (jsonMatch) {
+            try {
+              backupData = JSON.parse(jsonMatch[0]);
+            } catch (innerErr) {
+              throw new Error("ไฟล์ JSON มีรูปแบบไม่ถูกต้อง ไม่สามารถแกะโค้ดข้อมูลได้");
+            }
+          } else {
+            throw new Error("ไม่พบข้อมูลรูปแบบ JSON ในไฟล์ที่คุณเลือก");
+          }
+        }
+
+        const keyMapping: Record<string, string[]> = {
+          'stock_manager_products': ['stock_manager_products', 'products', 'products_list', 'product', 'item', 'items'],
+          'stock_manager_categories': ['stock_manager_categories', 'categories', 'categories_list', 'category'],
+          'stock_manager_activities': ['stock_manager_activities', 'activities', 'activities_list', 'activity_logs', 'activity'],
+          'stock_manager_boms': ['stock_manager_boms', 'boms', 'boms_list', 'bom'],
+          'stock_manager_projects_list': ['stock_manager_projects_list', 'stock_manager_projects', 'projects', 'projects_list', 'project'],
+          'stock_manager_jobs_list': ['stock_manager_jobs_list', 'stock_manager_jobs', 'jobs', 'jobs_list', 'job'],
+          'stock_manager_employees_list': ['stock_manager_employees_list', 'stock_manager_employees', 'employees', 'employees_list', 'employee'],
+          'stock_manager_brands_list': ['stock_manager_brands_list', 'stock_manager_brands', 'brands', 'brands_list', 'brand'],
+          'stock_manager_job_projects_list': ['stock_manager_job_projects_list', 'stock_manager_job_projects', 'jobProjects', 'job_projects', 'job_projects_list'],
+          'stock_manager_daily_reports_list': ['stock_manager_daily_reports_list', 'stock_manager_daily_reports', 'dailyReports', 'daily_reports', 'daily_reports_list']
+        };
+
+        const foundArrays: Record<string, any[]> = {};
+        
+        // Deep search function to locate any alias arrays in the backup JSON, no matter how nested
+        const deepSearch = (obj: any) => {
+          if (!obj || typeof obj !== 'object') return;
+          
+          if (Array.isArray(obj)) {
+            const firstItem = obj[0];
+            if (firstItem && typeof firstItem === 'object') {
+              if ('sku' in firstItem || 'price' in firstItem || 'barcode' in firstItem || 'quantity' in firstItem) {
+                if (!foundArrays['stock_manager_products'] || obj.length > foundArrays['stock_manager_products'].length) {
+                  foundArrays['stock_manager_products'] = obj;
+                }
+              } else if ('name' in firstItem && ('color' in firstItem || 'subSeries' in firstItem || 'series' in firstItem) && !('sku' in firstItem) && !('nickname' in firstItem) && !('department' in firstItem) && !('role' in firstItem)) {
+                if (!foundArrays['stock_manager_categories'] || obj.length > foundArrays['stock_manager_categories'].length) {
+                  foundArrays['stock_manager_categories'] = obj;
+                }
+              } else if ('quantityChange' in firstItem || 'oldQuantity' in firstItem || 'actionType' in firstItem) {
+                if (!foundArrays['stock_manager_activities'] || obj.length > foundArrays['stock_manager_activities'].length) {
+                  foundArrays['stock_manager_activities'] = obj;
+                }
+              } else if (('requiredQuantity' in firstItem && 'items' in firstItem) || ('stockDeducted' in firstItem && 'items' in firstItem)) {
+                if (!foundArrays['stock_manager_boms'] || obj.length > foundArrays['stock_manager_boms'].length) {
+                  foundArrays['stock_manager_boms'] = obj;
+                }
+              } else if ('bomId' in firstItem && 'status' in firstItem && !('tasks' in firstItem) && !('modules' in firstItem) && !('customer' in firstItem)) {
+                if (!foundArrays['stock_manager_projects_list'] || obj.length > foundArrays['stock_manager_projects_list'].length) {
+                  foundArrays['stock_manager_projects_list'] = obj;
+                }
+              } else if ('jobNo' in firstItem && 'assignee' in firstItem && !('customerName' in firstItem) && !('customer' in firstItem) && !('projectName' in firstItem)) {
+                if (!foundArrays['stock_manager_jobs_list'] || obj.length > foundArrays['stock_manager_jobs_list'].length) {
+                  foundArrays['stock_manager_jobs_list'] = obj;
+                }
+              } else if ('employeeName' in firstItem && 'tasks' in firstItem) {
+                if (!foundArrays['stock_manager_daily_reports_list'] || obj.length > foundArrays['stock_manager_daily_reports_list'].length) {
+                  foundArrays['stock_manager_daily_reports_list'] = obj;
+                }
+              } else if (('customer' in firstItem || 'customerName' in firstItem || 'projectName' in firstItem) && 'jobNo' in firstItem) {
+                if (!foundArrays['stock_manager_job_projects_list'] || obj.length > foundArrays['stock_manager_job_projects_list'].length) {
+                  foundArrays['stock_manager_job_projects_list'] = obj;
+                }
+              } else if ('name' in firstItem && ('nickname' in firstItem || 'department' in firstItem || 'orgLevel' in firstItem || 'role' in firstItem || 'phone' in firstItem || 'position' in firstItem || 'email' in firstItem) && !('sku' in firstItem) && !('price' in firstItem) && !('color' in firstItem) && !('jobNo' in firstItem) && !('bomId' in firstItem)) {
+                if (!foundArrays['stock_manager_employees_list'] || obj.length > foundArrays['stock_manager_employees_list'].length) {
+                  foundArrays['stock_manager_employees_list'] = obj;
+                }
+              } else if ('name' in firstItem && 
+                         !('color' in firstItem) && 
+                         !('sku' in firstItem) && 
+                         !('price' in firstItem) && 
+                         !('nickname' in firstItem) && 
+                         !('department' in firstItem) && 
+                         !('orgLevel' in firstItem) && 
+                         !('role' in firstItem) && 
+                         !('phone' in firstItem) && 
+                         !('position' in firstItem) && 
+                         !('jobNo' in firstItem) && 
+                         !('bomId' in firstItem) && 
+                         !('items' in firstItem) && 
+                         !('employeeName' in firstItem) && 
+                         !('projectName' in firstItem) && 
+                         !('customer' in firstItem) && 
+                         !('email' in firstItem)) {
+                if (!foundArrays['stock_manager_brands_list'] || obj.length > foundArrays['stock_manager_brands_list'].length) {
+                  foundArrays['stock_manager_brands_list'] = obj;
+                }
+              }
+            }
+            return;
+          }
+
+          // Traverse object keys
+          for (const [key, val] of Object.entries(obj)) {
+            const normalizedKey = key.trim().toLowerCase().replace(/_/g, '').replace(/-/g, '');
+            // Check if this key corresponds to any of our canonical concepts
+            Object.entries(keyMapping).forEach(([canonicalKey, aliases]) => {
+              const matchedAlias = aliases.some(alias => {
+                const normalizedAlias = alias.toLowerCase().replace(/_/g, '').replace(/-/g, '');
+                return normalizedKey === normalizedAlias || normalizedKey.includes(normalizedAlias) || normalizedAlias.includes(normalizedKey);
+              });
+
+              if (matchedAlias && Array.isArray(val) && val.length > 0) {
+                if (!foundArrays[canonicalKey] || val.length > foundArrays[canonicalKey].length) {
+                  foundArrays[canonicalKey] = val;
+                }
+              }
+            });
+
+            // Recurse into nested objects
+            if (val && typeof val === 'object') {
+              deepSearch(val);
+            }
+          }
+        };
+
+        deepSearch(backupData);
 
         let restoredCount = 0;
-        keys.forEach(key => {
-          if (backupData[key]) {
-            localStorage.setItem(key, JSON.stringify(backupData[key]));
+        const normalizedData: Record<string, any[]> = {};
+
+        Object.entries(keyMapping).forEach(([canonicalKey, aliases]) => {
+          const foundValue = foundArrays[canonicalKey];
+
+          if (foundValue && Array.isArray(foundValue) && foundValue.length > 0) {
+            // Ensure all items have an 'id', 'createdAt', and 'updatedAt'
+            const updatedList = foundValue.map((item: any, idx: number) => {
+              if (item && typeof item === 'object') {
+                const newItem = { ...item };
+                if (!newItem.id) {
+                  newItem.id = `restored-${canonicalKey}-${idx}-${Math.random().toString(36).substring(2, 5)}`;
+                }
+                if (!newItem.createdAt) {
+                  newItem.createdAt = new Date().toISOString();
+                }
+                if (!newItem.updatedAt) {
+                  newItem.updatedAt = new Date().toISOString();
+                }
+                return newItem;
+              }
+              return item;
+            });
+
+            normalizedData[canonicalKey] = updatedList;
+            localStorage.setItem(canonicalKey, JSON.stringify(updatedList));
             restoredCount++;
           }
         });
 
         if (restoredCount === 0) {
-          throw new Error('ไม่พบข้อมูลสำรองที่ถูกต้องในไฟล์นี้');
+          throw new Error('ไม่พบข้อมูลสต็อกสินค้า โครงการ หรือสูตร BOM ที่สามารถอ่านได้ในไฟล์นี้ กรุณาตรวจสอบรูปแบบไฟล์ JSON ของคุณ');
         }
 
         // Upload to Firestore if logged in
         if (currentUser && currentUser.uid !== 'demo-user') {
-          addToast('info', 'กำลังกู้คืนข้อมูลขึ้นระบบคลาวด์...', 'กำลังอัปโหลดรายการสำรองทั้งหมดขึ้นฐานข้อมูลคลาวด์ กรุณารอสักครู่...');
+          addToast('info', 'กำลังกู้คืนข้อมูลขึ้นระบบคลาวด์...', 'กำลังซิงค์รายการสำรองทั้งหมดขึ้นระบบคลาวด์ กรุณารอสักครู่...');
           
           const keyToCollection: Record<string, string> = {
             'stock_manager_products': 'products',
@@ -693,24 +979,16 @@ export default function App() {
             'stock_manager_daily_reports_list': 'dailyReports'
           };
 
-          const promises: Promise<void>[] = [];
-          keys.forEach(key => {
-            const list = backupData[key];
-            if (list && Array.isArray(list)) {
+          try {
+            for (const [key, list] of Object.entries(normalizedData)) {
               const colName = keyToCollection[key];
-              if (colName) {
-                list.forEach((item: any) => {
-                  if (item && item.id) {
-                    const { id, ...data } = item;
-                    promises.push(setDoc(doc(db, colName, id), cleanUndefined(data), { merge: true }));
-                  }
-                });
+              if (colName && Array.isArray(list) && list.length > 0) {
+                await uploadListToFirestoreInBatches(colName, list);
               }
             }
-          });
-
-          if (promises.length > 0) {
-            await Promise.all(promises);
+          } catch (firestoreErr: any) {
+            console.warn("Firestore upload failed during restore backup:", firestoreErr);
+            addToast('warning', 'เชื่อมต่อคลาวด์ไม่สมบูรณ์ (อาจเกินโควต้า)', 'ข้อมูลบางส่วนไม่สามารถอัปโหลดขึ้นคลาวด์ได้ในขณะนี้เนื่องจากโควต้าเต็ม แต่ระบบได้กู้คืนและเซฟข้อมูลทั้งหมดลงเบราว์เซอร์เครื่องนี้ให้คุณใช้งานได้ปกติแล้ว!');
           }
         }
 
@@ -745,10 +1023,12 @@ export default function App() {
         const drVal = localStorage.getItem('stock_manager_daily_reports_list');
         if (drVal) setDailyReports(JSON.parse(drVal));
 
-        addToast('success', 'กู้คืนข้อมูลสำเร็จ', 'กู้คืนข้อมูลพัสดุและสต็อกทั้งหมดเข้าสู่ระบบเรียบร้อยแล้ว');
+        addToast('success', 'กู้คืนข้อมูลสำเร็จ!', 'กู้คืนข้อมูลสต็อกสินค้า โครงการ และสูตร BOM ทั้งหมดกลับคืนระบบเรียบร้อยแล้วครับ');
       } catch (err: any) {
         console.error(err);
         addToast('warning', 'กู้คืนข้อมูลล้มเหลว', `ไฟล์ไม่ถูกต้องหรือเกิดข้อผิดพลาด: ${err.message}`);
+      } finally {
+        setIsSyncComplete(true);
       }
     };
     reader.readAsText(file);
@@ -773,7 +1053,18 @@ export default function App() {
       const savedJobProjects = localStorage.getItem('stock_manager_job_projects_list');
       const savedDailyReports = localStorage.getItem('stock_manager_daily_reports_list');
 
-      if (!savedProducts && !savedCategories) {
+      if (
+        !savedProducts &&
+        !savedCategories &&
+        !savedActivities &&
+        !savedBoms &&
+        !savedProjects &&
+        !savedJobs &&
+        !savedEmployees &&
+        !savedBrands &&
+        !savedJobProjects &&
+        !savedDailyReports
+      ) {
         addToast('warning', 'ไม่พบข้อมูลเดิมบนเครื่อง', 'ไม่พบประวัติข้อมูลหรือสินค้าที่บันทึกไว้ในเบราว์เซอร์เครื่องนี้');
         return;
       }
@@ -783,94 +1074,64 @@ export default function App() {
       // Categories
       if (savedCategories) {
         const categoriesList = JSON.parse(savedCategories) as Category[];
-        for (const cat of categoriesList) {
-          const { id, ...data } = cat;
-          await setDoc(doc(db, 'categories', id), cleanUndefined(data), { merge: true });
-        }
+        await uploadListToFirestoreInBatches('categories', categoriesList);
       }
 
       // Products
       if (savedProducts) {
         const productsList = JSON.parse(savedProducts) as Product[];
-        for (const prod of productsList) {
-          const { id, ...data } = prod;
-          await setDoc(doc(db, 'products', id), cleanUndefined(data), { merge: true });
-        }
+        await uploadListToFirestoreInBatches('products', productsList);
       }
 
       // Activities
       if (savedActivities) {
         const activitiesList = JSON.parse(savedActivities) as StockActivity[];
-        for (const act of activitiesList) {
-          const { id, ...data } = act;
-          await setDoc(doc(db, 'activities', id), cleanUndefined(data), { merge: true });
-        }
+        await uploadListToFirestoreInBatches('activities', activitiesList);
       }
 
       // Boms
       if (savedBoms) {
         const bomsList = JSON.parse(savedBoms) as Bom[];
-        for (const bom of bomsList) {
-          const { id, ...data } = bom;
-          await setDoc(doc(db, 'boms', id), cleanUndefined(data), { merge: true });
-        }
+        await uploadListToFirestoreInBatches('boms', bomsList);
       }
 
       // Projects
       if (savedProjects) {
         const projectsList = JSON.parse(savedProjects) as Project[];
-        for (const proj of projectsList) {
-          const { id, ...data } = proj;
-          await setDoc(doc(db, 'projects', id), cleanUndefined(data), { merge: true });
-        }
+        await uploadListToFirestoreInBatches('projects', projectsList);
       }
 
       // Jobs
       if (savedJobs) {
         const jobsList = JSON.parse(savedJobs) as Job[];
-        for (const job of jobsList) {
-          const { id, ...data } = job;
-          await setDoc(doc(db, 'jobs', id), cleanUndefined(data), { merge: true });
-        }
+        await uploadListToFirestoreInBatches('jobs', jobsList);
       }
 
       // Employees
       if (savedEmployees) {
         const employeesList = JSON.parse(savedEmployees) as Employee[];
-        for (const emp of employeesList) {
-          const { id, ...data } = emp;
-          await setDoc(doc(db, 'employees', id), cleanUndefined(data), { merge: true });
-        }
+        await uploadListToFirestoreInBatches('employees', employeesList);
       }
 
       // Brands
       if (savedBrands) {
         const brandsList = JSON.parse(savedBrands) as Brand[];
-        for (const brand of brandsList) {
-          const { id, ...data } = brand;
-          await setDoc(doc(db, 'brands', id), cleanUndefined(data), { merge: true });
-        }
+        await uploadListToFirestoreInBatches('brands', brandsList);
       }
 
       // JobProjects
       if (savedJobProjects) {
         const jpList = JSON.parse(savedJobProjects) as JobProject[];
-        for (const jp of jpList) {
-          const { id, ...data } = jp;
-          await setDoc(doc(db, 'jobProjects', id), cleanUndefined(data), { merge: true });
-        }
+        await uploadListToFirestoreInBatches('jobProjects', jpList);
       }
 
       // DailyReports
       if (savedDailyReports) {
         const drList = JSON.parse(savedDailyReports) as DailyReport[];
-        for (const dr of drList) {
-          const { id, ...data } = dr;
-          await setDoc(doc(db, 'dailyReports', id), cleanUndefined(data), { merge: true });
-        }
+        await uploadListToFirestoreInBatches('dailyReports', drList);
       }
 
-      addToast('success', 'กู้คืนข้อมูลสำเร็จ!', 'ระบบดึงรายการพัสดุและสต็อกทั้งหมดที่เคยบันทึกในเบราว์เซอร์เครื่องนี้ขึ้นฐานข้อมูลคลาวด์ส่วนกลางเรียบร้อยแล้วครับ ข้อมูลของคุณกลับมาทั้งหมดเรียบร้อยแล้ว');
+      addToast('success', 'ซิงค์ข้อมูลสำเร็จ!', 'ระบบดึงรายการพัสดุและสต็อกทั้งหมดที่เคยบันทึกในเบราว์เซอร์เครื่องนี้ขึ้นฐานข้อมูลคลาวด์ส่วนกลางเรียบร้อยแล้วครับ ข้อมูลของคุณกลับมาทั้งหมดเรียบร้อยแล้ว');
     } catch (err: any) {
       console.error(err);
       addToast('warning', 'การซิงค์ข้อมูลล้มเหลว', `เกิดข้อผิดพลาดในการนำขึ้นคลาวด์: ${err.message}`);
@@ -1736,6 +1997,12 @@ export default function App() {
             onDownloadBackup={handleDownloadBackup}
             onRestoreBackup={handleRestoreBackup}
             onUploadLocalStorageToCloud={handleUploadLocalStorageToCloud}
+            isAutoSyncEnabled={isAutoSyncEnabled}
+            onToggleAutoSync={(enabled) => {
+              setIsAutoSyncEnabled(enabled);
+              localStorage.setItem('stock_manager_auto_sync_enabled', enabled ? 'true' : 'false');
+              addToast('success', enabled ? 'เปิดใช้งานซิงค์ออโต้แล้ว' : 'ปิดใช้งานซิงค์ออโต้แล้ว', enabled ? 'ระบบจะเริ่มซิงค์ข้อมูลจากเครื่องนี้ขึ้นระบบคลาวด์โดยอัตโนมัติเมื่อเริ่มทำงาน' : 'ระบบจะไม่ซิงค์ข้อมูลจากเครื่องขึ้นคลาวด์เองในเบื้องหลัง เพื่อประหยัดโควต้าฐานข้อมูล');
+            }}
           />
         );
       case 'catalog':
