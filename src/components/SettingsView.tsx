@@ -28,7 +28,8 @@ import {
   Tag,
   Database,
   RotateCcw,
-  Download
+  Download,
+  CloudUpload
 } from 'lucide-react';
 
 const getDeptBadgeStyle = (dept: string) => {
@@ -485,6 +486,7 @@ interface SettingsViewProps {
   onSeedDatabase?: () => Promise<void>;
   onDownloadBackup?: () => void;
   onRestoreBackup?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onUploadLocalStorageToCloud?: () => Promise<void>;
 }
 
 type SubTab = 'projects' | 'employees' | 'brands' | 'database';
@@ -506,7 +508,8 @@ export default function SettingsView({
   onDeleteBrand,
   onSeedDatabase,
   onDownloadBackup,
-  onRestoreBackup
+  onRestoreBackup,
+  onUploadLocalStorageToCloud
 }: SettingsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('projects');
 
@@ -3080,7 +3083,7 @@ export default function SettingsView({
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             
             {/* Box 1: Seeding / Initial Restore */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs">
@@ -3155,6 +3158,36 @@ export default function SettingsView({
                 </label>
               </div>
             </div>
+
+            {/* Box 3: Local Storage to Cloud Migration */}
+            {onUploadLocalStorageToCloud && (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 rounded-xl">
+                    <CloudUpload className="h-5 w-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 font-sans">
+                      ซิงค์คลังพัสดุจากเครื่องเดิมขึ้นคลาวด์ (Sync Local to Cloud)
+                    </h4>
+                    <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                      หากข้อมูลพัสดุและสต็อกของคุณสูญหายหรือย้อนกลับมาไม่ครบหลังเปลี่ยนบัญชี คุณสามารถกดปุ่มนี้เพื่อดึงข้อมูลทั้งหมดที่เคยบันทึกไว้ในเบราว์เซอร์เครื่องนี้ขึ้นฐานข้อมูลคลาวด์ออนไลน์เพื่อใช้งานต่อได้ทันที!
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex justify-end font-sans">
+                  <button
+                    type="button"
+                    onClick={onUploadLocalStorageToCloud}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/10 cursor-pointer"
+                  >
+                    <CloudUpload className="h-3.5 w-3.5" />
+                    อัปโหลดรายการจากเครื่องนี้ขึ้นระบบคลาวด์ด่วน
+                  </button>
+                </div>
+              </div>
+            )}
 
           </div>
         </div>

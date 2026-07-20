@@ -5,6 +5,7 @@ import CategoryView from './CategoryView';
 import OrderingSystemView from './OrderingSystemView';
 import ShoppingCartView from './ShoppingCartView';
 import { INITIAL_CATEGORIES } from '../initialData';
+import { auth, GoogleAuthProvider, signInWithPopup } from '../firebase';
 
 interface ProductListViewProps {
   products: Product[];
@@ -16,7 +17,7 @@ interface ProductListViewProps {
   onAdjustStock: (id: string, change: number, reason: string) => any;
   statusFilter: string;
   onSetStatusFilter: (filter: string) => void;
-  onAddCategory: (category: Omit<Category, 'id'>) => void;
+  onAddCategory: (category: Omit<Category, 'id'> & { id?: string }) => void;
   onEditCategory: (id: string, updated: Partial<Category>) => void;
   onDeleteCategory: (id: string) => void;
   addToast: (type: 'success' | 'warning' | 'info', title: string, message: string) => void;
@@ -99,6 +100,8 @@ export default function ProductListView({
   const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const [isReorderMode, setIsReorderMode] = useState(false);
+
+
 
   // Shopping Cart state
   const [cartItems, setCartItems] = useState<any[]>(() => {
@@ -301,14 +304,6 @@ export default function ProductListView({
 
   // Filtered Products
   const filteredProducts = products.filter((p) => {
-    // Exclude mock products entirely so they never clutter your space
-    const isMock = ['prod-1', 'prod-2', 'prod-3', 'prod-4', 'prod-5', 'prod-6'].includes(p.id);
-    if (isMock) return false;
-
-    // รายการพัสดุ (Products) ถ้าไม่ใส่รุ่นไม่ต้องแสดง (ยกเว้นเปิด toggle เพื่อแก้ไขสินค้าเดิม)
-    const hasModel = p.modelNumber !== undefined && p.modelNumber !== null && String(p.modelNumber).trim() !== '';
-    if (!hasModel && !showLegacyProducts) return false;
-
     const matchesSearch =
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.sku.toLowerCase().includes(searchTerm.toLowerCase());
@@ -729,13 +724,15 @@ export default function ProductListView({
             </div>
 
             {/* Right: Trigger add product */}
-            <button
-              onClick={handleOpenAddModal}
-              className="flex items-center justify-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-bold transition-all cursor-pointer flex-shrink-0 active:scale-95"
-              id="btn-add-product"
-            >
-              <Plus className="h-3 w-3" /> เพิ่มสินค้า
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={handleOpenAddModal}
+                className="flex items-center justify-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-bold transition-all cursor-pointer flex-shrink-0 active:scale-95"
+                id="btn-add-product"
+              >
+                <Plus className="h-3 w-3" /> เพิ่มสินค้า
+              </button>
+            </div>
           </div>
 
           {/* Category Filter Cards Row (Flat & Wrapping - No horizontal scrollbar!) */}
@@ -840,29 +837,6 @@ export default function ProductListView({
               >
                 หมดคลัง ({products.filter((p) => p.quantity === 0).length})
               </button>
-
-              {/* Legacy Products toggle (Show previously saved items without model) */}
-              {products.some(p => !['prod-1', 'prod-2', 'prod-3', 'prod-4', 'prod-5', 'prod-6'].includes(p.id) && (p.modelNumber === undefined || p.modelNumber === null || String(p.modelNumber).trim() === '')) && (
-                <button
-                  type="button"
-                  onClick={() => setShowLegacyProducts(!showLegacyProducts)}
-                  className={`px-2 py-0.5 text-[10px] font-black rounded border transition-all cursor-pointer flex items-center gap-1 ${
-                    showLegacyProducts
-                      ? 'bg-rose-500 border-rose-600 text-white font-extrabold shadow-sm hover:bg-rose-600'
-                      : 'bg-amber-500 border-amber-600 text-white hover:bg-amber-600'
-                  }`}
-                  title="แสดงรายการสินค้าดั้งเดิมที่ยังไม่ได้ระบุรุ่น เพื่อให้สามารถแก้ไขข้อมูลและใส่รุ่นสินค้าได้"
-                >
-                  {showLegacyProducts ? 'ซ่อนสินค้าไม่มีรุ่น 🙈' : 'แสดงสินค้าเดิมไม่มีรุ่นเพื่อแก้ไข ✏️'}
-                  <span className="bg-white/20 px-1 py-0.2 rounded text-[8.5px]">
-                    {products.filter(p => {
-                      const isMock = ['prod-1', 'prod-2', 'prod-3', 'prod-4', 'prod-5', 'prod-6'].includes(p.id);
-                      const hasModel = p.modelNumber !== undefined && p.modelNumber !== null && String(p.modelNumber).trim() !== '';
-                      return !isMock && !hasModel;
-                    }).length}
-                  </span>
-                </button>
-              )}
             </div>
 
             {/* View Layout Toggle */}
@@ -2199,6 +2173,8 @@ export default function ProductListView({
           </div>
         </div>
       )}
+
+
         </>
       )}
     </div>

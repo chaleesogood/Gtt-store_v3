@@ -47,8 +47,8 @@ export default function UserManagementView({
       return;
     }
 
-    if (user.email === 'chaleesogood@gmail.com') {
-      addToast('warning', 'ระงับการทำงาน', 'บัญชีผู้พัฒนาหลัก (chaleesogood@gmail.com) ไม่สามารถถูกเปลี่ยนสิทธิ์ได้');
+    if (user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com') {
+      addToast('warning', 'ระงับการทำงาน', `บัญชีผู้พัฒนาหลัก (${user.email}) ไม่สามารถถูกเปลี่ยนสิทธิ์ได้`);
       return;
     }
 
@@ -74,7 +74,7 @@ export default function UserManagementView({
       return;
     }
 
-    if (user.email === 'chaleesogood@gmail.com') {
+    if (user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com') {
       addToast('warning', 'ระงับการทำงาน', 'บัญชีผู้พัฒนาหลักไม่สามารถถูกลบออกจากสิทธิ์ระบบได้');
       return;
     }
@@ -168,7 +168,7 @@ export default function UserManagementView({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                 {filteredUsers.map((user) => {
                   const isSelf = user.email === currentUserEmail;
-                  const isDeveloper = user.email === 'chaleesogood@gmail.com';
+                  const isDeveloper = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
                   
                   return (
                     <tr 

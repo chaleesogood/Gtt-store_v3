@@ -3,8 +3,9 @@
   "appId": "1:605029556380:web:ae2642517abab6b0a94d59",
   "apiKey": "AIzaSyCgOhsimk1BNk-P22u2i7BOzAQQrLJb74I",
   "authDomain": "store-gtt.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-stockinventoryma-f6aa8430-9129-40f5-b3fd-44323fc5cf99",
   "storageBucket": "store-gtt.firebasestorage.app",
   "messagingSenderId": "605029556380",
-  "measurementId": ""
+  "measurementId": "",
+  "oAuthClientId": "605029556380-0dqg53l43830dv9v1a567usgp00hs9en.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

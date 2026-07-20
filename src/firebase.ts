@@ -16,7 +16,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore targeting the specific databaseId if provided, with local cache persistence
-const dbId = firebaseConfigJson.firestoreDatabaseId;
+const dbId = (firebaseConfigJson as any).firestoreDatabaseId;
 
 // Determine cache based on environment (IndexedDB is often blocked in sandboxed third-party iframes)
 const isIframe = typeof window !== 'undefined' && window.self !== window.top;

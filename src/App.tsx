@@ -91,7 +91,7 @@ export default function App() {
             setCurrentUserRole(data.role);
           } else {
             // Document doesn't exist, let's create a default role record!
-            const isDefaultAdmin = user.email === 'chaleesogood@gmail.com';
+            const isDefaultAdmin = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
             const defaultRole: 'admin' | 'user' = isDefaultAdmin ? 'admin' : 'user';
             
             const newRoleRecord: UserRole = {
@@ -113,7 +113,7 @@ export default function App() {
           setAuthLoading(false);
         }, (error) => {
           console.error("Error listening to user role:", error);
-          setCurrentUserRole(user.email === 'chaleesogood@gmail.com' ? 'admin' : 'user');
+          setCurrentUserRole((user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com') ? 'admin' : 'user');
           setAuthLoading(false);
         });
       } else {
@@ -211,7 +211,7 @@ export default function App() {
 
   // Sync products from Firestore (no seeding)
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'demo-user') return;
     const q = query(collection(db, 'products'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Product[] = [];
@@ -237,7 +237,7 @@ export default function App() {
 
   // Sync categories from Firestore (no seeding)
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'demo-user') return;
     const q = query(collection(db, 'categories'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Category[] = [];
@@ -295,7 +295,7 @@ export default function App() {
 
   // Auto-seed database if empty on login/boot
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'demo-user') return;
     const checkAndSeed = async () => {
       try {
         const querySnapshot = await getDocs(collection(db, 'products'));
@@ -402,7 +402,7 @@ export default function App() {
 
   // Sync activities from Firestore (no seeding)
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'demo-user') return;
     const q = query(collection(db, 'activities'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: StockActivity[] = [];
@@ -427,7 +427,7 @@ export default function App() {
 
   // Sync boms from Firestore
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'demo-user') return;
     const q = query(collection(db, 'boms'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Bom[] = [];
@@ -447,7 +447,7 @@ export default function App() {
 
   // Sync projects from Firestore
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'demo-user') return;
     const q = query(collection(db, 'projects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Project[] = [];
@@ -467,7 +467,7 @@ export default function App() {
 
   // Sync jobs from Firestore
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'demo-user') return;
     const q = query(collection(db, 'jobs'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Job[] = [];
@@ -487,7 +487,7 @@ export default function App() {
 
   // Sync employees from Firestore
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'demo-user') return;
     const q = query(collection(db, 'employees'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Employee[] = [];
@@ -507,7 +507,7 @@ export default function App() {
 
   // Sync brands from Firestore
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'demo-user') return;
     const q = query(collection(db, 'brands'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: Brand[] = [];
@@ -527,7 +527,7 @@ export default function App() {
 
   // Sync job projects from Firestore
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'demo-user') return;
     const q = query(collection(db, 'jobProjects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: JobProject[] = [];
@@ -547,7 +547,7 @@ export default function App() {
 
   // Sync daily reports from Firestore
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'demo-user') return;
     const q = query(collection(db, 'dailyReports'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list: DailyReport[] = [];
@@ -715,6 +715,128 @@ export default function App() {
     };
     reader.readAsText(file);
     e.target.value = '';
+  };
+
+  const handleUploadLocalStorageToCloud = async () => {
+    if (!currentUser || currentUser.uid === 'demo-user') {
+      addToast('warning', 'จำเป็นต้องลงชื่อเข้าใช้', 'กรุณาลงชื่อเข้าใช้ด้วยบัญชีจริง (ไม่ใช่โหมดออฟไลน์) เพื่อนำเข้าประวัติขึ้นระบบคลาวด์');
+      return;
+    }
+
+    try {
+      const savedProducts = localStorage.getItem('stock_manager_products');
+      const savedCategories = localStorage.getItem('stock_manager_categories');
+      const savedActivities = localStorage.getItem('stock_manager_activities');
+      const savedBoms = localStorage.getItem('stock_manager_boms');
+      const savedProjects = localStorage.getItem('stock_manager_projects_list');
+      const savedJobs = localStorage.getItem('stock_manager_jobs_list');
+      const savedEmployees = localStorage.getItem('stock_manager_employees_list');
+      const savedBrands = localStorage.getItem('stock_manager_brands_list');
+      const savedJobProjects = localStorage.getItem('stock_manager_job_projects_list');
+      const savedDailyReports = localStorage.getItem('stock_manager_daily_reports_list');
+
+      if (!savedProducts && !savedCategories) {
+        addToast('warning', 'ไม่พบข้อมูลเดิมบนเครื่อง', 'ไม่พบประวัติข้อมูลหรือสินค้าที่บันทึกไว้ในเบราว์เซอร์เครื่องนี้');
+        return;
+      }
+
+      addToast('info', 'กำลังอัปโหลด...', 'เริ่มการเชื่อมข้อมูลเดิมของคุณจากเครื่องนี้ขึ้นระบบคลาวด์ออนไลน์ กรุณารอสักครู่...');
+
+      // Categories
+      if (savedCategories) {
+        const categoriesList = JSON.parse(savedCategories) as Category[];
+        for (const cat of categoriesList) {
+          const { id, ...data } = cat;
+          await setDoc(doc(db, 'categories', id), cleanUndefined(data), { merge: true });
+        }
+      }
+
+      // Products
+      if (savedProducts) {
+        const productsList = JSON.parse(savedProducts) as Product[];
+        for (const prod of productsList) {
+          const { id, ...data } = prod;
+          await setDoc(doc(db, 'products', id), cleanUndefined(data), { merge: true });
+        }
+      }
+
+      // Activities
+      if (savedActivities) {
+        const activitiesList = JSON.parse(savedActivities) as StockActivity[];
+        for (const act of activitiesList) {
+          const { id, ...data } = act;
+          await setDoc(doc(db, 'activities', id), cleanUndefined(data), { merge: true });
+        }
+      }
+
+      // Boms
+      if (savedBoms) {
+        const bomsList = JSON.parse(savedBoms) as Bom[];
+        for (const bom of bomsList) {
+          const { id, ...data } = bom;
+          await setDoc(doc(db, 'boms', id), cleanUndefined(data), { merge: true });
+        }
+      }
+
+      // Projects
+      if (savedProjects) {
+        const projectsList = JSON.parse(savedProjects) as Project[];
+        for (const proj of projectsList) {
+          const { id, ...data } = proj;
+          await setDoc(doc(db, 'projects', id), cleanUndefined(data), { merge: true });
+        }
+      }
+
+      // Jobs
+      if (savedJobs) {
+        const jobsList = JSON.parse(savedJobs) as Job[];
+        for (const job of jobsList) {
+          const { id, ...data } = job;
+          await setDoc(doc(db, 'jobs', id), cleanUndefined(data), { merge: true });
+        }
+      }
+
+      // Employees
+      if (savedEmployees) {
+        const employeesList = JSON.parse(savedEmployees) as Employee[];
+        for (const emp of employeesList) {
+          const { id, ...data } = emp;
+          await setDoc(doc(db, 'employees', id), cleanUndefined(data), { merge: true });
+        }
+      }
+
+      // Brands
+      if (savedBrands) {
+        const brandsList = JSON.parse(savedBrands) as Brand[];
+        for (const brand of brandsList) {
+          const { id, ...data } = brand;
+          await setDoc(doc(db, 'brands', id), cleanUndefined(data), { merge: true });
+        }
+      }
+
+      // JobProjects
+      if (savedJobProjects) {
+        const jpList = JSON.parse(savedJobProjects) as JobProject[];
+        for (const jp of jpList) {
+          const { id, ...data } = jp;
+          await setDoc(doc(db, 'jobProjects', id), cleanUndefined(data), { merge: true });
+        }
+      }
+
+      // DailyReports
+      if (savedDailyReports) {
+        const drList = JSON.parse(savedDailyReports) as DailyReport[];
+        for (const dr of drList) {
+          const { id, ...data } = dr;
+          await setDoc(doc(db, 'dailyReports', id), cleanUndefined(data), { merge: true });
+        }
+      }
+
+      addToast('success', 'กู้คืนข้อมูลสำเร็จ!', 'ระบบดึงรายการพัสดุและสต็อกทั้งหมดที่เคยบันทึกในเบราว์เซอร์เครื่องนี้ขึ้นฐานข้อมูลคลาวด์ส่วนกลางเรียบร้อยแล้วครับ ข้อมูลของคุณกลับมาทั้งหมดเรียบร้อยแล้ว');
+    } catch (err: any) {
+      console.error(err);
+      addToast('warning', 'การซิงค์ข้อมูลล้มเหลว', `เกิดข้อผิดพลาดในการนำขึ้นคลาวด์: ${err.message}`);
+    }
   };
 
   // -------------------- PRODUCTS WORKFLOWS --------------------
@@ -965,10 +1087,10 @@ export default function App() {
 
   // -------------------- CATEGORIES WORKFLOWS --------------------
 
-  const handleAddCategory = async (newCat: Omit<Category, 'id'>) => {
+  const handleAddCategory = async (newCat: Omit<Category, 'id'> & { id?: string }) => {
     const category: Category = {
       ...newCat,
-      id: `cat-${Math.random().toString(36).substring(2, 9)}`,
+      id: newCat.id || `cat-${Math.random().toString(36).substring(2, 9)}`,
     };
 
     // Optimistic state and local cache updates
@@ -1575,6 +1697,7 @@ export default function App() {
             onSeedDatabase={handleSeedDatabase}
             onDownloadBackup={handleDownloadBackup}
             onRestoreBackup={handleRestoreBackup}
+            onUploadLocalStorageToCloud={handleUploadLocalStorageToCloud}
           />
         );
       case 'catalog':
@@ -1656,6 +1779,43 @@ export default function App() {
     }
   };
 
+  const handleGuestBypass = () => {
+    const guestUser = {
+      uid: 'demo-user',
+      email: 'guest@gtt2013.com',
+      displayName: 'ผู้เข้าชมทั่วไป (Demo/Offline)',
+      photoURL: null
+    };
+    setCurrentUser(guestUser);
+    setCurrentUserRole('admin');
+    setIsDemoBypass(true);
+    
+    // Load data from localStorage
+    const savedProducts = localStorage.getItem('stock_manager_products');
+    const savedCategories = localStorage.getItem('stock_manager_categories');
+    const savedActivities = localStorage.getItem('stock_manager_activities');
+    const savedBoms = localStorage.getItem('stock_manager_boms');
+    const savedProjects = localStorage.getItem('stock_manager_projects_list');
+    const savedJobs = localStorage.getItem('stock_manager_jobs_list');
+    const savedEmployees = localStorage.getItem('stock_manager_employees_list');
+    const savedBrands = localStorage.getItem('stock_manager_brands_list');
+    const savedJobProjects = localStorage.getItem('stock_manager_job_projects_list');
+    const savedDailyReports = localStorage.getItem('stock_manager_daily_reports_list');
+    
+    setProducts(savedProducts ? JSON.parse(savedProducts) : INITIAL_PRODUCTS);
+    setCategories(savedCategories ? JSON.parse(savedCategories) : INITIAL_CATEGORIES);
+    setActivities(savedActivities ? JSON.parse(savedActivities) : INITIAL_ACTIVITIES);
+    setBoms(savedBoms ? JSON.parse(savedBoms) : []);
+    setProjects(savedProjects ? JSON.parse(savedProjects) : []);
+    setJobs(savedJobs ? JSON.parse(savedJobs) : []);
+    setEmployees(savedEmployees ? JSON.parse(savedEmployees) : []);
+    setBrands(savedBrands ? JSON.parse(savedBrands) : []);
+    setJobProjects(savedJobProjects ? JSON.parse(savedJobProjects) : []);
+    setDailyReports(savedDailyReports ? JSON.parse(savedDailyReports) : []);
+    
+    addToast('success', 'สลับเข้าใช้งานโหมดออฟไลน์สำเร็จ', 'ข้อมูลสต็อกสินค้าก่อนหน้านี้บนเบราว์เซอร์ของคุณได้รับการโหลดขึ้นมาแสดงผลครบถ้วนแล้วครับ');
+  };
+
   const handleEmailPasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const email = loginEmailInput.trim().toLowerCase();
@@ -1679,7 +1839,7 @@ export default function App() {
         
         // Save user role record
         const userRoleRef = doc(db, 'user_roles', user.uid);
-        const isDefaultAdmin = email === 'chaleesogood@gmail.com';
+        const isDefaultAdmin = email === 'chaleesogood@gmail.com' || email === 'chalee@gtt2013.com';
         const defaultRole: 'admin' | 'user' = isDefaultAdmin ? 'admin' : 'user';
         
         const newRoleRecord: UserRole = {
@@ -1895,6 +2055,21 @@ export default function App() {
               <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114-3.463 0-6.27-2.808-6.27-6.27s2.807-6.27 6.27-6.27c1.633 0 3.124.628 4.254 1.652l3.125-3.124C19.294 2.723 15.984 1.5 12.24 1.5c-5.799 0-10.5 4.701-10.5 10.5s4.701 10.5 10.5 10.5c5.342 0 10.026-3.834 10.026-10.5 0-.585-.054-1.15-.152-1.715H12.24Z" />
             </svg>
             <span>เข้าใช้ด้วยบัญชี Google (Gmail)</span>
+          </button>
+
+          {/* Guest/Demo Bypass option */}
+          <div className="relative flex items-center justify-center py-2">
+            <div className="absolute inset-x-0 border-t border-slate-800/60"></div>
+            <span className="relative px-3 bg-slate-900 text-[10px] font-bold text-slate-500 font-sans">หรือ</span>
+          </div>
+
+          <button
+            onClick={handleGuestBypass}
+            type="button"
+            className="w-full py-3 px-4 bg-slate-950 hover:bg-slate-800 active:bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 font-bold rounded-xl text-xs font-sans tracking-wide transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+          >
+            <Play className="h-4 w-4 shrink-0 text-indigo-400" />
+            <span>ใช้งานออฟไลน์ (Local Storage)</span>
           </button>
 
           <p className="text-[10px] text-slate-500 text-center font-mono leading-relaxed mt-2">

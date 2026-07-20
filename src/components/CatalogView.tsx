@@ -257,14 +257,6 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
   // Filtered Products
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
-      // Exclude mock products entirely
-      const isMock = ['prod-1', 'prod-2', 'prod-3', 'prod-4', 'prod-5', 'prod-6'].includes(p.id);
-      if (isMock) return false;
-
-      // แคตตาล็อกสินค้า ถ้าไม่ใส่รุ่นไม่ต้องแสดง
-      const hasModel = p.modelNumber !== undefined && p.modelNumber !== null && String(p.modelNumber).trim() !== '';
-      if (!hasModel) return false;
-
       const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
       const matchesBrand = selectedBrand === 'all' || p.brand === selectedBrand;
       const matchesStock = !inStockOnly || p.quantity > 0;
