@@ -2317,20 +2317,74 @@ export default function SettingsView({
                   />
                 </div>
 
-                {/* Photo URL or Presets */}
-                <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-950/20 rounded-xl border border-slate-150 dark:border-slate-800">
-                  <label className="text-[10px] font-bold text-slate-500 block">แนบรูปถ่ายพนักงาน (ลิงก์ หรือคลิกเลือกตัวแทน)</label>
-                  <input
-                    type="text"
-                    value={empImageUrl}
-                    onChange={(e) => setEmpImageUrl(e.target.value)}
-                    placeholder="วางลิงก์ URL รูปภาพ หรือคลิกเลือกรูปจำลอง..."
-                    className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] font-mono text-slate-700 dark:text-slate-300 focus:outline-hidden"
-                  />
+                {/* Photo URL, Upload, or Presets */}
+                <div className="space-y-3 p-3 bg-slate-50 dark:bg-slate-950/20 rounded-xl border border-slate-150 dark:border-slate-800">
+                  <label className="text-[10px] font-bold text-slate-500 block">รูปถ่ายประจำตัวพนักงาน (Profile Picture)</label>
+                  
+                  {/* Photo Option 1: File Upload */}
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-14 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-center overflow-hidden shrink-0 shadow-3xs">
+                      {empImageUrl ? (
+                        <img 
+                          src={empImageUrl} 
+                          alt="Employee Preview" 
+                          className="h-full w-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <Camera className="h-5 w-5 text-slate-300" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <label className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer border border-slate-200 dark:border-slate-700 shadow-3xs">
+                        <Upload className="h-3.5 w-3.5 text-indigo-500" />
+                        อัปโหลดไฟล์รูปถ่ายพนักงาน
+                        <input
+                          id="employee-add-photo-file"
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setEmpImageUrl(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                      <p className="text-[8px] text-slate-400 mt-1">ไฟล์รูปภาพ PNG, JPG หรือ GIF</p>
+                    </div>
+                  </div>
+
+                  {/* Photo Option 2: Image URL */}
+                  <div className="space-y-1">
+                    <span className="text-[9px] text-slate-400 font-sans block">หรือระบุเป็นลิงก์ URL รูปภาพ:</span>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={empImageUrl.startsWith('data:') ? '' : empImageUrl}
+                        onChange={(e) => setEmpImageUrl(e.target.value)}
+                        placeholder="วางลิงก์ URL รูปภาพ เช่น https://..."
+                        className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] font-mono text-slate-700 dark:text-slate-300 focus:outline-hidden"
+                      />
+                      {empImageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setEmpImageUrl('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-bold text-rose-500 hover:text-rose-600 transition-colors"
+                        >
+                          เคลียร์รูป
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   
                   {/* Preset employee avatar shortcuts */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[9px] text-slate-400 font-sans">รูปจำลอง:</span>
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800/60">
+                    <span className="text-[9px] text-slate-400 font-sans">ใช้รูปจำลอง:</span>
                     <button
                       type="button"
                       onClick={() => setEmpImageUrl('https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80')}
@@ -2514,16 +2568,70 @@ export default function SettingsView({
                   />
                 </div>
 
-                {/* Photo URL */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 block">ลิงก์รูปภาพประจำตัว (Profile Image URL)</label>
-                  <input
-                    type="text"
-                    value={empImageUrl}
-                    onChange={(e) => setEmpImageUrl(e.target.value)}
-                    placeholder="วาง URL รูปภาพประจำตัวพนักงาน..."
-                    className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] font-mono text-slate-800 dark:text-slate-100 focus:outline-hidden"
-                  />
+                {/* Photo URL, Upload, or Presets */}
+                <div className="space-y-3 p-3 bg-slate-50 dark:bg-slate-950/20 rounded-xl border border-slate-150 dark:border-slate-800">
+                  <label className="text-[10px] font-bold text-slate-500 block">รูปถ่ายประจำตัวพนักงาน (Profile Picture)</label>
+                  
+                  {/* Photo Option 1: File Upload */}
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-14 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-center overflow-hidden shrink-0 shadow-3xs">
+                      {empImageUrl ? (
+                        <img 
+                          src={empImageUrl} 
+                          alt="Employee Preview" 
+                          className="h-full w-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <Camera className="h-5 w-5 text-slate-300" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <label className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer border border-slate-200 dark:border-slate-700 shadow-3xs">
+                        <Upload className="h-3.5 w-3.5 text-indigo-500" />
+                        อัปโหลดไฟล์รูปถ่ายพนักงาน
+                        <input
+                          id="employee-edit-photo-file"
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setEmpImageUrl(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                      <p className="text-[8px] text-slate-400 mt-1">ไฟล์รูปภาพ PNG, JPG หรือ GIF</p>
+                    </div>
+                  </div>
+
+                  {/* Photo Option 2: Image URL */}
+                  <div className="space-y-1">
+                    <span className="text-[9px] text-slate-400 font-sans block">หรือระบุเป็นลิงก์ URL รูปภาพ:</span>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={empImageUrl.startsWith('data:') ? '' : empImageUrl}
+                        onChange={(e) => setEmpImageUrl(e.target.value)}
+                        placeholder="วางลิงก์ URL รูปภาพ เช่น https://..."
+                        className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px] font-mono text-slate-700 dark:text-slate-300 focus:outline-hidden"
+                      />
+                      {empImageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setEmpImageUrl('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-bold text-rose-500 hover:text-rose-600 transition-colors"
+                        >
+                          เคลียร์รูป
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
               </div>

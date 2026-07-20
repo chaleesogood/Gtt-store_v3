@@ -1897,28 +1897,7 @@ export default function App() {
             <span>เข้าใช้ด้วยบัญชี Google (Gmail)</span>
           </button>
 
-          {/* Demo Bypass Option */}
-          <div className="border-t border-slate-800/80 my-2"></div>
-          <button
-            onClick={() => {
-              setIsDemoBypass(true);
-              setCurrentUser({
-                uid: 'demo-admin-uid',
-                email: 'chaleesogood@gmail.com',
-                displayName: 'ผู้ใช้ทดลอง (Demo Admin)',
-                isDemo: true
-              });
-              setCurrentUserRole('admin');
-              addToast('success', 'เข้าสู่ระบบโหมดทดสอบแล้ว', 'เข้าใช้งานระบบด้วยสิทธิ์ผู้ดูแลระบบ (Demo Bypass Mode) เรียบร้อยแล้ว');
-            }}
-            type="button"
-            className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 border border-dashed border-slate-700/80 hover:border-slate-600 text-slate-400 hover:text-slate-200 font-bold rounded-xl text-xs font-sans tracking-wide transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Sparkles className="h-4 w-4 text-amber-400 animate-pulse" />
-            <span>เข้าใช้ด้วยโหมดทดสอบระบบ (Demo Bypass Mode)</span>
-          </button>
-
-          <p className="text-[10px] text-slate-500 text-center font-mono leading-relaxed">
+          <p className="text-[10px] text-slate-500 text-center font-mono leading-relaxed mt-2">
             ระบบจัดเก็บคลังและคำนวณโครงสร้าง BOM แบบเรียลไทม์<br />
             GTT EE STORE PLATFORM
           </p>
