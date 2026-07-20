@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Job, Employee, JobProject, DailyReport, normalizeModules } from '../types';
+import { Job, Employee, JobProject, DailyReport, normalizeModules, Bom } from '../types';
 import Logo from './Logo';
 import { 
   Briefcase, 
@@ -46,6 +46,8 @@ interface JobAssignmentViewProps {
   onAddDailyReport: (newReport: Omit<DailyReport, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onEditDailyReport: (id: string, updatedFields: Partial<DailyReport>) => void;
   onDeleteDailyReport: (id: string) => void;
+  
+  boms?: Bom[];
 }
 
 type ActiveTab = 'tasks' | 'daily_reports';
@@ -66,7 +68,8 @@ export default function JobAssignmentView({
   dailyReports,
   onAddDailyReport,
   onEditDailyReport,
-  onDeleteDailyReport
+  onDeleteDailyReport,
+  boms
 }: JobAssignmentViewProps) {
   
   // Navigation tabs
@@ -316,7 +319,7 @@ export default function JobAssignmentView({
                 ตารางงาน (Assigned Tasks)
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                งานระดับมอดูลที่มอบหมายให้ช่างเทคนิคและวิศวกร ดำเนินการ และรายงานความคืบหน้าแบบ Real-time
+                งานระดับโมดูล/อุปกรณ์ที่มอบหมายให้ช่างเทคนิคและวิศวกร ดำเนินการ และรายงานความคืบหน้าแบบ Real-time
               </p>
             </div>
 
@@ -326,7 +329,7 @@ export default function JobAssignmentView({
               id="btn-add-task"
             >
               <Plus className="h-4 w-4" />
-              <span>สั่งงานใหม่ / มอบหมายงาน</span>
+              <span>สร้างใบงานใหม่</span>
             </button>
           </div>
 
@@ -381,7 +384,7 @@ export default function JobAssignmentView({
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
               <input
                 type="text"
-                placeholder="ค้นหาชื่องาน, มอดูล, ผู้รับผิดชอบ หรือรายละเอียด..."
+                placeholder="ค้นหาชื่องาน, โมดูล/อุปกรณ์, ผู้รับผิดชอบ หรือรายละเอียด..."
                 value={taskSearch}
                 onChange={(e) => setTaskSearch(e.target.value)}
                 className="w-full pl-8 pr-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-sans text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
@@ -476,7 +479,7 @@ export default function JobAssignmentView({
               <Briefcase className="h-10 w-10 text-slate-300 mx-auto mb-3" />
               <h4 className="text-sm font-extrabold text-slate-700 font-sans">ไม่พบรายการงานมอบหมายตามเงื่อนไข</h4>
               <p className="text-xs text-slate-400 font-sans mt-1 max-w-sm mx-auto">
-                ไม่พบงานมอบหมายมอดูลใดๆ ที่ตรงกับการค้นหาปัจจุบันของคุณ กรุณาปรับเปลี่ยนตัวกรอง หรือคลิกมอบหมายงานใหม่เพื่อเริ่มต้น
+                ไม่พบงานมอบหมายโมดูล/อุปกรณ์ใดๆ ที่ตรงกับการค้นหาปัจจุบันของคุณ กรุณาปรับเปลี่ยนตัวกรอง หรือคลิกสร้างใบงานใหม่เพื่อเริ่มต้น
               </p>
             </div>
           ) : (
@@ -854,7 +857,7 @@ export default function JobAssignmentView({
             <div className="flex items-center justify-between p-5 border-b border-slate-100">
               <h3 className="text-sm font-black text-slate-800 font-sans flex items-center gap-2">
                 <Briefcase className="h-4.5 w-4.5 text-indigo-600" />
-                สั่งงานใหม่ / มอบหมายงานระดับมอดูล
+                ใบงาน (Work Order)
               </h3>
               <button
                 onClick={() => setIsTaskAddModalOpen(false)}
@@ -897,7 +900,7 @@ export default function JobAssignmentView({
                 {/* Module & Priority */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5 col-span-2">
-                    <label className="text-[10px] font-bold text-slate-500 font-sans block">มอดูล / ระบบงานย่อยที่มอบหมาย <span className="text-rose-500">*</span></label>
+                    <label className="text-[10px] font-bold text-slate-500 font-sans block">โมดูล / อุปกรณ์ <span className="text-rose-500">*</span></label>
                     <input
                       type="text"
                       required
@@ -923,29 +926,66 @@ export default function JobAssignmentView({
                         return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
                       });
 
-                      if (sortedProjModules.length > 0) {
+                      const relatedBoms = boms ? boms.filter(bom => bom.jobNo === taskJobNo) : [];
+
+                      if (sortedProjModules.length > 0 || relatedBoms.length > 0) {
                         return (
-                          <div className="mt-1.5 p-2 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-1">
-                            <span className="text-[9px] text-indigo-700 font-extrabold block">เลือกจากโมดูลที่ลงทะเบียนไว้:</span>
-                            <div className="flex flex-wrap gap-1">
-                              {sortedProjModules.map((m, idx) => {
-                                const moduleStr = `${m.code} - ${m.name}`;
-                                return (
-                                  <button
-                                    key={idx}
-                                    type="button"
-                                    onClick={() => setTaskModule(moduleStr)}
-                                    className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
-                                      taskModule === moduleStr || taskModule === m.name
-                                        ? 'bg-indigo-600 text-white border border-indigo-600' 
-                                        : 'bg-slate-100 hover:bg-slate-200/85 text-slate-600 border border-slate-200'
-                                    }`}
-                                  >
-                                    {m.code} - {m.name}
-                                  </button>
-                                );
-                              })}
-                            </div>
+                          <div className="mt-1.5 p-2 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-2">
+                            {sortedProjModules.length > 0 && (
+                              <div className="space-y-1">
+                                <span className="text-[9px] text-indigo-700 font-extrabold block">เลือกจากโมดูลที่ลงทะเบียนไว้:</span>
+                                <div className="flex flex-wrap gap-1">
+                                  {sortedProjModules.map((m, idx) => {
+                                    const moduleStr = `${m.code} - ${m.name}`;
+                                    const isSelected = taskModule === moduleStr || taskModule === m.name;
+                                    return (
+                                      <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => setTaskModule(moduleStr)}
+                                        className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
+                                          isSelected
+                                            ? 'bg-indigo-600 text-white border border-indigo-600' 
+                                            : 'bg-white hover:bg-indigo-50 text-slate-600 border border-slate-200'
+                                        }`}
+                                      >
+                                        {m.code} - {m.name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {relatedBoms.length > 0 && (
+                              <div className="space-y-1 pt-1 border-t border-indigo-100/50">
+                                <span className="text-[9px] text-amber-700 font-extrabold block">หรือเลือกจากรายการ BOM:</span>
+                                <div className="flex flex-wrap gap-1">
+                                  {relatedBoms.map((bom) => {
+                                    const isSelected = taskModule === bom.name;
+                                    return (
+                                      <button
+                                        key={bom.id}
+                                        type="button"
+                                        onClick={() => {
+                                          setTaskModule(bom.name);
+                                          if (!taskDescription) {
+                                            setTaskDescription(`ประกอบพัสดุตามสูตร BOM: ${bom.name}`);
+                                          }
+                                        }}
+                                        className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
+                                          isSelected
+                                            ? 'bg-amber-600 text-white border border-amber-600' 
+                                            : 'bg-white hover:bg-amber-50 text-slate-600 border border-slate-200'
+                                        }`}
+                                      >
+                                        📄 {bom.name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       }
@@ -1151,7 +1191,7 @@ export default function JobAssignmentView({
 
                 {/* Module */}
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 font-sans block">มอดูล / ระบบงานย่อยที่มอบหมาย <span className="text-rose-500">*</span></label>
+                  <label className="text-[10px] font-bold text-slate-500 font-sans block">โมดูล / อุปกรณ์ <span className="text-rose-500">*</span></label>
                   <input
                     type="text"
                     required
@@ -1176,29 +1216,66 @@ export default function JobAssignmentView({
                       return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
                     });
 
-                    if (sortedProjModules.length > 0) {
+                    const relatedBoms = boms ? boms.filter(bom => bom.jobNo === taskJobNo) : [];
+
+                    if (sortedProjModules.length > 0 || relatedBoms.length > 0) {
                       return (
-                        <div className="mt-1.5 p-2 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-1">
-                          <span className="text-[9px] text-indigo-700 font-extrabold block">เลือกจากโมดูลที่ลงทะเบียนไว้:</span>
-                          <div className="flex flex-wrap gap-1">
-                            {sortedProjModules.map((m, idx) => {
-                              const moduleStr = `${m.code} - ${m.name}`;
-                              return (
-                                <button
-                                  key={idx}
-                                  type="button"
-                                  onClick={() => setTaskModule(moduleStr)}
-                                  className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
-                                    taskModule === moduleStr || taskModule === m.name
-                                      ? 'bg-indigo-600 text-white border border-indigo-600' 
-                                      : 'bg-slate-100 hover:bg-slate-200/85 text-slate-600 border border-slate-200'
-                                  }`}
-                                >
-                                  {m.code} - {m.name}
-                                </button>
-                              );
-                            })}
-                          </div>
+                        <div className="mt-1.5 p-2 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-2">
+                          {sortedProjModules.length > 0 && (
+                            <div className="space-y-1">
+                              <span className="text-[9px] text-indigo-700 font-extrabold block">เลือกจากโมดูลที่ลงทะเบียนไว้:</span>
+                              <div className="flex flex-wrap gap-1">
+                                {sortedProjModules.map((m, idx) => {
+                                  const moduleStr = `${m.code} - ${m.name}`;
+                                  const isSelected = taskModule === moduleStr || taskModule === m.name;
+                                  return (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => setTaskModule(moduleStr)}
+                                      className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
+                                        isSelected
+                                          ? 'bg-indigo-600 text-white border border-indigo-600' 
+                                          : 'bg-white hover:bg-indigo-50 text-slate-600 border border-slate-200'
+                                      }`}
+                                    >
+                                      {m.code} - {m.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {relatedBoms.length > 0 && (
+                            <div className="space-y-1 pt-1 border-t border-indigo-100/50">
+                              <span className="text-[9px] text-amber-700 font-extrabold block">หรือเลือกจากรายการ BOM:</span>
+                              <div className="flex flex-wrap gap-1">
+                                {relatedBoms.map((bom) => {
+                                  const isSelected = taskModule === bom.name;
+                                  return (
+                                    <button
+                                      key={bom.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setTaskModule(bom.name);
+                                        if (!taskDescription) {
+                                          setTaskDescription(`ประกอบพัสดุตามสูตร BOM: ${bom.name}`);
+                                        }
+                                      }}
+                                      className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${
+                                        isSelected
+                                          ? 'bg-amber-600 text-white border border-amber-600' 
+                                          : 'bg-white hover:bg-amber-50 text-slate-600 border border-slate-200'
+                                      }`}
+                                    >
+                                      📄 {bom.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     }

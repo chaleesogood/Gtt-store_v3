@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Product, Bom, BomItem, Category, JobProject, ProductOrder, normalizeModules, Employee } from '../types';
+import { Product, Bom, BomItem, Category, JobProject, ProductOrder, normalizeModules, Employee, Job, DailyReport } from '../types';
 import Logo from './Logo';
+import JobAssignmentView from './JobAssignmentView';
 import { 
   FileSpreadsheet, 
   Plus, 
@@ -23,7 +24,8 @@ import {
   Layers,
   Settings,
   Upload,
-  ArrowUpDown
+  ArrowUpDown,
+  Briefcase
 } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db, cleanUndefined } from '../firebase';
@@ -40,6 +42,21 @@ interface ProjectBomViewProps {
   onEditJobProject?: (id: string, updatedFields: Partial<JobProject>) => Promise<void>;
   onDeleteJobProject?: (id: string) => Promise<void>;
   employees?: Employee[];
+
+  // Job assignment & daily reports props
+  jobs?: Job[];
+  onAddJob?: (job: Omit<Job, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  onEditJob?: (id: string, updatedFields: Partial<Job>) => Promise<void>;
+  onDeleteJob?: (id: string) => Promise<void>;
+
+  onAddEmployee?: (emp: Omit<Employee, 'id' | 'createdAt'>) => Promise<void>;
+  onEditEmployee?: (id: string, updatedFields: Partial<Employee>) => Promise<void>;
+  onDeleteEmployee?: (id: string) => Promise<void>;
+
+  dailyReports?: DailyReport[];
+  onAddDailyReport?: (newReport: Omit<DailyReport, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onEditDailyReport?: (id: string, updatedFields: Partial<DailyReport>) => void;
+  onDeleteDailyReport?: (id: string) => void;
 }
 
 // Typings for backward compatibility
@@ -508,10 +525,23 @@ export default function ProjectBomView({
   onAddJobProject,
   onEditJobProject,
   onDeleteJobProject,
-  employees = []
+  employees = [],
+
+  // Job assignment & daily reports props
+  jobs = [],
+  onAddJob,
+  onEditJob,
+  onDeleteJob,
+  onAddEmployee,
+  onEditEmployee,
+  onDeleteEmployee,
+  dailyReports = [],
+  onAddDailyReport,
+  onEditDailyReport,
+  onDeleteDailyReport
 }: ProjectBomViewProps) {
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'bom' | 'projects'>('bom');
+  const [activeTab, setActiveTab] = useState<'bom' | 'planning'>('bom');
 
   // Master Project setup states
   const [projSearch, setProjSearch] = useState('');
@@ -545,6 +575,23 @@ export default function ProjectBomView({
   const [editBomDescription, setEditBomDescription] = useState('');
   const [editBomRequiredQuantity, setEditBomRequiredQuantity] = useState<number>(1);
   const [editBomStatus, setEditBomStatus] = useState<Bom['status']>('pending');
+
+  // Copy BOM states
+  const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
+  const [bomToCopy, setBomToCopy] = useState<Bom | null>(null);
+  const [copyBomName, setCopyBomName] = useState('');
+  const [copyBomJobNo, setCopyBomJobNo] = useState('');
+  const [copyBomDescription, setCopyBomDescription] = useState('');
+  const [copyBomRequiredQuantity, setCopyBomRequiredQuantity] = useState<number>(1);
+
+  // Job Assignment modal states
+  const [isAssignJobModalOpen, setIsAssignJobModalOpen] = useState(false);
+  const [assignJobNo, setAssignJobNo] = useState('');
+  const [assignModuleName, setAssignModuleName] = useState('');
+  const [assignAssignee, setAssignAssignee] = useState('');
+  const [assignDescription, setAssignDescription] = useState('');
+  const [assignPriority, setAssignPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [assignTargetDate, setAssignTargetDate] = useState('');
 
   // Worksheet element states
   const [worksheetSelectedProductId, setWorksheetSelectedProductId] = useState('');
@@ -866,14 +913,29 @@ export default function ProjectBomView({
     }
   };
 
-  // Copy Existing BOM Sheet
-  const handleCopyBom = async (targetBom: Bom) => {
-    const cName = `${targetBom.name} (คัดลอกใหม่)`;
+  // Open Copy Modal with fields prefilled
+  const handleCopyBom = (targetBom: Bom) => {
+    setBomToCopy(targetBom);
+    setCopyBomName(`${targetBom.name} (คัดลอกใหม่)`);
+    setCopyBomJobNo(targetBom.jobNo || '');
+    setCopyBomDescription(targetBom.description || '');
+    setCopyBomRequiredQuantity(targetBom.requiredQuantity || 1);
+    setIsCopyModalOpen(true);
+  };
+
+  // Confirm copy action and save new BOM
+  const handleConfirmCopyBom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bomToCopy) return;
+
     const bomId = `bom-${Math.random().toString(36).substring(2, 9)}`;
     const newBom: Bom = {
-      ...targetBom,
+      ...bomToCopy,
       id: bomId,
-      name: cName,
+      name: copyBomName.trim(),
+      jobNo: copyBomJobNo.trim(),
+      description: copyBomDescription.trim(),
+      requiredQuantity: Math.max(1, copyBomRequiredQuantity),
       stockDeducted: false,
       status: 'pending',
       createdAt: new Date().toISOString(),
@@ -884,10 +946,98 @@ export default function ProjectBomView({
 
     try {
       await setDoc(doc(db, 'boms', bomId), cleanUndefined(newBom));
-      addToast('success', 'ทำสำเนา BOM สำเร็จ', `คัดลอกรายการวัตถุดิบและโมดูลประกอบไปยังใบงานใหม่แล้ว`);
+      addToast('success', 'ทำสำเนา BOM สำเร็จ', `คัดลอกรายการวัตถุดิบและโมดูลประกอบไปยังใบงานใหม่ "${copyBomName}" แล้ว`);
       setSelectedBom(newBom);
+      setIsCopyModalOpen(false);
+      setBomToCopy(null);
     } catch (err: any) {
       addToast('warning', 'ผิดพลาด', err.message);
+    }
+  };
+
+  // Open Job Assignment modal prefilled with target BOM info
+  const handleOpenAssignJob = (targetBom: Bom) => {
+    setAssignJobNo(targetBom.jobNo || '');
+    setAssignModuleName(targetBom.name);
+    setAssignAssignee('');
+    setAssignDescription(`ประกอบพัสดุตามสูตร BOM: ${targetBom.name}`);
+    setAssignPriority('medium');
+    
+    // Default targetDate to 7 days from now
+    const today = new Date();
+    today.setDate(today.getDate() + 7);
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    setAssignTargetDate(`${yyyy}-${mm}-${dd}`);
+    
+    setIsAssignJobModalOpen(true);
+  };
+
+  // Open Job Assignment modal empty for manual creation from BOM screen
+  const handleOpenNewAssignJob = () => {
+    const defaultJobNo = jobProjects && jobProjects.length > 0 ? jobProjects[0].jobNo : '';
+    setAssignJobNo(defaultJobNo);
+    setAssignModuleName('');
+    setAssignAssignee('');
+    setAssignDescription('');
+    setAssignPriority('medium');
+    
+    const today = new Date();
+    today.setDate(today.getDate() + 7);
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    setAssignTargetDate(`${yyyy}-${mm}-${dd}`);
+    
+    setIsAssignJobModalOpen(true);
+  };
+
+  // Open Job Assignment modal prefilled with item name as device/module
+  const handleOpenAssignJobFromItem = (itemName: string) => {
+    setAssignJobNo(activeBom?.jobNo || '');
+    setAssignModuleName(itemName);
+    setAssignAssignee('');
+    setAssignDescription(`ประกอบพัสดุ: ${itemName}`);
+    setAssignPriority('medium');
+    
+    const today = new Date();
+    today.setDate(today.getDate() + 7);
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    setAssignTargetDate(`${yyyy}-${mm}-${dd}`);
+    
+    setIsAssignJobModalOpen(true);
+  };
+
+  // Confirm and submit the job assignment
+  const handleConfirmAssignJob = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onAddJob) {
+      addToast('warning', 'ผิดพลาด', 'ระบบจ่ายงานไม่พร้อมใช้งาน');
+      return;
+    }
+    if (!assignAssignee) {
+      addToast('warning', 'เลือกผู้รับผิดชอบ', 'กรุณาเลือกผู้รับผิดชอบงานนี้');
+      return;
+    }
+
+    try {
+      await onAddJob({
+        jobNo: assignJobNo.trim(),
+        module: assignModuleName.trim(),
+        assignee: assignAssignee,
+        description: assignDescription.trim(),
+        status: 'pending',
+        priority: assignPriority,
+        targetDate: assignTargetDate
+      });
+      setIsAssignJobModalOpen(false);
+      addToast('success', 'จ่ายงานเรียบร้อยแล้ว', `จ่ายงาน "${assignModuleName}" ให้คุณ ${assignAssignee} สำเร็จ`);
+    } catch (err: any) {
+      console.error(err);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถสั่งจ่ายงานได้: ${err.message}`);
     }
   };
 
@@ -1166,7 +1316,34 @@ export default function ProjectBomView({
 
       </div>
 
-      <div className="space-y-3 animate-in fade-in duration-150">
+      {/* Tabs Switcher for BOM & Planning */}
+      <div className="flex bg-slate-100 p-1 rounded-xl gap-1 shrink-0 z-10 text-[11px] font-sans font-bold text-slate-500 border border-slate-200">
+        <button
+          onClick={() => setActiveTab('bom')}
+          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'bom'
+              ? 'bg-indigo-600 text-white shadow-sm font-black'
+              : 'hover:bg-slate-200 hover:text-slate-800'
+          }`}
+        >
+          <Boxes className="h-4.5 w-4.5" />
+          แผนประกอบวัตถุดิบ (BOM)
+        </button>
+        <button
+          onClick={() => setActiveTab('planning')}
+          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'planning'
+              ? 'bg-indigo-600 text-white shadow-sm font-black'
+              : 'hover:bg-slate-200 hover:text-slate-800'
+          }`}
+        >
+          <Briefcase className="h-4.5 w-4.5" />
+          จ่ายงาน & รายงานประจำวัน (Planning)
+        </button>
+      </div>
+
+      {activeTab === 'bom' ? (
+        <div className="space-y-3 animate-in fade-in duration-150">
           
           {/* Bento Scoreboard Bar (Flat & Compact Metrics) */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
@@ -1217,14 +1394,23 @@ export default function ProjectBomView({
               </select>
             </div>
 
-            {/* Create New Button */}
-            <button
-              onClick={() => setIsCreateModalOpen(true)}
-              className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-black cursor-pointer flex items-center gap-0.5 ml-auto shrink-0"
-            >
-              <Plus className="h-3 w-3" />
-              <span>สร้าง BOM ใหม่</span>
-            </button>
+            {/* Action Buttons */}
+            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+              <button
+                onClick={handleOpenNewAssignJob}
+                className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-black cursor-pointer flex items-center gap-0.5"
+              >
+                <Plus className="h-3 w-3" />
+                <span>สร้างใบงาน</span>
+              </button>
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-black cursor-pointer flex items-center gap-0.5"
+              >
+                <Plus className="h-3 w-3" />
+                <span>สร้าง BOM ใหม่</span>
+              </button>
+            </div>
           </div>
 
           {/* Horizontal scrollable BOM Selector row */}
@@ -1309,6 +1495,13 @@ export default function ProjectBomView({
                     >
                       <Copy className="h-2.5 w-2.5" />
                       <span>คัดลอก BOM</span>
+                    </button>
+                    <button
+                      onClick={() => handleOpenAssignJob(activeBom)}
+                      className="px-1.5 py-0.5 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded font-bold text-[9.5px] bg-slate-100 flex items-center gap-0.5"
+                    >
+                      <Briefcase className="h-2.5 w-2.5" />
+                      <span>สร้างใบงาน</span>
                     </button>
                     {!activeBom.stockDeducted ? (
                       <button
@@ -1563,19 +1756,27 @@ export default function ProjectBomView({
                                     );
 
                                     return (
-                                      <tr key={originalIndex} className="hover:bg-slate-50/40 transition-colors">
+                                      <tr key={originalIndex} className="hover:bg-slate-50/40 transition-colors h-[50px]">
                                         
                                         {/* Product info (Now First Column) */}
-                                        <td className="py-1.5 px-1.5 font-bold text-slate-800">
+                                        <td className="py-0.5 px-1.5 font-bold text-slate-800">
                                           <div className="flex items-center gap-2">
                                             {p?.image && (
-                                              <img src={p.image} alt="" className="w-6 h-6 rounded object-cover border border-slate-200 shrink-0" referrerPolicy="no-referrer" />
+                                              <img src={p.image} alt="" className="w-[36px] h-[36px] rounded object-cover border border-slate-200 shrink-0" referrerPolicy="no-referrer" />
                                             )}
                                             <div>
                                               <div className="line-clamp-1 text-[13px]">{item.productName}</div>
                                               <div className="text-[11px] text-slate-400 font-normal">
                                                 Code: {p?.sku || '-'} | <span className={currentQtyInStock < requiredTotal ? 'text-rose-600 font-extrabold' : 'text-emerald-700 font-extrabold'}>คงเหลือสต็อก: {currentQtyInStock} {item.unit || 'ชิ้น'}</span>
                                               </div>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleOpenAssignJobFromItem(item.productName)}
+                                                className="mt-0.5 inline-flex items-center gap-0.5 px-1 py-0.2 bg-amber-50 hover:bg-amber-100 text-amber-700 hover:text-amber-800 border border-amber-200 hover:border-amber-300 rounded font-black text-[9px] cursor-pointer transition-all shadow-3xs"
+                                              >
+                                                <Briefcase className="h-2 w-2" />
+                                                <span>ใบงานจาก อุปกรณ์นี้</span>
+                                              </button>
                                             </div>
                                           </div>
                                         </td>
@@ -1732,6 +1933,28 @@ export default function ProjectBomView({
           )}
 
         </div>
+      ) : (
+        <div className="animate-in fade-in duration-150">
+          <JobAssignmentView
+            jobs={jobs}
+            onAddJob={onAddJob!}
+            onEditJob={onEditJob!}
+            onDeleteJob={onDeleteJob!}
+            employees={employees}
+            onAddEmployee={onAddEmployee!}
+            onEditEmployee={onEditEmployee!}
+            onDeleteEmployee={onDeleteEmployee!}
+            jobProjects={jobProjects}
+            onAddJobProject={onAddJobProject!}
+            onEditJobProject={onEditJobProject!}
+            onDeleteJobProject={onDeleteJobProject!}
+            dailyReports={dailyReports}
+            onAddDailyReport={onAddDailyReport!}
+            onEditDailyReport={onEditDailyReport!}
+            onDeleteDailyReport={onDeleteDailyReport!}
+          />
+        </div>
+      )}
 
       {/* Modal: Create BOM */}
       {isCreateModalOpen && (
@@ -1860,6 +2083,81 @@ export default function ProjectBomView({
               <div className="flex justify-end gap-1.5 pt-2 border-t border-slate-100">
                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded">ยกเลิก</button>
                 <button type="submit" className="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded">บันทึกการแก้ไข</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Copy BOM */}
+      {isCopyModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
+              <span className="text-xs font-black text-slate-800">📋 คัดลอกและสร้างใบงาน BOM ใหม่</span>
+              <button onClick={() => { setIsCopyModalOpen(false); setBomToCopy(null); }} className="text-slate-400 hover:text-slate-600">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={handleConfirmCopyBom} className="space-y-3 text-[11px] font-sans">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600">ชื่อใบงานประกอบพัสดุใหม่ *</label>
+                <input
+                  type="text"
+                  required
+                  value={copyBomName}
+                  onChange={(e) => setCopyBomName(e.target.value)}
+                  placeholder="ชื่อใบงานสำหรับ BOM ที่คัดลอก"
+                  className="w-full px-2.5 py-1 border border-slate-200 rounded text-xs focus:outline-none font-bold"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">รหัส Job No.</label>
+                  <input
+                    type="text"
+                    value={copyBomJobNo}
+                    onChange={(e) => setCopyBomJobNo(e.target.value)}
+                    placeholder="เช่น JOB-2026-xxx"
+                    className="w-full px-2.5 py-1 border border-slate-200 rounded text-xs font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">จำนวนชุดประกอบ *</label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={copyBomRequiredQuantity}
+                    onChange={(e) => setCopyBomRequiredQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full px-2.5 py-1 border border-slate-200 rounded text-xs font-mono font-bold text-center"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600">คำอธิบายสูตรพัสดุ</label>
+                <textarea
+                  rows={2}
+                  value={copyBomDescription}
+                  onChange={(e) => setCopyBomDescription(e.target.value)}
+                  placeholder="รายละเอียดประกอบเพิ่มเติม..."
+                  className="w-full px-2.5 py-1 border border-slate-200 rounded text-xs focus:outline-none"
+                />
+              </div>
+              <div className="flex justify-end gap-1.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => { setIsCopyModalOpen(false); setBomToCopy(null); }}
+                  className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded"
+                >
+                  ยืนยันสร้าง BOM
+                </button>
               </div>
             </form>
           </div>
@@ -2109,6 +2407,210 @@ export default function ProjectBomView({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Job Assignment (ใบงาน) */}
+      {isAssignJobModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
+              <span className="text-xs font-black text-slate-800 flex items-center gap-1">💼 ใบงาน (Work Order)</span>
+              <button onClick={() => setIsAssignJobModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleConfirmAssignJob} className="space-y-3 text-[11px] font-sans">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600">หมายเลข Job (Job No.)</label>
+                {jobProjects && jobProjects.length > 0 ? (
+                  <select
+                    value={assignJobNo}
+                    onChange={(e) => setAssignJobNo(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    {jobProjects.map(proj => (
+                      <option key={proj.id} value={proj.jobNo}>
+                        {proj.jobNo} | {proj.projectName}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={assignJobNo}
+                    onChange={(e) => setAssignJobNo(e.target.value)}
+                    placeholder="ระบุหมายเลข Job No..."
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-mono font-bold text-slate-700"
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600">โมดูล / อุปกรณ์ *</label>
+                <input
+                  type="text"
+                  required
+                  value={assignModuleName}
+                  onChange={(e) => setAssignModuleName(e.target.value)}
+                  placeholder="เช่น ออกแบบ PLC logic, เชื่อมโครงฐานล่าง..."
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+
+                {/* Helper for selecting registered modules or BOM sheets */}
+                {(() => {
+                  const currentProj = jobProjects?.find(p => p.jobNo === assignJobNo);
+                  const currentProjModules = normalizeModules(currentProj?.modules || []);
+                  
+                  const sortedProjModules = [...currentProjModules].sort((a, b) => {
+                    const cleanA = a.code.replace(/^\D+/g, '');
+                    const cleanB = b.code.replace(/^\D+/g, '');
+                    const numA = parseInt(cleanA, 10);
+                    const numB = parseInt(cleanB, 10);
+                    if (!isNaN(numA) && !isNaN(numB)) {
+                      if (numA !== numB) return numA - numB;
+                    }
+                    return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+                  });
+
+                  const relatedBoms = boms ? boms.filter(bom => bom.jobNo === assignJobNo) : [];
+
+                  if (sortedProjModules.length > 0 || relatedBoms.length > 0) {
+                    return (
+                      <div className="mt-1.5 p-1.5 bg-slate-50 border border-slate-100 rounded space-y-1.5 max-h-[140px] overflow-y-auto">
+                        {sortedProjModules.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-indigo-700 font-extrabold block">เลือกจากโมดูลที่ลงทะเบียนไว้:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {sortedProjModules.map((m, idx) => {
+                                const moduleStr = `${m.code} - ${m.name}`;
+                                const isSelected = assignModuleName === moduleStr || assignModuleName === m.name;
+                                return (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setAssignModuleName(moduleStr)}
+                                    className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-colors cursor-pointer ${
+                                      isSelected
+                                        ? 'bg-indigo-600 text-white border border-indigo-600' 
+                                        : 'bg-white hover:bg-indigo-50 text-slate-600 border border-slate-200'
+                                    }`}
+                                  >
+                                    {m.code} - {m.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {relatedBoms.length > 0 && (
+                          <div className="space-y-1 pt-1 border-t border-slate-200/50">
+                            <span className="text-[9px] text-amber-700 font-extrabold block">หรือเลือกจากรายการ BOM:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {relatedBoms.map((bom) => {
+                                const isSelected = assignModuleName === bom.name;
+                                return (
+                                  <button
+                                    key={bom.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setAssignModuleName(bom.name);
+                                      if (!assignDescription) {
+                                        setAssignDescription(`ประกอบพัสดุตามสูตร BOM: ${bom.name}`);
+                                      }
+                                    }}
+                                    className={`px-1.5 py-0.5 text-[9px] font-bold rounded transition-colors cursor-pointer ${
+                                      isSelected
+                                        ? 'bg-amber-600 text-white border border-amber-600' 
+                                        : 'bg-white hover:bg-amber-50 text-slate-600 border border-slate-200'
+                                    }`}
+                                  >
+                                    📄 {bom.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600">ผู้รับผิดชอบประกอบสินค้า *</label>
+                <select
+                  required
+                  value={assignAssignee}
+                  onChange={(e) => setAssignAssignee(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="">-- กรุณาเลือกผู้รับผิดชอบ --</option>
+                  {(employees || []).map(emp => (
+                    <option key={emp.id} value={emp.name}>
+                      {emp.name} ({emp.role || 'ช่าง'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600">รายละเอียดคำสั่งงาน</label>
+                <textarea
+                  rows={2}
+                  value={assignDescription}
+                  onChange={(e) => setAssignDescription(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder="รายละเอียด หรือคำสั่งงานเพิ่มเติมสำหรับการประกอบชิ้นงาน"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">ความสำคัญ</label>
+                  <select
+                    value={assignPriority}
+                    onChange={(e) => setAssignPriority(e.target.value as 'low' | 'medium' | 'high')}
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs text-slate-800 focus:outline-none cursor-pointer"
+                  >
+                    <option value="low">ต่ำ (Low)</option>
+                    <option value="medium">ปกติ (Medium)</option>
+                    <option value="high">ด่วนมาก (High)</option>
+                  </select>
+                </div>
+                
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">กำหนดเสร็จงาน</label>
+                  <input
+                    type="date"
+                    value={assignTargetDate}
+                    onChange={(e) => setAssignTargetDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-mono font-bold focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsAssignJobModalOpen(false)}
+                  className="px-3.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-600 cursor-pointer hover:bg-slate-50"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-black cursor-pointer flex items-center gap-1 shadow-sm"
+                >
+                  <Briefcase className="h-3 w-3" /> ยืนยันบันทึกใบงาน
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

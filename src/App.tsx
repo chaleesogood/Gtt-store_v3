@@ -1512,6 +1512,18 @@ export default function App() {
             onEditJobProject={handleEditJobProject}
             onDeleteJobProject={handleDeleteJobProject}
             employees={employees}
+            
+            jobs={jobs}
+            onAddJob={handleAddJob}
+            onEditJob={handleEditJob}
+            onDeleteJob={handleDeleteJob}
+            onAddEmployee={handleAddEmployee}
+            onEditEmployee={handleEditEmployee}
+            onDeleteEmployee={handleDeleteEmployee}
+            dailyReports={dailyReports}
+            onAddDailyReport={handleAddDailyReport}
+            onEditDailyReport={handleEditDailyReport}
+            onDeleteDailyReport={handleDeleteDailyReport}
           />
         );
       case 'reports':
@@ -1983,25 +1995,13 @@ export default function App() {
           <button
             onClick={() => setCurrentTab('projects_bom')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
-              currentTab === 'projects_bom'
+              currentTab === 'projects_bom' || currentTab === 'jobs'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
                 : 'hover:bg-slate-800/60 hover:text-slate-100 text-slate-400'
             }`}
           >
             <FolderKanban className="h-4.5 w-4.5 flex-shrink-0" />
-            แผนประกอบวัตถุดิบ (BOM)
-          </button>
-
-          <button
-            onClick={() => setCurrentTab('jobs')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
-              currentTab === 'jobs'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
-                : 'hover:bg-slate-800/60 hover:text-slate-100 text-slate-400'
-            }`}
-          >
-            <Briefcase className="h-4.5 w-4.5 flex-shrink-0" />
-            จ่ายงาน & รายงานประจำวัน
+            BOM & Planning
           </button>
 
           <button
@@ -2134,20 +2134,11 @@ export default function App() {
             <button
               onClick={() => { setCurrentTab('projects_bom'); setIsMobileMenuOpen(false); }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
-                currentTab === 'projects_bom' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
+                currentTab === 'projects_bom' || currentTab === 'jobs' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
               }`}
             >
               <FolderKanban className="h-4.5 w-4.5" />
-              แผนประกอบวัตถุดิบ (BOM)
-            </button>
-            <button
-              onClick={() => { setCurrentTab('jobs'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
-                currentTab === 'jobs' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
-              }`}
-            >
-              <Briefcase className="h-4.5 w-4.5" />
-              จ่ายงาน & รายงานประจำวัน
+              BOM & Planning
             </button>
             <button
               onClick={() => { setCurrentTab('settings'); setIsMobileMenuOpen(false); }}

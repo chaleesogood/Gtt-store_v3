@@ -264,6 +264,41 @@ export default function ProductListView({
     }
   };
 
+  const handleMoveSubSeries = async (categoryId: string, seriesName: string, direction: 'up' | 'down') => {
+    const cat = categories.find(c => c.id === categoryId);
+    if (!cat) return;
+    const seriesList = [...(cat.series || [])];
+    const idx = seriesList.indexOf(seriesName);
+    if (idx === -1) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= seriesList.length) return;
+
+    // Swap in series list
+    const temp = seriesList[idx];
+    seriesList[idx] = seriesList[swapIdx];
+    seriesList[swapIdx] = temp;
+
+    // Swap in subSeries list (rich objects) if present
+    let newSubSeries = cat.subSeries ? [...cat.subSeries] : [];
+    if (newSubSeries.length > 0) {
+      const sIdx = newSubSeries.findIndex(s => s.name === seriesName);
+      const swapSerName = seriesList[idx]; // the name that is now at idx after swap
+      const otherIdx = newSubSeries.findIndex(s => s.name === swapSerName);
+      if (sIdx !== -1 && otherIdx !== -1) {
+        const tempObj = newSubSeries[sIdx];
+        newSubSeries[sIdx] = newSubSeries[otherIdx];
+        newSubSeries[otherIdx] = tempObj;
+      }
+    }
+
+    // Update category
+    onEditCategory(categoryId, {
+      series: seriesList,
+      subSeries: newSubSeries
+    });
+    addToast('success', 'สลับลำดับกลุ่มย่อยสำเร็จ', `ย้ายกลุ่มย่อย "${seriesName}" ${direction === 'up' ? 'ขึ้น' : 'ลง'} เรียบร้อยแล้ว`);
+  };
+
   // Filtered Products
   const filteredProducts = products.filter((p) => {
     // Exclude mock products entirely so they never clutter your space
@@ -998,16 +1033,16 @@ export default function ProductListView({
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="bg-slate-100/20 border-b border-slate-100/60 text-[9px] font-bold text-slate-400 font-sans uppercase tracking-wider">
-                            <th className="py-1 px-2 min-w-[200px]">สินค้า (Product)</th>
+                          <tr className="bg-slate-150/70 dark:bg-slate-800/80 border-b-2 border-slate-250 dark:border-slate-700 text-[11.5px] font-black text-slate-600 dark:text-slate-350 font-sans uppercase tracking-wider">
+                            <th className="py-3 px-3 min-w-[220px]">สินค้า (Product Name)</th>
                             {isReorderMode && (
-                              <th className="py-1 px-2 text-center min-w-[80px] text-indigo-600 dark:text-indigo-400 font-extrabold">จัดลำดับ</th>
+                              <th className="py-3 px-2 text-center min-w-[90px] text-indigo-700 dark:text-indigo-400 font-extrabold">จัดลำดับ</th>
                             )}
-                            <th className="py-1 px-2 min-w-[100px]">รุ่น</th>
-                            <th className="py-1 px-2 min-w-[110px]">Code</th>
-                            <th className="py-1 px-2 text-right min-w-[90px]">ราคา</th>
-                            <th className="py-1 px-2 text-center min-w-[130px]">จำนวน</th>
-                            <th className="py-1 px-2 text-right min-w-[120px]">การจัดการ</th>
+                            <th className="py-3 px-3 min-w-[125px]">รุ่น (Specification)</th>
+                            <th className="py-3 px-3 min-w-[125px]">รหัส (Code/SKU)</th>
+                            <th className="py-3 px-3 text-right min-w-[105px]">ราคา (Price)</th>
+                            <th className="py-3 px-3 text-center min-w-[150px]">สต็อกคงคลัง (Quantity)</th>
+                            <th className="py-3 px-3 text-right min-w-[140px]">การจัดการ (Actions)</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-[11px]">
@@ -1112,19 +1147,39 @@ export default function ProductListView({
                                             </div>
                                           </div>
 
-                                          {/* Organize/Reorder button on the absolute right of every sub series header */}
-                                          <button
-                                            onClick={() => setIsReorderMode(!isReorderMode)}
-                                            className={`px-3 py-1.5 text-[10px] font-black rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 shadow-sm hover:scale-102 active:scale-98 shrink-0 ${
-                                              isReorderMode
-                                                ? 'bg-rose-600 border-rose-500 text-white font-extrabold shadow-sm'
-                                                : 'bg-white/80 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-white dark:hover:bg-slate-700'
-                                            }`}
-                                            type="button"
-                                          >
-                                            <ArrowUpDown className="h-3.5 w-3.5" />
-                                            จัดระเบียบแก้ไข
-                                          </button>
+                                          {/* Organize/Reorder buttons for Sub Series */}
+                                          {isReorderMode ? (
+                                            <div className="flex items-center gap-1.5 bg-white/95 dark:bg-slate-850 p-1.5 rounded-xl border border-slate-200/80 shadow-xs shrink-0">
+                                              <span className="text-[10.5px] text-slate-500 font-extrabold px-1.5 font-sans">จัดลำดับกลุ่มย่อย:</span>
+                                              <button
+                                                onClick={() => handleMoveSubSeries(group.category.id, ps.seriesName, 'up')}
+                                                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-850 rounded-lg border border-indigo-200 hover:scale-103 active:scale-97 cursor-pointer transition-all flex items-center gap-0.5 font-black text-[10.5px]"
+                                                title="เลื่อนกลุ่มย่อยขึ้น"
+                                                type="button"
+                                              >
+                                                <ChevronUp className="h-3 w-3" />
+                                                <span>เลื่อนขึ้น</span>
+                                              </button>
+                                              <button
+                                                onClick={() => handleMoveSubSeries(group.category.id, ps.seriesName, 'down')}
+                                                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-850 rounded-lg border border-indigo-200 hover:scale-103 active:scale-97 cursor-pointer transition-all flex items-center gap-0.5 font-black text-[10.5px]"
+                                                title="เลื่อนกลุ่มย่อยลง"
+                                                type="button"
+                                              >
+                                                <ChevronDown className="h-3 w-3" />
+                                                <span>เลื่อนลง</span>
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <button
+                                              onClick={() => setIsReorderMode(true)}
+                                              className="px-3 py-1.5 text-[10.5px] font-black rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 bg-white/90 dark:bg-slate-800 hover:bg-white dark:hover:bg-slate-750 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm hover:scale-102 active:scale-98 shrink-0"
+                                              type="button"
+                                            >
+                                              <ArrowUpDown className="h-3.5 w-3.5 text-indigo-600" />
+                                              จัดระเบียบแก้ไข
+                                            </button>
+                                          )}
                                         </div>
                                       </td>
                                     </tr>
@@ -1145,33 +1200,32 @@ export default function ProductListView({
                                     }
 
                                     return (
-                                      <tr key={p.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-900/30 transition-colors group">
+                                      <tr key={p.id} className="hover:bg-indigo-50/15 dark:hover:bg-slate-900/30 transition-all group border-b border-slate-200/60 dark:border-slate-800/60">
                                         {/* Name & Photo */}
-                                        <td className="py-1.5 px-2">
-                                          <div className="flex items-center gap-3">
+                                        <td className="py-3 px-3">
+                                          <div className="flex items-center gap-3.5">
                                             <img
-                                              src={p.image || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'}
+                                              src={p.image || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=200'}
                                               alt={p.name}
-                                              className="w-[40px] h-[40px] object-cover rounded-xl bg-slate-50 dark:bg-slate-800 shrink-0 border border-slate-200 dark:border-slate-800 shadow-3xs"
+                                              className="w-12 h-12 object-cover rounded-xl bg-slate-50 dark:bg-slate-800 shrink-0 border border-slate-200 dark:border-slate-700 shadow-xs transition-transform duration-200 group-hover:scale-105"
                                               referrerPolicy="no-referrer"
                                             />
                                             <div className="min-w-0">
-                                              {/* Redundant Sub-series badge inside grouped list is hidden to reduce complexity */}
-                                              <h4 className="font-extrabold text-slate-800 dark:text-slate-100 font-sans leading-tight text-xs sm:text-sm flex items-center gap-1.5 flex-wrap" title={p.name}>
-                                                <span className="text-xs sm:text-sm">{p.name}</span>
+                                              <h4 className="font-extrabold text-slate-900 dark:text-slate-100 font-sans leading-snug text-[13px] sm:text-[14px] flex items-center gap-1.5 flex-wrap" title={p.name}>
+                                                <span>{p.name}</span>
                                                 {getColorDotAndBadge(p.color)}
                                               </h4>
-                                              <div className="flex flex-wrap gap-1 items-center mt-0.5 text-[15px] leading-[15px]">
-                                                <span className="inline-block px-1 py-0.2 text-[7.5px] font-black text-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/30 dark:text-indigo-400 rounded leading-none">
-                                                  📍 {p.warehouse || 'A'}
+                                              <div className="flex flex-wrap gap-1.5 items-center mt-1 text-[11px] leading-[11px]">
+                                                <span className="inline-block px-1.5 py-0.5 text-[8.5px] font-black text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 rounded border border-indigo-100 dark:border-indigo-900 shadow-3xs leading-none">
+                                                  📍 คลัง: {p.warehouse || 'A'}
                                                 </span>
                                                 {(() => {
                                                    const bMatch = brands.find(b => b.name === p.brand);
                                                    if (bMatch) {
                                                      return (
-                                                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-black text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-md leading-none shrink-0 border border-slate-200/50 dark:border-slate-700/50">
+                                                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8.5px] font-black text-slate-700 bg-slate-100 dark:bg-slate-850 dark:text-slate-300 rounded-md leading-none shrink-0 border border-slate-200 dark:border-slate-750">
                                                          {bMatch.logoUrl ? (
-                                                           <img src={bMatch.logoUrl} alt={p.brand} className="h-4 object-contain" referrerPolicy="no-referrer" />
+                                                           <img src={bMatch.logoUrl} alt={p.brand} className="h-4.5 object-contain" referrerPolicy="no-referrer" />
                                                          ) : (
                                                            <span>🏷️ {p.brand}</span>
                                                          )}
@@ -1187,86 +1241,86 @@ export default function ProductListView({
 
                                         {/* Custom Reordering Buttons Column cell */}
                                         {isReorderMode && (
-                                          <td className="py-1 px-2 text-center">
+                                          <td className="py-3 px-2 text-center">
                                             <div className="flex items-center justify-center gap-1">
                                               <button
                                                 onClick={() => handleMoveProduct(p.id, 'up')}
-                                                className="p-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-md border border-indigo-100 transition-colors"
+                                                className="p-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/45 dark:hover:bg-indigo-900 text-indigo-650 dark:text-indigo-400 rounded-md border border-indigo-100 dark:border-indigo-900 transition-colors shadow-3xs cursor-pointer"
                                                 title="เลื่อนขึ้น"
                                                 type="button"
                                               >
-                                                <ChevronUp className="h-3 w-3" />
+                                                <ChevronUp className="h-3.5 w-3.5" />
                                               </button>
                                               <button
                                                 onClick={() => handleMoveProduct(p.id, 'down')}
-                                                className="p-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-md border border-indigo-100 transition-colors"
+                                                className="p-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/45 dark:hover:bg-indigo-900 text-indigo-650 dark:text-indigo-400 rounded-md border border-indigo-100 dark:border-indigo-900 transition-colors shadow-3xs cursor-pointer"
                                                 title="เลื่อนลง"
                                                 type="button"
                                               >
-                                                <ChevronDown className="h-3 w-3" />
+                                                <ChevronDown className="h-3.5 w-3.5" />
                                               </button>
                                             </div>
                                           </td>
                                         )}
 
                                         {/* Model Number */}
-                                        <td className="py-1.5 px-2 font-mono font-bold text-slate-600 dark:text-slate-300">
+                                        <td className="py-3 px-3 font-mono">
                                           {p.modelNumber !== undefined && p.modelNumber !== null && String(p.modelNumber).trim() !== '' ? (
-                                            <span className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded border border-slate-200/50 dark:border-slate-700/50 text-[10.5px]">
-                                              {p.modelNumber} {p.modelUnit || 'Kg'}
+                                            <span className="bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 px-2.5 py-1 rounded-md border border-rose-200/70 dark:border-rose-900/45 text-[11.5px] font-black inline-block shadow-3xs">
+                                              รุ่น {p.modelNumber} {p.modelUnit || 'Kg'}
                                             </span>
                                           ) : (
-                                            <span className="text-slate-300 dark:text-slate-600 text-[10px] italic">ไม่มีข้อมูลรุ่น</span>
+                                            <span className="text-slate-400 dark:text-slate-600 text-[10px] italic">ไม่มีข้อมูลรุ่น</span>
                                           )}
                                         </td>
 
                                         {/* Sku/Code */}
-                                        <td className="py-1.5 px-2 font-mono text-slate-500 dark:text-slate-400">
-                                          <span className="bg-slate-50 dark:bg-slate-900 px-2 py-0.5 rounded border border-slate-100 dark:border-slate-800 text-[10px] text-[#000000]">
+                                        <td className="py-3 px-3 font-mono">
+                                          <span className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-[11px] font-bold shadow-3xs">
                                             {p.sku}
                                           </span>
                                         </td>
 
                                         {/* Price */}
-                                        <td className="py-1.5 px-2 text-right font-mono font-black text-slate-800 dark:text-slate-200 text-xs">
+                                        <td className="py-3 px-3 text-right font-mono font-black text-emerald-700 dark:text-emerald-400 text-[13px] sm:text-[14px]">
                                           {formatCurrency(p.price)}
                                         </td>
 
                                         {/* Real-time quantity counter / adjusting buttons */}
-                                        <td className="py-1.5 px-2">
-                                          <div className="flex items-center justify-center gap-1.5">
-                                            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 rounded p-0.5 border border-slate-100 dark:border-slate-700">
+                                        <td className="py-3 px-3">
+                                          <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                                            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700 shadow-3xs">
                                               <button
                                                 onClick={() => handleQuickMinus(p)}
                                                 disabled={p.quantity <= 0}
-                                                className="text-slate-400 hover:text-rose-600 disabled:opacity-40 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
+                                                className="text-slate-400 hover:text-rose-600 disabled:opacity-30 transition-colors p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
                                                 title="ลดสต็อก 1 ชิ้น"
                                                 id={`btn-quick-minus-item-grouped-${p.id}`}
                                                 type="button"
                                               >
-                                                <MinusCircle className="h-3 w-3" />
+                                                <MinusCircle className="h-4 w-4" />
                                               </button>
-                                              <span className="font-black text-[10px] text-slate-700 dark:text-slate-300 w-5 text-center font-mono leading-none">
+                                              <span className="font-extrabold text-[12px] text-slate-800 dark:text-slate-200 w-6 text-center font-mono leading-none">
                                                 {p.quantity}
                                               </span>
                                               <button
                                                 onClick={() => handleQuickAdd(p)}
-                                                className="text-slate-400 hover:text-emerald-600 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer"
+                                                className="text-slate-400 hover:text-emerald-600 transition-colors p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
                                                 title="เพิ่มสต็อก 1 ชิ้น"
                                                 id={`btn-quick-plus-item-grouped-${p.id}`}
                                                 type="button"
                                               >
-                                                <PlusCircle className="h-3 w-3" />
+                                                <PlusCircle className="h-4 w-4" />
                                               </button>
                                             </div>
-                                            <div className={`text-[8.5px] font-bold px-1 rounded ${stockColor} shrink-0 leading-none`}>
+                                            <div className={`text-[10px] font-black px-2 py-0.5 rounded-full border shadow-3xs ${stockColor}`}>
                                               {stockLabel} ({p.minAlert})
                                             </div>
                                           </div>
                                         </td>
 
                                         {/* CRUD Actions */}
-                                        <td className="py-1.5 px-2 text-right">
+                                        <td className="py-3 px-3 text-right">
                                           <div className="flex items-center justify-end gap-1 flex-wrap">
                                             {p.sourceUrl && (
                                               <a
@@ -1375,16 +1429,16 @@ export default function ProductListView({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse" id="table-products">
               <thead>
-                <tr className="bg-slate-100/20 border-b border-slate-100/60 text-[9px] font-bold text-slate-400 font-sans uppercase tracking-wider">
-                  <th className="py-1 px-2 min-w-[200px]">สินค้า (Product)</th>
+                <tr className="bg-slate-150/70 dark:bg-slate-800/80 border-b-2 border-slate-250 dark:border-slate-700 text-[11.5px] font-black text-slate-600 dark:text-slate-350 font-sans uppercase tracking-wider">
+                  <th className="py-3 px-3 min-w-[220px]">สินค้า (Product Name)</th>
                   {isReorderMode && (
-                    <th className="py-1 px-2 text-center min-w-[80px] text-indigo-600 dark:text-indigo-400 font-extrabold">จัดลำดับ</th>
+                    <th className="py-3 px-2 text-center min-w-[90px] text-indigo-700 dark:text-indigo-400 font-extrabold">จัดลำดับ</th>
                   )}
-                  <th className="py-1 px-2 min-w-[100px]">รุ่น</th>
-                  <th className="py-1 px-2 min-w-[120px]">หมวดหมู่ / Code</th>
-                  <th className="py-1 px-2 text-right min-w-[90px]">ราคา</th>
-                  <th className="py-1 px-2 text-center min-w-[130px]">จำนวน</th>
-                  <th className="py-1 px-2 text-right min-w-[120px]">การจัดการ</th>
+                  <th className="py-3 px-3 min-w-[125px]">รุ่น (Specification)</th>
+                  <th className="py-3 px-3 min-w-[160px]">หมวดหมู่ / รหัส (Category / Code)</th>
+                  <th className="py-3 px-3 text-right min-w-[105px]">ราคา (Price)</th>
+                  <th className="py-3 px-3 text-center min-w-[150px]">สต็อกคงคลัง (Quantity)</th>
+                  <th className="py-3 px-3 text-right min-w-[140px]">การจัดการ (Actions)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-[11px]">
@@ -1403,34 +1457,34 @@ export default function ProductListView({
                   }
 
                   return (
-                    <tr key={p.id} className="hover:bg-slate-50/40 transition-colors group">
+                    <tr key={p.id} className="hover:bg-indigo-50/15 dark:hover:bg-slate-900/30 transition-all group border-b border-slate-200/60 dark:border-slate-800/60">
                       {/* Name & Photo */}
-                      <td className="py-1.5 px-2">
-                        <div className="flex items-center gap-3">
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-3.5">
                           <img
-                            src={p.image || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'}
+                            src={p.image || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=200'}
                             alt={p.name}
-                            className="w-[40px] h-[40px] object-cover rounded-xl bg-slate-50 dark:bg-slate-800 shrink-0 border border-slate-200/60 dark:border-slate-800 shadow-3xs"
+                            className="w-12 h-12 object-cover rounded-xl bg-slate-50 dark:bg-slate-800 shrink-0 border border-slate-200 dark:border-slate-700 shadow-xs transition-transform duration-200 group-hover:scale-105"
                             referrerPolicy="no-referrer"
                           />
                           <div className="min-w-0">
                             {p.series && (
-                              <span className="block text-[8.5px] font-black text-indigo-600 dark:text-indigo-400 font-sans uppercase tracking-wide leading-none mb-0.5">
+                              <span className="block text-[9.5px] font-black text-indigo-600 dark:text-indigo-400 font-sans uppercase tracking-wide leading-none mb-0.5">
                                 🏷️ {p.series}
                               </span>
                             )}
-                            <h4 className="font-extrabold text-slate-800 dark:text-slate-100 font-sans leading-tight text-xs sm:text-sm flex items-center gap-1.5 flex-wrap" title={p.name}>
-                              <span className="text-xs sm:text-sm">{p.name}</span>
+                            <h4 className="font-extrabold text-slate-900 dark:text-slate-100 font-sans leading-snug text-[13px] sm:text-[14px] flex items-center gap-1.5 flex-wrap" title={p.name}>
+                              <span>{p.name}</span>
                               {getColorDotAndBadge(p.color)}
                             </h4>
-                            <div className="flex flex-wrap gap-1 items-center mt-0.5 leading-none">
+                            <div className="flex flex-wrap gap-1.5 items-center mt-1 leading-none">
                               {(() => {
                                 const bMatch = brands.find(b => b.name === p.brand);
                                 if (bMatch) {
                                   return (
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-black text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-md leading-none shrink-0 border border-slate-200/50 dark:border-slate-700/50">
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8.5px] font-black text-slate-700 bg-slate-100 dark:bg-slate-850 dark:text-slate-300 rounded-md leading-none shrink-0 border border-slate-200 dark:border-slate-750">
                                       {bMatch.logoUrl ? (
-                                        <img src={bMatch.logoUrl} alt={p.brand} className="h-4 object-contain" referrerPolicy="no-referrer" />
+                                        <img src={bMatch.logoUrl} alt={p.brand} className="h-4.5 object-contain" referrerPolicy="no-referrer" />
                                       ) : (
                                         <span>🏷️ {p.brand}</span>
                                       )}
@@ -1439,7 +1493,6 @@ export default function ProductListView({
                                 }
                                 return null;
                               })()}
-
                             </div>
                           </div>
                         </div>
@@ -1447,11 +1500,11 @@ export default function ProductListView({
 
                       {/* Custom Reordering Buttons Column cell */}
                       {isReorderMode && (
-                        <td className="py-1 px-2 text-center">
-                          <div className="flex items-center justify-center gap-1 bg-slate-100 dark:bg-slate-800 rounded p-1 border border-slate-200 dark:border-slate-700 w-fit mx-auto shadow-3xs">
+                        <td className="py-3 px-2 text-center">
+                          <div className="flex items-center justify-center gap-1 bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700 w-fit mx-auto shadow-3xs">
                             <button
                               onClick={() => handleMoveProduct(p.id, 'up')}
-                              className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer active:scale-90"
+                              className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer active:scale-90"
                               title="เลื่อนขึ้น"
                               id={`btn-reorder-up-list-${p.id}`}
                               type="button"
@@ -1460,7 +1513,7 @@ export default function ProductListView({
                             </button>
                             <button
                               onClick={() => handleMoveProduct(p.id, 'down')}
-                              className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors p-0.5 rounded hover:bg-white dark:hover:bg-slate-700 cursor-pointer active:scale-90"
+                              className="text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer active:scale-90"
                               title="เลื่อนลง"
                               id={`btn-reorder-down-list-${p.id}`}
                               type="button"
@@ -1472,20 +1525,20 @@ export default function ProductListView({
                       )}
 
                       {/* รุ่น (Model) */}
-                      <td className="py-0.5 px-1.5">
+                      <td className="py-3 px-3 font-mono">
                         {p.modelNumber !== undefined && p.modelNumber !== null && String(p.modelNumber).trim() !== '' ? (
-                          <span className="inline-block px-1.5 py-0.5 text-[9px] font-black text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/40 rounded leading-none shrink-0">
+                          <span className="bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 px-2.5 py-1 rounded-md border border-rose-200/70 dark:border-rose-900/45 text-[11.5px] font-black inline-block shadow-3xs">
                             รุ่น {p.modelNumber} {p.modelUnit || 'Kg'}
                           </span>
                         ) : (
-                          <span className="text-slate-300 dark:text-slate-700 font-sans text-[10px]">-</span>
+                          <span className="text-slate-400 dark:text-slate-600 text-[10px] italic">ไม่มีข้อมูลรุ่น</span>
                         )}
                       </td>
 
                       {/* Category & SKU */}
-                      <td className="py-0.5 px-1.5">
+                      <td className="py-3 px-3">
                         <div 
-                          className="flex flex-wrap items-center gap-1.5 mb-0.5 cursor-pointer group/cat hover:opacity-80" 
+                          className="flex flex-wrap items-center gap-1.5 mb-1 cursor-pointer group/cat hover:opacity-80" 
                           title="กดเพื่อกรองกลุ่มนี้และเลื่อนลง" 
                           onClick={() => {
                             setCategoryFilter(p.category);
@@ -1501,59 +1554,61 @@ export default function ProductListView({
                           <img 
                             src={mergedCategories.find(c => c.id === p.category)?.imageUrl || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=120'} 
                             alt={getCategoryName(p.category)} 
-                            className="w-5 h-5 object-cover rounded border border-slate-200 group-hover/cat:ring-1 group-hover/cat:ring-indigo-500"
+                            className="w-5.5 h-5.5 object-cover rounded border border-slate-200 group-hover/cat:ring-1 group-hover/cat:ring-indigo-500"
                             referrerPolicy="no-referrer"
                           />
-                          <span className={`inline-block px-1 py-0.2 text-[8px] font-black rounded border leading-none ${getCategoryBadgeClass(p.category)}`}>
+                          <span className={`inline-block px-1.5 py-0.5 text-[8.5px] font-black rounded border leading-none ${getCategoryBadgeClass(p.category)}`}>
                             {getCategoryName(p.category).split(' (')[0]}
                           </span>
                           {p.series && (
-                            <span className="inline-block px-1 py-0.2 text-[8px] font-black rounded border bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-150 dark:border-indigo-850 leading-none">
+                            <span className="inline-block px-1.5 py-0.5 text-[8.5px] font-black rounded border bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-150 dark:border-indigo-850 leading-none">
                               🏷️ {p.series}
                             </span>
                           )}
                         </div>
-                        <div className="text-[10px] font-mono font-bold text-slate-500 tracking-tight leading-none">{p.sku}</div>
+                        <div className="text-[11px] font-mono font-bold text-slate-800 dark:text-slate-200 tracking-tight leading-none bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 w-fit">{p.sku}</div>
                       </td>
 
                       {/* Cost */}
-                      <td className="py-0.5 px-1.5 text-right">
-                        <div className="font-bold text-slate-700 font-sans text-[11px] leading-none">{formatCurrency(p.costPrice)}</div>
+                      <td className="py-3 px-3 text-right font-mono">
+                        <div className="font-extrabold text-slate-800 dark:text-slate-200 text-[12px] sm:text-[13px] leading-none">{formatCurrency(p.costPrice)}</div>
                       </td>
 
                       {/* Real-time quantity counter / adjusting buttons */}
-                      <td className="py-0.5 px-1.5">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <div className="flex items-center gap-1.5 bg-slate-50 rounded p-0.5 border border-slate-100">
+                      <td className="py-3 px-3">
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                          <div className="flex items-center gap-2 bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700 shadow-3xs">
                             <button
                               onClick={() => handleQuickMinus(p)}
                               disabled={p.quantity <= 0}
-                              className="text-slate-400 hover:text-rose-600 disabled:opacity-40 transition-colors p-0.5 rounded hover:bg-white cursor-pointer"
+                              className="text-slate-400 hover:text-rose-600 disabled:opacity-30 transition-colors p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
                               title="ลดสต็อก 1 ชิ้น"
                               id={`btn-quick-minus-item-${p.id}`}
+                              type="button"
                             >
-                              <MinusCircle className="h-3 w-3" />
+                              <MinusCircle className="h-4 w-4" />
                             </button>
-                            <span className="font-black text-[10px] text-slate-700 w-5 text-center font-mono leading-none">
+                            <span className="font-extrabold text-[12px] text-slate-800 dark:text-slate-200 w-6 text-center font-mono leading-none">
                               {p.quantity}
                             </span>
                             <button
                               onClick={() => handleQuickAdd(p)}
-                              className="text-slate-400 hover:text-emerald-600 transition-colors p-0.5 rounded hover:bg-white cursor-pointer"
+                              className="text-slate-400 hover:text-emerald-600 transition-colors p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
                               title="เพิ่มสต็อก 1 ชิ้น"
                               id={`btn-quick-plus-item-${p.id}`}
+                              type="button"
                             >
-                              <PlusCircle className="h-3 w-3" />
+                              <PlusCircle className="h-4 w-4" />
                             </button>
                           </div>
-                          <div className={`text-[8.5px] font-bold px-1 rounded ${stockColor} shrink-0 leading-none`}>
+                          <div className={`text-[10px] font-black px-2 py-0.5 rounded-full border shadow-3xs ${stockColor}`}>
                             {stockLabel} ({p.minAlert})
                           </div>
                         </div>
                       </td>
 
                       {/* CRUD Actions */}
-                      <td className="py-0.5 px-2 text-right">
+                      <td className="py-3 px-3 text-right">
                         <div className="flex items-center justify-end gap-1 flex-wrap">
                           {p.sourceUrl && (
                             <a
