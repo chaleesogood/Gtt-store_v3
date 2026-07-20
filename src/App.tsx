@@ -41,6 +41,51 @@ console.error = (...args) => {
 };
 
 export default function App() {
+  // Real Firebase Auth states (Declared first for shadowed localStorage)
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'user'>('user');
+
+  // Shadowed localStorage to isolate caches by user ID and prevent cross-user data overwriting
+  const localStorage = {
+    getItem: (key: string) => {
+      if (key === 'stock_manager_auto_sync_enabled' || key === 'theme' || !key.startsWith('stock_manager_')) {
+        return window.localStorage.getItem(key);
+      }
+      const suffix = currentUser ? currentUser.uid : 'guest';
+      const cacheKey = `${key}_${suffix}`;
+      const val = window.localStorage.getItem(cacheKey);
+      if (val) return val;
+
+      // Migration: If user-specific key is empty, check legacy key
+      if (currentUser && currentUser.uid !== 'demo-user') {
+        const legacyVal = window.localStorage.getItem(key);
+        if (legacyVal) {
+          window.localStorage.setItem(cacheKey, legacyVal);
+          return legacyVal;
+        }
+      }
+      return null;
+    },
+    setItem: (key: string, value: string) => {
+      if (key === 'stock_manager_auto_sync_enabled' || key === 'theme' || !key.startsWith('stock_manager_')) {
+        window.localStorage.setItem(key, value);
+        return;
+      }
+      const suffix = currentUser ? currentUser.uid : 'guest';
+      const cacheKey = `${key}_${suffix}`;
+      window.localStorage.setItem(cacheKey, value);
+    },
+    removeItem: (key: string) => {
+      if (key === 'stock_manager_auto_sync_enabled' || key === 'theme' || !key.startsWith('stock_manager_')) {
+        window.localStorage.removeItem(key);
+        return;
+      }
+      const suffix = currentUser ? currentUser.uid : 'guest';
+      const cacheKey = `${key}_${suffix}`;
+      window.localStorage.removeItem(cacheKey);
+    }
+  };
+
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const recentlyDeletedCategories = useRef<Set<string>>(new Set());
@@ -75,9 +120,6 @@ export default function App() {
   };
 
 
-  // Real Firebase Auth states
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'user'>('user');
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -140,6 +182,16 @@ export default function App() {
       } else {
         setCurrentUser(null);
         setCurrentUserRole('user');
+        setProducts([]);
+        setCategories([]);
+        setActivities([]);
+        setBoms([]);
+        setProjects([]);
+        setJobs([]);
+        setEmployees([]);
+        setJobProjects([]);
+        setDailyReports([]);
+        setBrands([]);
         setAuthLoading(false);
       }
     });
