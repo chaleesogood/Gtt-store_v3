@@ -676,6 +676,44 @@ export default function App() {
           throw new Error('ไม่พบข้อมูลสำรองที่ถูกต้องในไฟล์นี้');
         }
 
+        // Upload to Firestore if logged in
+        if (currentUser && currentUser.uid !== 'demo-user') {
+          addToast('info', 'กำลังกู้คืนข้อมูลขึ้นระบบคลาวด์...', 'กำลังอัปโหลดรายการสำรองทั้งหมดขึ้นฐานข้อมูลคลาวด์ กรุณารอสักครู่...');
+          
+          const keyToCollection: Record<string, string> = {
+            'stock_manager_products': 'products',
+            'stock_manager_categories': 'categories',
+            'stock_manager_activities': 'activities',
+            'stock_manager_boms': 'boms',
+            'stock_manager_projects_list': 'projects',
+            'stock_manager_jobs_list': 'jobs',
+            'stock_manager_employees_list': 'employees',
+            'stock_manager_brands_list': 'brands',
+            'stock_manager_job_projects_list': 'jobProjects',
+            'stock_manager_daily_reports_list': 'dailyReports'
+          };
+
+          const promises: Promise<void>[] = [];
+          keys.forEach(key => {
+            const list = backupData[key];
+            if (list && Array.isArray(list)) {
+              const colName = keyToCollection[key];
+              if (colName) {
+                list.forEach((item: any) => {
+                  if (item && item.id) {
+                    const { id, ...data } = item;
+                    promises.push(setDoc(doc(db, colName, id), cleanUndefined(data), { merge: true }));
+                  }
+                });
+              }
+            }
+          });
+
+          if (promises.length > 0) {
+            await Promise.all(promises);
+          }
+        }
+
         // Reload data to local states
         const prodVal = localStorage.getItem('stock_manager_products');
         if (prodVal) setProducts(JSON.parse(prodVal));
@@ -707,7 +745,7 @@ export default function App() {
         const drVal = localStorage.getItem('stock_manager_daily_reports_list');
         if (drVal) setDailyReports(JSON.parse(drVal));
 
-        addToast('success', 'กู้คืนข้อมูลสำเร็จ', 'กู้คืนข้อมูลพัสดุและสต็อกทั้งหมดเข้าสู่เครื่องเรียบร้อยแล้ว');
+        addToast('success', 'กู้คืนข้อมูลสำเร็จ', 'กู้คืนข้อมูลพัสดุและสต็อกทั้งหมดเข้าสู่ระบบเรียบร้อยแล้ว');
       } catch (err: any) {
         console.error(err);
         addToast('warning', 'กู้คืนข้อมูลล้มเหลว', `ไฟล์ไม่ถูกต้องหรือเกิดข้อผิดพลาด: ${err.message}`);
