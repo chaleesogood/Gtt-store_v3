@@ -1095,6 +1095,62 @@ export default function App() {
     e.target.value = '';
   };
 
+  const handleRestoreCacheGroup = async (groupData: Record<string, any[]>) => {
+    try {
+      setIsSyncComplete(false);
+      addToast('info', 'กำลังคืนค่าระบบคลังพัสดุ...', 'ระบบกำลังเขียนข้อมูลที่กู้คืนลงหน่วยความจำของเครื่อง...');
+
+      // Save to active localStorage shadowed key
+      Object.entries(groupData).forEach(([canonicalKey, list]) => {
+        localStorage.setItem(canonicalKey, JSON.stringify(list));
+      });
+
+      // Update local React states
+      if (groupData['stock_manager_products']) setProducts(groupData['stock_manager_products']);
+      if (groupData['stock_manager_categories']) setCategories(groupData['stock_manager_categories']);
+      if (groupData['stock_manager_activities']) setActivities(groupData['stock_manager_activities']);
+      if (groupData['stock_manager_boms']) setBoms(groupData['stock_manager_boms']);
+      if (groupData['stock_manager_projects_list']) setProjects(groupData['stock_manager_projects_list']);
+      if (groupData['stock_manager_jobs_list']) setJobs(groupData['stock_manager_jobs_list']);
+      if (groupData['stock_manager_employees_list']) setEmployees(groupData['stock_manager_employees_list']);
+      if (groupData['stock_manager_brands_list']) setBrands(groupData['stock_manager_brands_list']);
+      if (groupData['stock_manager_job_projects_list']) setJobProjects(groupData['stock_manager_job_projects_list']);
+      if (groupData['stock_manager_daily_reports_list']) setDailyReports(groupData['stock_manager_daily_reports_list']);
+
+      // Upload to Firestore if logged in
+      if (currentUser && currentUser.uid !== 'demo-user') {
+        addToast('info', 'กำลังบันทึกข้อมูลกู้คืนขึ้นคลาวด์...', 'ซิงค์ข้อมูลที่ตรวจพบขึ้นฐานข้อมูลออนไลน์ เพื่อความปลอดภัยถาวร...');
+        
+        const keyToCollection: Record<string, string> = {
+          'stock_manager_products': 'products',
+          'stock_manager_categories': 'categories',
+          'stock_manager_activities': 'activities',
+          'stock_manager_boms': 'boms',
+          'stock_manager_projects_list': 'projects',
+          'stock_manager_jobs_list': 'jobs',
+          'stock_manager_employees_list': 'employees',
+          'stock_manager_brands_list': 'brands',
+          'stock_manager_job_projects_list': 'jobProjects',
+          'stock_manager_daily_reports_list': 'dailyReports'
+        };
+
+        for (const [key, list] of Object.entries(groupData)) {
+          const colName = keyToCollection[key];
+          if (colName && Array.isArray(list) && list.length > 0) {
+            await uploadListToFirestoreInBatches(colName, list);
+          }
+        }
+      }
+
+      addToast('success', 'กู้คืนและคืนค่าข้อมูลเสร็จสมบูรณ์!', 'ระบบนำข้อมูลทั้งหมดที่เคยบันทึกไว้กลับมาเรียบร้อยแล้ว ทุกระบบทำงานปกติ');
+    } catch (err: any) {
+      console.error(err);
+      addToast('warning', 'การกู้คืนล้มเหลว', `เกิดข้อผิดพลาด: ${err.message}`);
+    } finally {
+      setIsSyncComplete(true);
+    }
+  };
+
   const handleUploadLocalStorageToCloud = async () => {
     if (!currentUser || currentUser.uid === 'demo-user') {
       addToast('warning', 'จำเป็นต้องลงชื่อเข้าใช้', 'กรุณาลงชื่อเข้าใช้ด้วยบัญชีจริง (ไม่ใช่โหมดออฟไลน์) เพื่อนำเข้าประวัติขึ้นระบบคลาวด์');
@@ -2178,6 +2234,7 @@ export default function App() {
             }}
             activities={activities}
             onRollbackDatabase={handleRollbackDatabase}
+            onRestoreCacheGroup={handleRestoreCacheGroup}
           />
         );
       case 'catalog':

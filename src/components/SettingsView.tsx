@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Job, Employee, JobProject, normalizeModules, Brand } from '../types';
 import { 
   FolderGit2, 
@@ -491,6 +491,7 @@ interface SettingsViewProps {
   onToggleAutoSync?: (enabled: boolean) => void;
   activities?: any[];
   onRollbackDatabase?: (targetTimeStr: string) => Promise<void>;
+  onRestoreCacheGroup?: (groupData: Record<string, any[]>) => Promise<void>;
 }
 
 type SubTab = 'projects' | 'employees' | 'brands' | 'database';
@@ -517,10 +518,102 @@ export default function SettingsView({
   isAutoSyncEnabled = false,
   onToggleAutoSync,
   activities = [],
-  onRollbackDatabase
+  onRollbackDatabase,
+  onRestoreCacheGroup
 }: SettingsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('projects');
   const [rollbackTime, setRollbackTime] = useState<string>('');
+
+  // Browser cache diagnostics and recovery states
+  const [scannedGroups, setScannedGroups] = useState<Record<string, Record<string, any[]>>>({});
+  const [hasScanned, setHasScanned] = useState(false);
+  const [confirmingSuffix, setConfirmingSuffix] = useState<string | null>(null);
+  const confirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleRestoreClick = async (suffix: string, collections: Record<string, any[]>) => {
+    if (confirmingSuffix !== suffix) {
+      setConfirmingSuffix(suffix);
+      if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+      confirmTimeoutRef.current = setTimeout(() => {
+        setConfirmingSuffix(null);
+      }, 5000);
+      return;
+    }
+
+    setConfirmingSuffix(null);
+    if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+    
+    await onRestoreCacheGroup?.(collections);
+    performCacheScan();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+    };
+  }, []);
+
+  const performCacheScan = () => {
+    try {
+      const keys = Object.keys(window.localStorage);
+      const groups: Record<string, Record<string, any[]>> = {};
+
+      const canonicalKeys = [
+        'stock_manager_products',
+        'stock_manager_categories',
+        'stock_manager_activities',
+        'stock_manager_boms',
+        'stock_manager_projects_list',
+        'stock_manager_jobs_list',
+        'stock_manager_employees_list',
+        'stock_manager_brands_list',
+        'stock_manager_job_projects_list',
+        'stock_manager_daily_reports_list'
+      ];
+
+      keys.forEach(key => {
+        const canonicalMatch = canonicalKeys.find(c => key.startsWith(c));
+        if (!canonicalMatch) return;
+
+        let suffix = 'global';
+        if (key.length > canonicalMatch.length) {
+          const remainder = key.substring(canonicalMatch.length);
+          if (remainder.startsWith('_')) {
+            suffix = remainder.substring(1);
+          } else {
+            suffix = remainder;
+          }
+        }
+
+        if (!groups[suffix]) {
+          groups[suffix] = {};
+        }
+
+        try {
+          const val = window.localStorage.getItem(key);
+          if (val) {
+            const parsed = JSON.parse(val);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              groups[suffix][canonicalMatch] = parsed;
+            }
+          }
+        } catch (e) {
+          // ignore parsing error
+        }
+      });
+
+      setScannedGroups(groups);
+      setHasScanned(true);
+    } catch (err) {
+      console.error("Local storage scanning failed:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'database') {
+      performCacheScan();
+    }
+  }, [activeSubTab]);
 
   // Search States
   const [projSearch, setProjSearch] = useState('');
@@ -3323,6 +3416,158 @@ export default function SettingsView({
                     ยืนยันย้อนเวลาและกู้ข้อมูลกลับไปจุดนี้
                   </button>
                 </div>
+              </div>
+            </div>
+
+            {/* Box 5: Browser Local Storage Diagnostics & Recovery Center */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs col-span-1 md:col-span-2 lg:col-span-3 font-sans">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 rounded-xl">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div className="flex-1 text-left">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                    ศูนย์สำรองและกู้คืนข้อมูลเบราว์เซอร์อัตโนมัติ (Browser Local Cache Recovery Center)
+                    <span className="bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 text-[9px] px-1.5 py-0.5 rounded-full">อัจฉริยะ</span>
+                  </h4>
+                  <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                    ระบบจะสแกนและค้นหาฐานข้อมูลสำรองทุกส่วนที่เคยบันทึกไว้ในเบราว์เซอร์เครื่องนี้ (รวมถึงข้อมูลก่อนเข้าสู่ระบบ ข้อมูลผู้เข้าชม และบัญชีอื่นๆ) หากคุณพบปัญหาข้อมูลสูญหายหลังจากการอัปเกรดหรือสลับบัญชี คุณสามารถเลือกกู้คืนหรือรวมกลุ่มข้อมูลเหล่านี้กลับคืนมาในปัจจุบันได้ทันที
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800/60 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-500">แคชข้อมูลที่ตรวจพบบนเครื่องนี้:</span>
+                  <button
+                    type="button"
+                    onClick={performCacheScan}
+                    className="px-2.5 py-1 bg-slate-150 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-[9px] font-bold rounded-lg cursor-pointer transition-all"
+                  >
+                    สแกนใหม่อีกครั้ง (Rescan)
+                  </button>
+                </div>
+
+                {Object.keys(scannedGroups).length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    ไม่พบแคชข้อมูลกลุ่มอื่นในเบราว์เซอร์นี้
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {Object.entries(scannedGroups).map(([suffix, rawCollections]) => {
+                      const collections = rawCollections as Record<string, any[]>;
+                      const totalItems = Object.values(collections).reduce((sum, list) => sum + (list as any[]).length, 0);
+                      if (totalItems === 0) return null;
+
+                      let name = `กลุ่มแคชบัญชี: ${suffix}`;
+                      let badgeColor = 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
+                      
+                      if (suffix === 'global') {
+                        name = 'ข้อมูลเดิมบนเครื่อง (ก่อนระบบล็อกอิน / Legacy Cache)';
+                        badgeColor = 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400';
+                      } else if (suffix === 'guest' || suffix === 'demo-user') {
+                        name = 'ข้อมูลผู้เข้าชมออฟไลน์ (Guest / Demo Offline Cache)';
+                        badgeColor = 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400';
+                      }
+
+                      return (
+                        <div key={suffix} className="border border-slate-100 dark:border-slate-800 p-4 rounded-xl space-y-3 bg-slate-50/50 dark:bg-slate-900/40 flex flex-col justify-between text-left">
+                          <div>
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-[11px] font-bold text-slate-800 dark:text-slate-100 leading-normal">
+                                {name}
+                              </span>
+                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${badgeColor}`}>
+                                {suffix}
+                              </span>
+                            </div>
+                            
+                            {/* Collection details list */}
+                            <div className="mt-2.5 space-y-1 text-[10px] text-slate-500">
+                              {collections['stock_manager_products'] && (
+                                <div className="flex items-center justify-between">
+                                  <span>📦 สินค้าในคลัง (Products):</span>
+                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_products'].length} ชิ้น</span>
+                                </div>
+                              )}
+                              {collections['stock_manager_categories'] && (
+                                <div className="flex items-center justify-between">
+                                  <span>🏷️ หมวดหมู่สินค้า (Categories):</span>
+                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_categories'].length} รายการ</span>
+                                </div>
+                              )}
+                              {collections['stock_manager_activities'] && (
+                                <div className="flex items-center justify-between">
+                                  <span>📝 ประวัติสต็อกสินค้า (Activities):</span>
+                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_activities'].length} รายการ</span>
+                                </div>
+                              )}
+                              {collections['stock_manager_projects_list'] && (
+                                <div className="flex items-center justify-between">
+                                  <span>🏗️ ข้อมูลโครงการพัฒนา (Projects):</span>
+                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_projects_list'].length} รายการ</span>
+                                </div>
+                              )}
+                              {collections['stock_manager_employees_list'] && (
+                                <div className="flex items-center justify-between">
+                                  <span>👥 ข้อมูลรายชื่อพนักงาน (Employees):</span>
+                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_employees_list'].length} คน</span>
+                                </div>
+                              )}
+                              {collections['stock_manager_brands_list'] && (
+                                <div className="flex items-center justify-between">
+                                  <span>🔖 ข้อมูลแบรนด์/ยี่ห้อ (Brands):</span>
+                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_brands_list'].length} รายการ</span>
+                                </div>
+                              )}
+                              {collections['stock_manager_boms'] && (
+                                <div className="flex items-center justify-between">
+                                  <span>📐 สูตรการผลิต (BOMs):</span>
+                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_boms'].length} ชุด</span>
+                                </div>
+                              )}
+                              {collections['stock_manager_jobs_list'] && (
+                                <div className="flex items-center justify-between">
+                                  <span>🛠️ ใบส่งมอบสินค้า (Jobs):</span>
+                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_jobs_list'].length} รายการ</span>
+                                </div>
+                              )}
+                              {collections['stock_manager_job_projects_list'] && (
+                                <div className="flex items-center justify-between">
+                                  <span>📋 งานประกอบโครงการ (Job Projects):</span>
+                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_job_projects_list'].length} รายการ</span>
+                                </div>
+                              )}
+                              {collections['stock_manager_daily_reports_list'] && (
+                                <div className="flex items-center justify-between">
+                                  <span>📈 รายงานประจำวัน (Daily Reports):</span>
+                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_daily_reports_list'].length} รายการ</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/40 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreClick(suffix, collections)}
+                              className={`px-3 py-1.5 font-bold text-[9px] rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                                confirmingSuffix === suffix
+                                  ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse'
+                                  : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                              }`}
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              {confirmingSuffix === suffix
+                                ? '⚠️ คลิกอีกครั้งเพื่อยืนยันการคืนค่าข้อมูลกลุ่มนี้ทันที!'
+                                : 'คืนค่าข้อมูลกลุ่มนี้เข้าระบบ (Restore Group)'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
