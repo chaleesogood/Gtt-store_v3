@@ -51,18 +51,20 @@ export default function App() {
       if (key === 'stock_manager_auto_sync_enabled' || key === 'theme' || !key.startsWith('stock_manager_')) {
         return window.localStorage.getItem(key);
       }
-      const suffix = currentUser ? currentUser.uid : 'guest';
-      const cacheKey = `${key}_${suffix}`;
+      // If there is no logged-in user or they are in demo-user bypass, use legacy keys directly
+      if (!currentUser || currentUser.uid === 'demo-user') {
+        return window.localStorage.getItem(key);
+      }
+      // For real authenticated users, isolate their data
+      const cacheKey = `${key}_${currentUser.uid}`;
       const val = window.localStorage.getItem(cacheKey);
       if (val) return val;
 
-      // Migration: If user-specific key is empty, check legacy key
-      if (currentUser && currentUser.uid !== 'demo-user') {
-        const legacyVal = window.localStorage.getItem(key);
-        if (legacyVal) {
-          window.localStorage.setItem(cacheKey, legacyVal);
-          return legacyVal;
-        }
+      // Migration: If user-specific cache is empty, try to load/migrate legacy unshadowed data
+      const legacyVal = window.localStorage.getItem(key);
+      if (legacyVal) {
+        window.localStorage.setItem(cacheKey, legacyVal);
+        return legacyVal;
       }
       return null;
     },
@@ -71,8 +73,11 @@ export default function App() {
         window.localStorage.setItem(key, value);
         return;
       }
-      const suffix = currentUser ? currentUser.uid : 'guest';
-      const cacheKey = `${key}_${suffix}`;
+      if (!currentUser || currentUser.uid === 'demo-user') {
+        window.localStorage.setItem(key, value);
+        return;
+      }
+      const cacheKey = `${key}_${currentUser.uid}`;
       window.localStorage.setItem(cacheKey, value);
     },
     removeItem: (key: string) => {
@@ -80,8 +85,11 @@ export default function App() {
         window.localStorage.removeItem(key);
         return;
       }
-      const suffix = currentUser ? currentUser.uid : 'guest';
-      const cacheKey = `${key}_${suffix}`;
+      if (!currentUser || currentUser.uid === 'demo-user') {
+        window.localStorage.removeItem(key);
+        return;
+      }
+      const cacheKey = `${key}_${currentUser.uid}`;
       window.localStorage.removeItem(cacheKey);
     }
   };
@@ -1190,6 +1198,119 @@ export default function App() {
     }
   };
 
+  const handleRollbackDatabase = async (targetTimeStr: string) => {
+    try {
+      const targetTime = new Date(targetTimeStr);
+      if (isNaN(targetTime.getTime())) {
+        addToast('warning', 'รูปแบบเวลาไม่ถูกต้อง', 'กรุณาระบุรูปแบบวันที่และเวลาที่ถูกต้อง');
+        return;
+      }
+
+      setIsSyncComplete(false);
+
+      // Revert product quantities using the activities log
+      const revertedProducts = products.map(p => ({ ...p }));
+      
+      const activitiesAfterTarget = activities.filter(a => {
+        const actTime = new Date(a.timestamp);
+        return actTime > targetTime;
+      });
+
+      activitiesAfterTarget.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+      for (const act of activitiesAfterTarget) {
+        const prod = revertedProducts.find(p => p.id === act.productId);
+        if (prod) {
+          if (act.type === 'in') {
+            prod.quantity = Math.max(0, prod.quantity - act.quantityChange);
+          } else if (act.type === 'out') {
+            prod.quantity = prod.quantity + act.quantityChange;
+          } else if (act.type === 'adjust') {
+            prod.quantity = act.oldQuantity;
+          }
+          prod.updatedAt = targetTimeStr;
+        }
+      }
+
+      // Filter out records created after targetTime
+      const filteredProducts = revertedProducts.filter(p => !p.createdAt || new Date(p.createdAt) <= targetTime);
+      const filteredActivities = activities.filter(a => new Date(a.timestamp) <= targetTime);
+      const filteredBoms = boms.filter(b => !b.createdAt || new Date(b.createdAt) <= targetTime);
+      const filteredProjects = projects.filter(p => !p.createdAt || new Date(p.createdAt) <= targetTime);
+      const filteredJobs = jobs.filter(j => !j.createdAt || new Date(j.createdAt) <= targetTime);
+      const filteredEmployees = employees.filter(e => !e.createdAt || new Date(e.createdAt) <= targetTime);
+      const filteredBrands = brands.filter(b => !b.createdAt || new Date(b.createdAt) <= targetTime);
+      const filteredJobProjects = jobProjects.filter(jp => !jp.createdAt || new Date(jp.createdAt) <= targetTime);
+      const filteredDailyReports = dailyReports.filter(dr => !dr.createdAt || new Date(dr.createdAt) <= targetTime);
+
+      // Save to localStorage
+      localStorage.setItem('stock_manager_products', JSON.stringify(filteredProducts));
+      localStorage.setItem('stock_manager_activities', JSON.stringify(filteredActivities));
+      localStorage.setItem('stock_manager_boms', JSON.stringify(filteredBoms));
+      localStorage.setItem('stock_manager_projects_list', JSON.stringify(filteredProjects));
+      localStorage.setItem('stock_manager_jobs_list', JSON.stringify(filteredJobs));
+      localStorage.setItem('stock_manager_employees_list', JSON.stringify(filteredEmployees));
+      localStorage.setItem('stock_manager_brands_list', JSON.stringify(filteredBrands));
+      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(filteredJobProjects));
+      localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(filteredDailyReports));
+
+      // Update local React states
+      setProducts(filteredProducts);
+      setActivities(filteredActivities);
+      setBoms(filteredBoms);
+      setProjects(filteredProjects);
+      setJobs(filteredJobs);
+      setEmployees(filteredEmployees);
+      setBrands(filteredBrands);
+      setJobProjects(filteredJobProjects);
+      setDailyReports(filteredDailyReports);
+
+      // Sync to Firebase Firestore if logged in
+      if (currentUser && currentUser.uid !== 'demo-user') {
+        const batch = writeBatch(db);
+
+        const productsToDelete = products.filter(p => !filteredProducts.some(fp => fp.id === p.id));
+        const activitiesToDelete = activities.filter(a => !filteredActivities.some(fa => fa.id === a.id));
+        const bomsToDelete = boms.filter(b => !filteredBoms.some(fb => fb.id === b.id));
+        const projectsToDelete = projects.filter(p => !filteredProjects.some(fp => fp.id === p.id));
+        const jobsToDelete = jobs.filter(j => !filteredJobs.some(fj => fj.id === j.id));
+        const employeesToDelete = employees.filter(e => !filteredEmployees.some(fe => fe.id === e.id));
+        const brandsToDelete = brands.filter(b => !filteredBrands.some(fb => fb.id === b.id));
+        const jpToDelete = jobProjects.filter(jp => !filteredJobProjects.some(fjp => fjp.id === jp.id));
+        const drToDelete = dailyReports.filter(dr => !filteredDailyReports.some(fdr => fdr.id === dr.id));
+
+        productsToDelete.forEach(p => batch.delete(doc(db, 'products', p.id)));
+        activitiesToDelete.forEach(a => batch.delete(doc(db, 'activities', a.id)));
+        bomsToDelete.forEach(b => batch.delete(doc(db, 'boms', b.id)));
+        projectsToDelete.forEach(p => batch.delete(doc(db, 'projects', p.id)));
+        jobsToDelete.forEach(j => batch.delete(doc(db, 'jobs', j.id)));
+        employeesToDelete.forEach(e => batch.delete(doc(db, 'employees', e.id)));
+        brandsToDelete.forEach(b => batch.delete(doc(db, 'brands', b.id)));
+        jpToDelete.forEach(jp => batch.delete(doc(db, 'jobProjects', jp.id)));
+        drToDelete.forEach(dr => batch.delete(doc(db, 'dailyReports', dr.id)));
+
+        await batch.commit();
+
+        await uploadListToFirestoreInBatches('products', filteredProducts);
+        await uploadListToFirestoreInBatches('activities', filteredActivities);
+        await uploadListToFirestoreInBatches('boms', filteredBoms);
+        await uploadListToFirestoreInBatches('projects', filteredProjects);
+        await uploadListToFirestoreInBatches('jobs', filteredJobs);
+        await uploadListToFirestoreInBatches('employees', filteredEmployees);
+        await uploadListToFirestoreInBatches('brands', filteredBrands);
+        await uploadListToFirestoreInBatches('jobProjects', filteredJobProjects);
+        await uploadListToFirestoreInBatches('dailyReports', filteredDailyReports);
+      }
+
+      addToast('success', 'ย้อนเวลาข้อมูลคลังพัสดุสำเร็จ!', `ดึงประวัติย้อนเวลากลับไป ณ ${targetTime.toLocaleString('th-TH')} เรียบร้อย สต็อกทุกอย่างกลับคืนสภาพสมบูรณ์`);
+    } catch (err: any) {
+      console.error(err);
+      addToast('warning', 'ย้อนเวลากู้ข้อมูลล้มเหลว', `เกิดข้อผิดพลาด: ${err.message}`);
+    } finally {
+      setIsSyncComplete(true);
+    }
+  };
+
   // -------------------- PRODUCTS WORKFLOWS --------------------
 
   const handleAddProduct = async (newProd: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -2055,6 +2176,8 @@ export default function App() {
               localStorage.setItem('stock_manager_auto_sync_enabled', enabled ? 'true' : 'false');
               addToast('success', enabled ? 'เปิดใช้งานซิงค์ออโต้แล้ว' : 'ปิดใช้งานซิงค์ออโต้แล้ว', enabled ? 'ระบบจะเริ่มซิงค์ข้อมูลจากเครื่องนี้ขึ้นระบบคลาวด์โดยอัตโนมัติเมื่อเริ่มทำงาน' : 'ระบบจะไม่ซิงค์ข้อมูลจากเครื่องขึ้นคลาวด์เองในเบื้องหลัง เพื่อประหยัดโควต้าฐานข้อมูล');
             }}
+            activities={activities}
+            onRollbackDatabase={handleRollbackDatabase}
           />
         );
       case 'catalog':
