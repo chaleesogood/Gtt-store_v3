@@ -189,6 +189,7 @@ export default function App() {
         unsubscribeRole = null;
       }
       if (user) {
+        window.localStorage.removeItem('stock_manager_is_offline');
         setCurrentUser(user);
         
         // Fetch/Listen to this user's specific role in 'user_roles'
@@ -198,24 +199,76 @@ export default function App() {
             const data = docSnap.data() as UserRole;
             setCurrentUserRole(data.role);
           } else {
-            // Document doesn't exist, let's create a default role record!
-            const isDefaultAdmin = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
-            const defaultRole: 'admin' | 'user' = isDefaultAdmin ? 'admin' : 'user';
-            
-            const newRoleRecord: UserRole = {
-              uid: user.uid,
-              email: user.email || '',
-              displayName: user.displayName || user.email?.split('@')[0] || 'Unknown User',
-              role: defaultRole,
-              createdAt: new Date().toISOString()
-            };
-            
+            // Document doesn't exist, let's check if there is an existing role record with the same email!
             try {
-              await setDoc(userRoleRef, cleanUndefined(newRoleRecord));
-              setCurrentUserRole(defaultRole);
+              const q = query(collection(db, 'user_roles'));
+              const querySnapshot = await getDocs(q);
+              let existingRoleRecord: UserRole | null = null;
+              let existingDocId: string | null = null;
+              
+              querySnapshot.forEach((docSnap) => {
+                const data = docSnap.data() as UserRole;
+                if (data.email && data.email.toLowerCase() === user.email?.toLowerCase()) {
+                  existingRoleRecord = data;
+                  existingDocId = docSnap.id;
+                }
+              });
+
+              if (existingRoleRecord && existingDocId) {
+                // Yes! Found a pre-registered role record. Let's transfer it to the real UID doc!
+                const newRoleRecord: UserRole = {
+                  uid: user.uid,
+                  email: user.email || '',
+                  displayName: user.displayName || (existingRoleRecord as UserRole).displayName || user.email?.split('@')[0] || 'Unknown User',
+                  role: (existingRoleRecord as UserRole).role,
+                  createdAt: (existingRoleRecord as UserRole).createdAt || new Date().toISOString()
+                };
+                
+                await setDoc(userRoleRef, cleanUndefined(newRoleRecord));
+                
+                // If the old doc ID was different from the user's real UID, delete the old doc
+                if (existingDocId !== user.uid) {
+                  await deleteDoc(doc(db, 'user_roles', existingDocId));
+                }
+                
+                setCurrentUserRole(newRoleRecord.role);
+              } else {
+                // Document doesn't exist, let's create a default role record!
+                const isDefaultAdmin = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
+                const defaultRole: 'admin' | 'user' = isDefaultAdmin ? 'admin' : 'user';
+                
+                const newRoleRecord: UserRole = {
+                  uid: user.uid,
+                  email: user.email || '',
+                  displayName: user.displayName || user.email?.split('@')[0] || 'Unknown User',
+                  role: defaultRole,
+                  createdAt: new Date().toISOString()
+                };
+                
+                await setDoc(userRoleRef, cleanUndefined(newRoleRecord));
+                setCurrentUserRole(defaultRole);
+              }
             } catch (err) {
-              console.error("Error creating user role record:", err);
-              setCurrentUserRole(defaultRole);
+              console.error("Error looking up existing user role by email:", err);
+              // Fallback to default role record!
+              const isDefaultAdmin = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
+              const defaultRole: 'admin' | 'user' = isDefaultAdmin ? 'admin' : 'user';
+              
+              const newRoleRecord: UserRole = {
+                uid: user.uid,
+                email: user.email || '',
+                displayName: user.displayName || user.email?.split('@')[0] || 'Unknown User',
+                role: defaultRole,
+                createdAt: new Date().toISOString()
+              };
+              
+              try {
+                await setDoc(userRoleRef, cleanUndefined(newRoleRecord));
+                setCurrentUserRole(defaultRole);
+              } catch (setErr) {
+                console.error("Error creating fallback user role record:", setErr);
+                setCurrentUserRole(defaultRole);
+              }
             }
           }
           setAuthLoading(false);
@@ -225,6 +278,46 @@ export default function App() {
           setAuthLoading(false);
         });
       } else {
+        // If there is no real Firebase user, check if we previously selected offline/demo mode
+        const isOfflineSaved = window.localStorage.getItem('stock_manager_is_offline') === 'true';
+        if (isOfflineSaved) {
+          const guestUser = {
+            uid: 'demo-user',
+            email: 'guest@gtt2013.com',
+            displayName: 'ผู้เข้าชมทั่วไป (Demo/Offline)',
+            photoURL: null
+          };
+          setCurrentUser(guestUser);
+          setCurrentUserRole('admin');
+          setIsDemoBypass(true);
+          
+          // Load data from localStorage
+          const savedProducts = window.localStorage.getItem('stock_manager_products');
+          const savedCategories = window.localStorage.getItem('stock_manager_categories');
+          const savedActivities = window.localStorage.getItem('stock_manager_activities');
+          const savedBoms = window.localStorage.getItem('stock_manager_boms');
+          const savedProjects = window.localStorage.getItem('stock_manager_projects_list');
+          const savedJobs = window.localStorage.getItem('stock_manager_jobs_list');
+          const savedEmployees = window.localStorage.getItem('stock_manager_employees_list');
+          const savedBrands = window.localStorage.getItem('stock_manager_brands_list');
+          const savedJobProjects = window.localStorage.getItem('stock_manager_job_projects_list');
+          const savedDailyReports = window.localStorage.getItem('stock_manager_daily_reports_list');
+          
+          setProducts(savedProducts ? JSON.parse(savedProducts) : INITIAL_PRODUCTS);
+          setCategories(savedCategories ? JSON.parse(savedCategories) : INITIAL_CATEGORIES);
+          setActivities(savedActivities ? JSON.parse(savedActivities) : INITIAL_ACTIVITIES);
+          setBoms(savedBoms ? JSON.parse(savedBoms) : []);
+          setProjects(savedProjects ? JSON.parse(savedProjects) : []);
+          setJobs(savedJobs ? JSON.parse(savedJobs) : []);
+          setEmployees(savedEmployees ? JSON.parse(savedEmployees) : []);
+          setBrands(savedBrands ? JSON.parse(savedBrands) : []);
+          setJobProjects(savedJobProjects ? JSON.parse(savedJobProjects) : []);
+          setDailyReports(savedDailyReports ? JSON.parse(savedDailyReports) : []);
+          
+          setAuthLoading(false);
+          return;
+        }
+
         setCurrentUser(null);
         setCurrentUserRole('user');
         setProducts([]);
@@ -337,8 +430,16 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as Product);
       });
       if (list.length === 0) {
-        setProducts([]);
-        localStorage.setItem('stock_manager_products', JSON.stringify([]));
+        const saved = localStorage.getItem('stock_manager_products');
+        const localList = saved ? (JSON.parse(saved) as Product[]) : [];
+        if (localList.length > 0) {
+          console.log("Firestore products is empty, uploading local cache to Firestore");
+          uploadListToFirestoreInBatches('products', localList);
+          setProducts(localList);
+        } else {
+          setProducts([]);
+          localStorage.setItem('stock_manager_products', JSON.stringify([]));
+        }
       } else {
         const sorted = sortProducts(list);
         setProducts(sorted);
@@ -363,8 +464,16 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as Category);
       });
       if (list.length === 0) {
-        setCategories([]);
-        localStorage.setItem('stock_manager_categories', JSON.stringify([]));
+        const saved = localStorage.getItem('stock_manager_categories');
+        const localList = saved ? (JSON.parse(saved) as Category[]) : [];
+        if (localList.length > 0) {
+          console.log("Firestore categories is empty, uploading local cache to Firestore");
+          uploadListToFirestoreInBatches('categories', localList);
+          setCategories(localList);
+        } else {
+          setCategories([]);
+          localStorage.setItem('stock_manager_categories', JSON.stringify([]));
+        }
       } else {
         setCategories(list);
         localStorage.setItem('stock_manager_categories', JSON.stringify(list));
@@ -555,8 +664,16 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as StockActivity);
       });
       if (list.length === 0) {
-        setActivities([]);
-        localStorage.setItem('stock_manager_activities', JSON.stringify([]));
+        const saved = localStorage.getItem('stock_manager_activities');
+        const localList = saved ? (JSON.parse(saved) as StockActivity[]) : [];
+        if (localList.length > 0) {
+          console.log("Firestore activities is empty, uploading local cache to Firestore");
+          uploadListToFirestoreInBatches('activities', localList);
+          setActivities(localList);
+        } else {
+          setActivities([]);
+          localStorage.setItem('stock_manager_activities', JSON.stringify([]));
+        }
       } else {
         setActivities(list);
         localStorage.setItem('stock_manager_activities', JSON.stringify(list));
@@ -580,8 +697,20 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as Bom);
       });
       list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      setBoms(list);
-      localStorage.setItem('stock_manager_boms', JSON.stringify(list));
+      if (list.length === 0) {
+        const saved = localStorage.getItem('stock_manager_boms');
+        const localList = saved ? (JSON.parse(saved) as Bom[]) : [];
+        if (localList.length > 0) {
+          uploadListToFirestoreInBatches('boms', localList);
+          setBoms(localList);
+        } else {
+          setBoms([]);
+          localStorage.setItem('stock_manager_boms', JSON.stringify([]));
+        }
+      } else {
+        setBoms(list);
+        localStorage.setItem('stock_manager_boms', JSON.stringify(list));
+      }
     }, (error) => {
       handleFirestoreError("Firestore boms sync error", error);
       const saved = localStorage.getItem('stock_manager_boms');
@@ -600,8 +729,20 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as Project);
       });
       list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      setProjects(list);
-      localStorage.setItem('stock_manager_projects_list', JSON.stringify(list));
+      if (list.length === 0) {
+        const saved = localStorage.getItem('stock_manager_projects_list');
+        const localList = saved ? (JSON.parse(saved) as Project[]) : [];
+        if (localList.length > 0) {
+          uploadListToFirestoreInBatches('projects', localList);
+          setProjects(localList);
+        } else {
+          setProjects([]);
+          localStorage.setItem('stock_manager_projects_list', JSON.stringify([]));
+        }
+      } else {
+        setProjects(list);
+        localStorage.setItem('stock_manager_projects_list', JSON.stringify(list));
+      }
     }, (error) => {
       handleFirestoreError("Firestore projects sync error", error);
       const saved = localStorage.getItem('stock_manager_projects_list');
@@ -620,8 +761,20 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as Job);
       });
       list.sort((a, b) => b.jobNo.localeCompare(a.jobNo));
-      setJobs(list);
-      localStorage.setItem('stock_manager_jobs_list', JSON.stringify(list));
+      if (list.length === 0) {
+        const saved = localStorage.getItem('stock_manager_jobs_list');
+        const localList = saved ? (JSON.parse(saved) as Job[]) : [];
+        if (localList.length > 0) {
+          uploadListToFirestoreInBatches('jobs', localList);
+          setJobs(localList);
+        } else {
+          setJobs([]);
+          localStorage.setItem('stock_manager_jobs_list', JSON.stringify([]));
+        }
+      } else {
+        setJobs(list);
+        localStorage.setItem('stock_manager_jobs_list', JSON.stringify(list));
+      }
     }, (error) => {
       handleFirestoreError("Firestore jobs sync error", error);
       const saved = localStorage.getItem('stock_manager_jobs_list');
@@ -640,8 +793,20 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as Employee);
       });
       list.sort((a, b) => a.name.localeCompare(b.name, 'th'));
-      setEmployees(list);
-      localStorage.setItem('stock_manager_employees_list', JSON.stringify(list));
+      if (list.length === 0) {
+        const saved = localStorage.getItem('stock_manager_employees_list');
+        const localList = saved ? (JSON.parse(saved) as Employee[]) : [];
+        if (localList.length > 0) {
+          uploadListToFirestoreInBatches('employees', localList);
+          setEmployees(localList);
+        } else {
+          setEmployees([]);
+          localStorage.setItem('stock_manager_employees_list', JSON.stringify([]));
+        }
+      } else {
+        setEmployees(list);
+        localStorage.setItem('stock_manager_employees_list', JSON.stringify(list));
+      }
     }, (error) => {
       handleFirestoreError("Firestore employees sync error", error);
       const saved = localStorage.getItem('stock_manager_employees_list');
@@ -660,8 +825,20 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as Brand);
       });
       list.sort((a, b) => a.name.localeCompare(b.name, 'th'));
-      setBrands(list);
-      localStorage.setItem('stock_manager_brands_list', JSON.stringify(list));
+      if (list.length === 0) {
+        const saved = localStorage.getItem('stock_manager_brands_list');
+        const localList = saved ? (JSON.parse(saved) as Brand[]) : [];
+        if (localList.length > 0) {
+          uploadListToFirestoreInBatches('brands', localList);
+          setBrands(localList);
+        } else {
+          setBrands([]);
+          localStorage.setItem('stock_manager_brands_list', JSON.stringify([]));
+        }
+      } else {
+        setBrands(list);
+        localStorage.setItem('stock_manager_brands_list', JSON.stringify(list));
+      }
     }, (error) => {
       handleFirestoreError("Firestore brands sync error", error);
       const saved = localStorage.getItem('stock_manager_brands_list');
@@ -680,8 +857,20 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as JobProject);
       });
       list.sort((a, b) => b.jobNo.localeCompare(a.jobNo));
-      setJobProjects(list);
-      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(list));
+      if (list.length === 0) {
+        const saved = localStorage.getItem('stock_manager_job_projects_list');
+        const localList = saved ? (JSON.parse(saved) as JobProject[]) : [];
+        if (localList.length > 0) {
+          uploadListToFirestoreInBatches('jobProjects', localList);
+          setJobProjects(localList);
+        } else {
+          setJobProjects([]);
+          localStorage.setItem('stock_manager_job_projects_list', JSON.stringify([]));
+        }
+      } else {
+        setJobProjects(list);
+        localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(list));
+      }
     }, (error) => {
       handleFirestoreError("Firestore jobProjects sync error", error);
       const saved = localStorage.getItem('stock_manager_job_projects_list');
@@ -700,8 +889,20 @@ export default function App() {
         list.push({ id: document.id, ...document.data() } as DailyReport);
       });
       list.sort((a, b) => b.date.localeCompare(a.date)); // Sort by date descending
-      setDailyReports(list);
-      localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(list));
+      if (list.length === 0) {
+        const saved = localStorage.getItem('stock_manager_daily_reports_list');
+        const localList = saved ? (JSON.parse(saved) as DailyReport[]) : [];
+        if (localList.length > 0) {
+          uploadListToFirestoreInBatches('dailyReports', localList);
+          setDailyReports(localList);
+        } else {
+          setDailyReports([]);
+          localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify([]));
+        }
+      } else {
+        setDailyReports(list);
+        localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(list));
+      }
     }, (error) => {
       handleFirestoreError("Firestore dailyReports sync error", error);
       const saved = localStorage.getItem('stock_manager_daily_reports_list');
@@ -2205,6 +2406,17 @@ export default function App() {
             onUpdateUserRole={async (uid, role) => {
               await updateDoc(doc(db, 'user_roles', uid), { role });
             }}
+            onUpdateUser={async (uid, updatedData) => {
+              await updateDoc(doc(db, 'user_roles', uid), updatedData);
+            }}
+            onAddUserRole={async (userData) => {
+              const tempUid = userData.uid || `pre_${Date.now()}`;
+              await setDoc(doc(db, 'user_roles', tempUid), {
+                ...userData,
+                uid: tempUid,
+                createdAt: new Date().toISOString()
+              });
+            }}
             onDeleteUserRole={async (uid) => {
               await deleteDoc(doc(db, 'user_roles', uid));
             }}
@@ -2266,6 +2478,7 @@ export default function App() {
     setCurrentUser(guestUser);
     setCurrentUserRole('admin');
     setIsDemoBypass(true);
+    window.localStorage.setItem('stock_manager_is_offline', 'true');
     
     // Load data from localStorage
     const savedProducts = localStorage.getItem('stock_manager_products');
@@ -2356,6 +2569,7 @@ export default function App() {
   const handleSignOut = async () => {
     try {
       setIsDemoBypass(false);
+      window.localStorage.removeItem('stock_manager_is_offline');
       await signOut(auth);
       addToast('info', 'ออกจากระบบเรียบร้อย', 'เซสชันการเข้าใช้งานคลังถูกปิดเรียบร้อยแล้ว');
     } catch (err: any) {
@@ -2687,7 +2901,20 @@ export default function App() {
       <header className="md:hidden bg-slate-900 text-slate-200 py-4 px-5 flex items-center justify-between border-b border-slate-800 sticky top-0 z-30">
         <div className="flex items-center gap-2">
           <Logo className="h-8 w-8 flex-shrink-0" size={32} />
-          <span className="font-bold text-sm tracking-wide text-white">GTT EE STORE</span>
+          <div>
+            <span className="font-bold text-xs tracking-wide text-white block leading-none mb-0.5">GTT EE STORE</span>
+            {currentUser && currentUser.uid !== 'demo-user' ? (
+              <span className="inline-flex items-center gap-1 text-[8px] font-black text-emerald-400 font-sans uppercase tracking-wider">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
+                เรียลไทม์ (ทุกบัญชี)
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[8px] font-bold text-amber-400 font-sans uppercase tracking-wider">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0"></span>
+                ออฟไลน์
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -2893,6 +3120,29 @@ export default function App() {
 
           <div className="flex items-center gap-3 relative">
             
+            {/* Real-time shared sync indicator badge */}
+            {currentUser && currentUser.uid !== 'demo-user' ? (
+              <div 
+                className="hidden lg:flex items-center gap-2 px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/55 dark:border-emerald-800/40 rounded-xl shadow-2xs select-none"
+                title="ระบบฐานข้อมูลซิงค์ตรงกันกับทุกเครื่องที่ใช้งานแบบเรียลไทม์สองทิศทาง"
+              >
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 font-sans tracking-wide">
+                  เชื่อมต่อเรียลไทม์ (แชร์ทุกบัญชี)
+                </span>
+              </div>
+            ) : (
+              <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/30 rounded-xl">
+                <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0"></span>
+                <span className="text-[10px] font-black text-amber-700 dark:text-amber-400 font-sans">
+                  โหมดสำรองจำลองในเครื่อง
+                </span>
+              </div>
+            )}
+
             {/* Theme Toggle Button */}
             <button
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}

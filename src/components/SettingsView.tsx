@@ -516,7 +516,6 @@ export default function SettingsView({
   onRestoreCacheGroup
 }: SettingsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('projects');
-  const [rollbackTime, setRollbackTime] = useState<string>('');
 
   // Browser cache diagnostics and recovery states
   const [scannedGroups, setScannedGroups] = useState<Record<string, Record<string, any[]>>>({});
@@ -3257,119 +3256,8 @@ export default function SettingsView({
 
 
 
-            {/* Box 4: Database Time Machine Rollback Helper */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs col-span-1 md:col-span-2 lg:col-span-3">
-              <div className="flex items-start gap-3">
-                <div className="p-2.5 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl">
-                  <Database className="h-5 w-5 animate-pulse" />
-                </div>
-                <div className="flex-1 text-left">
-                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 font-sans flex items-center gap-1.5">
-                    เครื่องย้อนเวลาประวัติสต็อกและพัสดุ (Database Time Travel Recovery)
-                    <span className="bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 text-[9px] px-1.5 py-0.5 rounded-full">พรีเมียม</span>
-                  </h4>
-                  <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                    ฟังก์ชันนี้จะช่วยคำนวณและปรับลดหรือเพิ่มระดับสต็อกสินค้า (ย้อนกลับการปรับปรุง, การรับเข้า, และการเบิกออก) รวมถึงประวัติโครงการที่เกิดขึ้นหลังจากเวลาเป้าหมายที่คุณเลือก ย้อนข้อมูลและประวัติกลับไปในเวลาที่ต้องการได้ทันทีเพื่อแก้ไขปัญหาข้อมูลคลาดเคลื่อนหรือขาดหาย
-                  </p>
-                </div>
-              </div>
 
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-800/60 space-y-3 font-sans text-left">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 sm:w-28 shrink-0">เลือกเวลาเป้าหมาย:</span>
-                  <div className="flex items-center gap-2 flex-1">
-                    <input
-                      type="datetime-local"
-                      value={rollbackTime}
-                      onChange={(e) => setRollbackTime(e.target.value)}
-                      className="px-3 py-1.5 text-[11px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-rose-500 outline-none w-full max-w-xs"
-                    />
-                    
-                    {rollbackTime && (
-                      <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
-                        {(() => {
-                          const t = new Date(rollbackTime);
-                          const count = activities.filter(a => new Date(a.timestamp) > t).length;
-                          return count > 0 
-                            ? `⚠️ ตรวจพบประวัติหลังเวลานี้ ${count} รายการ (จะถูกคำนวณย้อนกลับ)`
-                            : `✨ ไม่มีประวัติหลังจากนี้ (จะไม่มีความเปลี่ยนแปลงเพิ่มเติม)`;
-                        })()}
-                      </span>
-                    )}
-                  </div>
-                </div>
 
-                {/* Preset buttons */}
-                <div className="flex flex-wrap gap-1.5 items-center">
-                  <span className="text-[9px] font-bold text-slate-400 shrink-0">เวลาแนะนำ:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const now = new Date();
-                      now.setHours(16, 0, 0, 0);
-                      const year = now.getFullYear();
-                      const month = String(now.getMonth() + 1).padStart(2, '0');
-                      const day = String(now.getDate()).padStart(2, '0');
-                      setRollbackTime(`${year}-${month}-${day}T16:00`);
-                    }}
-                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-[9px] font-bold rounded-lg transition-all cursor-pointer"
-                  >
-                    วันนี้ 16:00 น.
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const now = new Date();
-                      now.setHours(12, 0, 0, 0);
-                      const year = now.getFullYear();
-                      const month = String(now.getMonth() + 1).padStart(2, '0');
-                      const day = String(now.getDate()).padStart(2, '0');
-                      setRollbackTime(`${year}-${month}-${day}T12:00`);
-                    }}
-                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-[9px] font-bold rounded-lg transition-all cursor-pointer"
-                  >
-                    วันนี้เที่ยง 12:00 น.
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const now = new Date();
-                      now.setDate(now.getDate() - 1);
-                      now.setHours(16, 0, 0, 0);
-                      const year = now.getFullYear();
-                      const month = String(now.getMonth() + 1).padStart(2, '0');
-                      const day = String(now.getDate()).padStart(2, '0');
-                      setRollbackTime(`${year}-${month}-${day}T16:00`);
-                    }}
-                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-[9px] font-bold rounded-lg transition-all cursor-pointer"
-                  >
-                    เมื่อวานนี้ 16:00 น.
-                  </button>
-                </div>
-
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex justify-end">
-                  <button
-                    type="button"
-                    disabled={!rollbackTime || !onRollbackDatabase}
-                    onClick={async () => {
-                      if (!rollbackTime || !onRollbackDatabase) return;
-                      const formattedTimeStr = new Date(rollbackTime).toLocaleString('th-TH');
-                      if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการย้อนเวลาข้อมูลทั้งหมดกลับไป ณ เวลา "${formattedTimeStr}" ?\n\nการกระทำนี้จะ:\n1. ลบประวัติและรายการทั้งหมดที่เพิ่มเข้ามาหลังจากจุดเวลานี้\n2. ปรับยอดคงคลังผลิตภัณฑ์ทั้งหมดกลับไป ณ เวลาดังกล่าวโดยการทวนประวัติการเดินระบบ\n\n*โปรดสำรองข้อมูลก่อนเริ่มการกู้คืน*`)) {
-                        await onRollbackDatabase(new Date(rollbackTime).toISOString());
-                      }
-                    }}
-                    className={`px-4 py-2 text-white font-black text-[10px] rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer ${
-                      rollbackTime 
-                        ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/10' 
-                        : 'bg-slate-300 dark:bg-slate-800 text-slate-500 cursor-not-allowed shadow-none'
-                    }`}
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    ยืนยันย้อนเวลาและกู้ข้อมูลกลับไปจุดนี้
-                  </button>
-                </div>
-              </div>
-            </div>
 
             {/* Box 5: Browser Local Storage Diagnostics & Recovery Center */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs col-span-1 md:col-span-2 lg:col-span-3 font-sans">
