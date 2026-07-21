@@ -483,7 +483,6 @@ interface SettingsViewProps {
   onEditBrand?: (id: string, updatedFields: Partial<Brand>) => Promise<void>;
   onDeleteBrand?: (id: string) => Promise<void>;
 
-  onSeedDatabase?: () => Promise<void>;
   onDownloadBackup?: () => void;
   onRestoreBackup?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   activities?: any[];
@@ -510,7 +509,6 @@ export default function SettingsView({
   onAddBrand,
   onEditBrand,
   onDeleteBrand,
-  onSeedDatabase,
   onDownloadBackup,
   onRestoreBackup,
   activities = [],
@@ -3224,41 +3222,8 @@ export default function SettingsView({
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* Box 1: Seeding / Initial Restore */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs">
-              <div className="flex items-start gap-3">
-                <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
-                  <RotateCcw className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 font-sans">
-                    นำรายการสินค้าและประวัติเริ่มต้นกลับมา (Restore Default Sample Data)
-                  </h4>
-                  <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                    ฟังก์ชันนี้จะทำนำเข้าชุดข้อมูลตัวอย่างที่สมบูรณ์กลับคืนสู่คลังสินค้าของคุณโดยอัตโนมัติ (เช่น สมาร์ทโฟน X1 Neo, โน้ตบุ๊ก ProAir, โครงสร้าง BOM, และกลุ่มสินค้าทั้งหมด) โดยจะนำเข้าชุดข้อมูลที่ขาดหายกลับคืนมาทันที
-                  </p>
-                </div>
-              </div>
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex justify-end">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (onSeedDatabase) {
-                      if (confirm("คุณแน่ใจหรือไม่ว่าต้องการนำชุดสินค้าและกลุ่มสินค้าเริ่มต้นกลับมา? (ข้อมูลประวัติและรายการเริ่มต้นที่ตรงกันจะถูกนำกลับมาใหม่)")) {
-                        await onSeedDatabase();
-                      }
-                    }
-                  }}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  ดึงรายการเริ่มต้นที่บันทึกกลับมาด่วน
-                </button>
-              </div>
-            </div>
-
             {/* Box 2: Manual Backup / Restore */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs">
               <div className="flex items-start gap-3">
@@ -3306,7 +3271,7 @@ export default function SettingsView({
 
 
             {/* Box 5: Browser Local Storage Diagnostics & Recovery Center */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs col-span-1 md:col-span-2 lg:col-span-3 font-sans">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs col-span-1 md:col-span-2 font-sans">
               <div className="flex items-start gap-3">
                 <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 rounded-xl">
                   <Sparkles className="h-5 w-5" />

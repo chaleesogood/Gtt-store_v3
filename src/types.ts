@@ -237,7 +237,7 @@ export interface UserRole {
   uid: string;
   email: string;
   displayName?: string;
-  role: 'admin' | 'user'; // admin = Edit, Add, Delete; user = View, Add, Edit but CANNOT delete
+  role: 'admin' | 'editor' | 'user'; // admin = Full Control; editor = Add, Edit, View; user = View, Add, Edit but CANNOT delete
   createdAt: string;
 }
 

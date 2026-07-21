@@ -23,9 +23,9 @@ import {
 interface UserManagementViewProps {
   userRoles: UserRole[];
   currentUserEmail: string | null;
-  onUpdateUserRole: (uid: string, role: 'admin' | 'user') => Promise<void>;
-  onUpdateUser: (uid: string, updatedData: { email: string; displayName: string; role: 'admin' | 'user' }) => Promise<void>;
-  onAddUserRole: (userData: { email: string; displayName: string; role: 'admin' | 'user'; uid?: string }) => Promise<void>;
+  onUpdateUserRole: (uid: string, role: 'admin' | 'editor' | 'user') => Promise<void>;
+  onUpdateUser: (uid: string, updatedData: { email: string; displayName: string; role: 'admin' | 'editor' | 'user' }) => Promise<void>;
+  onAddUserRole: (userData: { email: string; displayName: string; role: 'admin' | 'editor' | 'user'; uid?: string }) => Promise<void>;
   onDeleteUserRole: (uid: string) => Promise<void>;
   addToast: (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string) => void;
   triggerConfirm?: (title: string, message: string, onConfirm: () => void) => void;
@@ -52,12 +52,12 @@ export default function UserManagementView({
   // Form states for Add
   const [addEmail, setAddEmail] = useState('');
   const [addDisplayName, setAddDisplayName] = useState('');
-  const [addRole, setAddRole] = useState<'admin' | 'user'>('user');
+  const [addRole, setAddRole] = useState<'admin' | 'editor' | 'user'>('user');
 
   // Form states for Edit
   const [editEmail, setEditEmail] = useState('');
   const [editDisplayName, setEditDisplayName] = useState('');
-  const [editRole, setEditRole] = useState<'admin' | 'user'>('user');
+  const [editRole, setEditRole] = useState<'admin' | 'editor' | 'user'>('user');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -192,14 +192,27 @@ export default function UserManagementView({
       return;
     }
 
-    const newRole = user.role === 'admin' ? 'user' : 'admin';
-    const confirmMsg = `คุณแน่ใจหรือไม่ว่าต้องการเปลี่ยนสิทธิ์ของ "${user.email}" เป็น ${newRole === 'admin' ? 'ผู้ดูแลระบบ (Admin)' : 'ผู้ใช้งานทั่วไป (User)'}?`;
+    const newRole: 'admin' | 'editor' | 'user' = 
+      user.role === 'user' 
+        ? 'editor' 
+        : user.role === 'editor' 
+          ? 'admin' 
+          : 'user';
+
+    const newRoleName = 
+      newRole === 'admin' 
+        ? 'ผู้ดูแลระบบ (Admin)' 
+        : newRole === 'editor' 
+          ? 'ผู้แก้ไขข้อมูล (Editor)' 
+          : 'ผู้ใช้ทั่วไป (User)';
+
+    const confirmMsg = `คุณแน่ใจหรือไม่ว่าต้องการเปลี่ยนสิทธิ์ของ "${user.email}" เป็น ${newRoleName}?`;
     
     const executeToggle = async () => {
       try {
         setIsUpdating(user.uid);
         await onUpdateUserRole(user.uid, newRole);
-        addToast('success', 'อัปเดตสิทธิ์สำเร็จ', `เปลี่ยนสิทธิ์ของ ${user.email} เป็น ${newRole === 'admin' ? 'Admin' : 'User'} เรียบร้อยแล้ว`);
+        addToast('success', 'อัปเดตสิทธิ์สำเร็จ', `เปลี่ยนสิทธิ์ของ ${user.email} เป็น ${newRoleName} เรียบร้อยแล้ว`);
       } catch (err) {
         addToast('error', 'อัปเดตล้มเหลว', 'เกิดข้อผิดพลาดในการบันทึกสิทธิ์ผู้ใช้งาน');
       } finally {
@@ -349,7 +362,9 @@ export default function UserManagementView({
                           <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs uppercase shrink-0 ${
                             user.role === 'admin' 
                               ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50' 
-                              : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900/50'
+                              : user.role === 'editor'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50'
+                                : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900/50'
                           }`}>
                             {user.displayName ? user.displayName.substring(0, 2) : user.email.substring(0, 2)}
                           </div>
@@ -395,6 +410,11 @@ export default function UserManagementView({
                             <Crown className="h-3.5 w-3.5 text-amber-500" />
                             <span>ผู้ดูแลระบบ (Admin)</span>
                           </span>
+                        ) : user.role === 'editor' ? (
+                          <span className="inline-flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50 py-1 px-2.5 rounded-full font-bold text-xs">
+                            <Pencil className="h-3.5 w-3.5 text-emerald-500" />
+                            <span>ผู้แก้ไขข้อมูล (Editor)</span>
+                          </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 py-1 px-2.5 rounded-full font-bold text-xs">
                             <Lock className="h-3.5 w-3.5 text-slate-400" />
@@ -432,24 +452,31 @@ export default function UserManagementView({
                           <button
                             onClick={() => handleRoleToggle(user)}
                             disabled={isSelf || isDeveloper || isUpdating === user.uid}
-                            className={`px-3 py-2 rounded-xl border font-bold text-xs transition-all flex items-center gap-1 cursor-pointer ${
+                            className={`px-3 py-2 rounded-xl border font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
                               isSelf || isDeveloper
                                 ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-60'
                                 : user.role === 'admin'
                                   ? 'bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                                  : 'bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/50'
+                                  : user.role === 'editor'
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100 dark:hover:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50'
+                                    : 'bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/50'
                             }`}
-                            title={isSelf ? 'ไม่สามารถแก้ไขสิทธิ์ของตนเองได้' : `สลับบทบาทเป็น ${user.role === 'admin' ? 'User' : 'Admin'}`}
+                            title={isSelf ? 'ไม่สามารถแก้ไขสิทธิ์ของตนเองได้' : 'สลับบทบาท (User -> Editor -> Admin)'}
                           >
-                            {user.role === 'admin' ? (
+                            {user.role === 'user' ? (
                               <>
-                                <Lock className="h-3.5 w-3.5" />
-                                <span className="hidden sm:inline">ลดเป็น User</span>
+                                <Pencil className="h-3.5 w-3.5 text-emerald-500" />
+                                <span className="hidden sm:inline">เปลี่ยนเป็น Editor</span>
+                              </>
+                            ) : user.role === 'editor' ? (
+                              <>
+                                <Crown className="h-3.5 w-3.5 text-amber-500" />
+                                <span className="hidden sm:inline">เปลี่ยนเป็น Admin</span>
                               </>
                             ) : (
                               <>
-                                <Crown className="h-3.5 w-3.5 text-amber-500" />
-                                <span className="hidden sm:inline">เลื่อนเป็น Admin</span>
+                                <Lock className="h-3.5 w-3.5 text-slate-400" />
+                                <span className="hidden sm:inline">ลดเป็น User</span>
                               </>
                             )}
                           </button>
@@ -535,30 +562,42 @@ export default function UserManagementView({
                 <label className="font-bold text-slate-700 dark:text-slate-300">
                   ระดับสิทธิ์การเข้าใช้งาน (Role)
                 </label>
-                <div className="grid grid-cols-2 gap-3 mt-1">
+                <div className="grid grid-cols-3 gap-2 mt-1">
                   <button
                     type="button"
                     onClick={() => setAddRole('user')}
-                    className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 cursor-pointer ${
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
                       addRole === 'user'
                         ? 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-500 text-indigo-700 dark:text-indigo-400 font-bold'
                         : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
                     }`}
                   >
-                    <Lock className="h-4 w-4" />
-                    <span>ผู้ใช้ทั่วไป (User)</span>
+                    <Lock className="h-4 w-4 shrink-0" />
+                    <span className="truncate">User (ทั่วไป)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddRole('editor')}
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
+                      addRole === 'editor'
+                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500 text-emerald-700 dark:text-emerald-400 font-bold'
+                        : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
+                    }`}
+                  >
+                    <Pencil className="h-4 w-4 shrink-0" />
+                    <span className="truncate">Editor (แก้ไข)</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setAddRole('admin')}
-                    className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 cursor-pointer ${
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
                       addRole === 'admin'
                         ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-500 text-amber-700 dark:text-amber-400 font-bold'
                         : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
                     }`}
                   >
-                    <Crown className="h-4 w-4" />
-                    <span>ผู้ดูแลระบบ (Admin)</span>
+                    <Crown className="h-4 w-4 shrink-0" />
+                    <span className="truncate">Admin (ผู้ดูแล)</span>
                   </button>
                 </div>
               </div>
@@ -654,30 +693,42 @@ export default function UserManagementView({
                 <label className="font-bold text-slate-700 dark:text-slate-300">
                   ระดับสิทธิ์การเข้าใช้งาน (Role)
                 </label>
-                <div className="grid grid-cols-2 gap-3 mt-1">
+                <div className="grid grid-cols-3 gap-2 mt-1">
                   <button
                     type="button"
                     onClick={() => setEditRole('user')}
-                    className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 cursor-pointer ${
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
                       editRole === 'user'
                         ? 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-500 text-indigo-700 dark:text-indigo-400 font-bold'
                         : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
                     }`}
                   >
-                    <Lock className="h-4 w-4" />
-                    <span>ผู้ใช้ทั่วไป (User)</span>
+                    <Lock className="h-4 w-4 shrink-0" />
+                    <span className="truncate">User (ทั่วไป)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditRole('editor')}
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
+                      editRole === 'editor'
+                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500 text-emerald-700 dark:text-emerald-400 font-bold'
+                        : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
+                    }`}
+                  >
+                    <Pencil className="h-4 w-4 shrink-0" />
+                    <span className="truncate">Editor (แก้ไข)</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setEditRole('admin')}
-                    className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 cursor-pointer ${
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
                       editRole === 'admin'
                         ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-500 text-amber-700 dark:text-amber-400 font-bold'
                         : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
                     }`}
                   >
-                    <Crown className="h-4 w-4" />
-                    <span>ผู้ดูแลระบบ (Admin)</span>
+                    <Crown className="h-4 w-4 shrink-0" />
+                    <span className="truncate">Admin (ผู้ดูแล)</span>
                   </button>
                 </div>
               </div>

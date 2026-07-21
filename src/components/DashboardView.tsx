@@ -1,6 +1,6 @@
 import React from 'react';
 import { Product, Category, StockActivity } from '../types';
-import { Package, AlertTriangle, TrendingUp, DollarSign, Plus, ArrowRight, Cpu, HardDrive, RefreshCw } from 'lucide-react';
+import { Package, AlertTriangle, TrendingUp, DollarSign, Plus, ArrowRight, Cpu, HardDrive, RefreshCw, Users } from 'lucide-react';
 
 interface DashboardViewProps {
   products: Product[];
@@ -9,6 +9,7 @@ interface DashboardViewProps {
   onQuickRestock: (productId: string, amount: number) => void;
   onNavigateToTab: (tab: string) => void;
   onSetStatusFilter: (filter: string) => void;
+  userCount?: number;
 }
 
 export default function DashboardView({
@@ -18,6 +19,7 @@ export default function DashboardView({
   onQuickRestock,
   onNavigateToTab,
   onSetStatusFilter,
+  userCount = 0,
 }: DashboardViewProps) {
   // System memory dynamic telemetry state
   const [memoryInfo, setMemoryInfo] = React.useState<{
@@ -173,7 +175,7 @@ export default function DashboardView({
       </div>
 
       {/* KPI Cards (Flat horizontal-flex rows, no borders/shadows, compact height) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className={`grid grid-cols-2 gap-2 ${userCount > 0 ? 'md:grid-cols-3 lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
         {/* Card 1: Total items */}
         <div className="bg-slate-50 p-2 rounded-lg text-xs flex items-center justify-between gap-2 border-0 shadow-none">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -263,6 +265,30 @@ export default function DashboardView({
             </h3>
           </div>
         </button>
+
+        {/* Card 5: Registered Members / Users (Only if userCount > 0) */}
+        {userCount > 0 && (
+          <button
+            onClick={() => onNavigateToTab('users')}
+            className="text-left bg-slate-50 p-2 rounded-lg text-xs flex items-center justify-between gap-2 hover:bg-indigo-50/50 cursor-pointer group transition-all border-0 shadow-none"
+            id="btn-kpi-total-members"
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded shrink-0">
+                <Users className="h-4 w-4 text-indigo-500" />
+              </div>
+              <div className="truncate">
+                <p className="text-[10px] text-slate-400 font-bold leading-none group-hover:text-indigo-600 transition-colors">จำนวนสมาชิก</p>
+                <span className="text-[8px] text-slate-400 font-sans mt-0.5 inline-block leading-none">ผู้ใช้ลงทะเบียน</span>
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <h3 className="text-sm font-black text-slate-800 font-sans leading-none">
+                {userCount} <span className="text-[9px] font-normal text-slate-400">บัญชี</span>
+              </h3>
+            </div>
+          </button>
+        )}
       </div>
 
       {/* Main Sections Grid */}

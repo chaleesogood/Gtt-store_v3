@@ -16,7 +16,7 @@ import { CatalogView } from './components/CatalogView';
 import UserManagementView from './components/UserManagementView';
 import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs } from 'firebase/firestore';
-import { db, cleanUndefined, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from './firebase';
+import { db, cleanUndefined, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from './firebase';
 import { UserRole } from './types';
 
 // Proxy console.error to intercept and downgrade Firestore quota/limit errors to warnings
@@ -43,7 +43,7 @@ console.error = (...args) => {
 export default function App() {
   // Real Firebase Auth states (Declared first for shadowed localStorage)
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'user'>('user');
+  const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'editor' | 'user'>('user');
 
   // Shadowed localStorage to isolate caches by user ID and prevent cross-user data overwriting
   const localStorage = {
@@ -198,6 +198,8 @@ export default function App() {
   const [loginPasswordInput, setLoginPasswordInput] = useState('');
   const [registerDisplayNameInput, setRegisterDisplayNameInput] = useState('');
   const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false);
+  const [forgotPasswordEmailInput, setForgotPasswordEmailInput] = useState('');
   const [isDemoBypass, setIsDemoBypass] = useState(false);
   const [isOperationNotAllowed, setIsOperationNotAllowed] = useState(false);
   const [showPopupBlockedHelp, setShowPopupBlockedHelp] = useState(false);
@@ -220,9 +222,10 @@ export default function App() {
         // Fetch/Listen to this user's specific role in 'user_roles'
         const userRoleRef = doc(db, 'user_roles', user.uid);
         unsubscribeRole = onSnapshot(userRoleRef, async (docSnap) => {
+          const isDeveloper = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
           if (docSnap.exists()) {
             const data = docSnap.data() as UserRole;
-            setCurrentUserRole(data.role);
+            setCurrentUserRole(isDeveloper ? 'admin' : data.role);
           } else {
             // Document doesn't exist, let's check if there is an existing role record with the same email!
             try {
@@ -260,7 +263,7 @@ export default function App() {
               } else {
                 // Document doesn't exist, let's create a default role record!
                 const isDefaultAdmin = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
-                const defaultRole: 'admin' | 'user' = isDefaultAdmin ? 'admin' : 'user';
+                const defaultRole: 'admin' | 'editor' | 'user' = isDefaultAdmin ? 'admin' : 'user';
                 
                 const newRoleRecord: UserRole = {
                   uid: user.uid,
@@ -277,7 +280,7 @@ export default function App() {
               console.error("Error looking up existing user role by email:", err);
               // Fallback to default role record!
               const isDefaultAdmin = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
-              const defaultRole: 'admin' | 'user' = isDefaultAdmin ? 'admin' : 'user';
+              const defaultRole: 'admin' | 'editor' | 'user' = isDefaultAdmin ? 'admin' : 'user';
               
               const newRoleRecord: UserRole = {
                 uid: user.uid,
@@ -369,7 +372,7 @@ export default function App() {
   // Fetch user_roles list for Admin screen
   useEffect(() => {
     if (currentUser && currentUserRole === 'admin') {
-      const q = query(collection(db, 'user_roles'), orderBy('createdAt', 'desc'));
+      const q = query(collection(db, 'user_roles'));
       const unsubscribe = onSnapshot(q, async (snapshot) => {
         const list: UserRole[] = [];
         let hasChaleeGtt = false;
@@ -421,6 +424,13 @@ export default function App() {
             console.error('Failed to auto-provision chaleesogood@gmail.com:', e);
           }
         }
+
+        // Client-side sort by createdAt desc
+        list.sort((a, b) => {
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return dateB - dateA;
+        });
 
         setUserRoles(list);
       }, (error) => {
@@ -656,36 +666,6 @@ export default function App() {
     };
     mergeOfflineAndOnline();
   }, [currentUser]);
-
-  // Manual database seeding function to restore saved/initial demo items
-  const handleSeedDatabase = async () => {
-    try {
-      console.log("Seeding default database items...");
-      // Seed categories
-      for (const cat of INITIAL_CATEGORIES) {
-        await setDoc(doc(db, 'categories', cat.id), cleanUndefined(cat));
-      }
-      // Seed products
-      for (const prod of INITIAL_PRODUCTS) {
-        await setDoc(doc(db, 'products', prod.id), cleanUndefined(prod));
-      }
-      // Seed activities
-      for (const act of INITIAL_ACTIVITIES) {
-        await setDoc(doc(db, 'activities', act.id), cleanUndefined(act));
-      }
-      addToast('success', 'กู้คืนข้อมูลเริ่มต้นสำเร็จ', 'นำรายการสินค้า หมวดหมู่ และประวัติการทำรายการตัวอย่างเริ่มต้นกลับมาเรียบร้อยแล้ว');
-    } catch (err: any) {
-      console.error("Error seeding database:", err);
-      // Fallback to local storage if Firestore has error/quota limits
-      setProducts(INITIAL_PRODUCTS);
-      setCategories(INITIAL_CATEGORIES);
-      setActivities(INITIAL_ACTIVITIES);
-      localStorage.setItem('stock_manager_products', JSON.stringify(INITIAL_PRODUCTS));
-      localStorage.setItem('stock_manager_categories', JSON.stringify(INITIAL_CATEGORIES));
-      localStorage.setItem('stock_manager_activities', JSON.stringify(INITIAL_ACTIVITIES));
-      addToast('warning', 'กู้คืนข้อมูลเริ่มต้นลงในเครื่องสำเร็จ', 'เนื่องจากระบบคลาวด์ขัดข้อง ระบบได้บันทึกข้อมูลตัวอย่างให้ใช้งานในเครื่องเรียบร้อยแล้ว');
-    }
-  };
 
   // Sync and heal database: Ensure any category referenced by any product is defined in the categories collection
   useEffect(() => {
@@ -2350,6 +2330,7 @@ export default function App() {
             onQuickRestock={handleQuickRestock}
             onNavigateToTab={setCurrentTab}
             onSetStatusFilter={setStatusFilter}
+            userCount={userRoles.length}
           />
         );
       case 'products':
@@ -2450,7 +2431,6 @@ export default function App() {
             onAddBrand={handleAddBrand}
             onEditBrand={handleEditBrand}
             onDeleteBrand={handleDeleteBrand}
-            onSeedDatabase={handleSeedDatabase}
             onDownloadBackup={handleDownloadBackup}
             onRestoreBackup={handleRestoreBackup}
             activities={activities}
@@ -2669,6 +2649,34 @@ export default function App() {
     }
   };
 
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = forgotPasswordEmailInput.trim().toLowerCase();
+    if (!email) {
+      addToast('warning', 'กรอกข้อมูลไม่ครบ', 'โปรดระบุอีเมลของคุณเพื่อรับลิงก์รีเซ็ตรหัสผ่าน');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, email);
+      addToast('success', 'ส่งลิงก์สำเร็จ', `ระบบได้ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมล ${email} เรียบร้อยแล้ว โปรดตรวจสอบกล่องข้อความหรือกล่องจดหมายขยะของคุณครับ`);
+      setIsForgotPasswordMode(false);
+      setLoginEmailInput(email);
+    } catch (error: any) {
+      if (error.code && error.code.startsWith('auth/')) {
+        console.warn("Reset password validation state:", error.code);
+      } else {
+        console.error("Reset password error:", error);
+      }
+      let errorMsg = 'ไม่สามารถส่งลิงก์รีเซ็ตรหัสผ่านได้ในขณะนี้ โปรดตรวจสอบความถูกต้องของอีเมลหรือลองใหม่อีกครั้ง';
+      if (error.code === 'auth/user-not-found' || error.message?.includes('user-not-found')) {
+        errorMsg = 'ไม่พบบัญชีผู้ใช้ที่ใช้อีเมลนี้ในระบบ โปรดตรวจสอบอีเมลอีกครั้ง';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMsg = 'รูปแบบอีเมลไม่ถูกต้อง';
+      }
+      addToast('error', 'เกิดข้อผิดพลาด', errorMsg);
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       setIsDemoBypass(false);
@@ -2767,71 +2775,125 @@ export default function App() {
             </div>
           )}
 
-          {/* Tab Selection */}
-          <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-2xl border border-slate-800">
-            <button
-              onClick={() => { setIsRegisterMode(false); }}
-              className={`py-2 text-xs font-bold rounded-xl transition-all font-sans cursor-pointer ${
-                !isRegisterMode ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              เข้าสู่ระบบ (Login)
-            </button>
-            <button
-              onClick={() => { setIsRegisterMode(true); }}
-              className={`py-2 text-xs font-bold rounded-xl transition-all font-sans cursor-pointer ${
-                isRegisterMode ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              สมัครสมาชิก (Register)
-            </button>
-          </div>
-
-          <form onSubmit={handleEmailPasswordLogin} className="space-y-4 text-left">
-            {isRegisterMode && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-400 font-sans block">ชื่อผู้ใช้งาน / Display Name</label>
-                <input
-                  type="text"
-                  value={registerDisplayNameInput}
-                  onChange={(e) => setRegisterDisplayNameInput(e.target.value)}
-                  placeholder="ชื่อของคุณ..."
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
-                />
+          {isForgotPasswordMode ? (
+            <div className="space-y-4 text-left">
+              <div className="space-y-1">
+                <h3 className="text-sm font-black text-white font-sans">ลืมรหัสผ่าน (Forgot Password)</h3>
+                <p className="text-xs text-slate-400 font-sans">กรอกอีเมลของคุณเพื่อรับลิงก์สำหรับตั้งรหัสผ่านใหม่</p>
               </div>
-            )}
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-400 font-sans block">อีเมลเข้าใช้ระบบ / Email Address</label>
-              <input
-                type="email"
-                required
-                value={loginEmailInput}
-                onChange={(e) => setLoginEmailInput(e.target.value)}
-                placeholder="name@example.com"
-                className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
-              />
+              <form onSubmit={handleForgotPasswordSubmit} className="space-y-4 text-left">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 font-sans block">อีเมลเข้าใช้ระบบ / Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={forgotPasswordEmailInput}
+                    onChange={(e) => setForgotPasswordEmailInput(e.target.value)}
+                    placeholder="name@example.com"
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold rounded-xl text-xs font-sans uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 hover:shadow-indigo-600/30 cursor-pointer text-center"
+                >
+                  ส่งลิงก์รีเซ็ตรหัสผ่าน (Send Reset Link)
+                </button>
+              </form>
+
+              <button
+                type="button"
+                onClick={() => setIsForgotPasswordMode(false)}
+                className="w-full text-center text-xs font-bold text-indigo-400 hover:text-indigo-300 font-sans cursor-pointer transition-all hover:underline"
+              >
+                ย้อนกลับไปหน้าเข้าสู่ระบบ (Back to Login)
+              </button>
             </div>
+          ) : (
+            <>
+              {/* Tab Selection */}
+              <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-2xl border border-slate-800">
+                <button
+                  onClick={() => { setIsRegisterMode(false); }}
+                  className={`py-2 text-xs font-bold rounded-xl transition-all font-sans cursor-pointer ${
+                    !isRegisterMode ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  เข้าสู่ระบบ (Login)
+                </button>
+                <button
+                  onClick={() => { setIsRegisterMode(true); }}
+                  className={`py-2 text-xs font-bold rounded-xl transition-all font-sans cursor-pointer ${
+                    isRegisterMode ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  สมัครสมาชิก (Register)
+                </button>
+              </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-400 font-sans block">รหัสผ่าน / Password (ขั้นต่ำ 6 ตัว)</label>
-              <input
-                type="password"
-                required
-                value={loginPasswordInput}
-                onChange={(e) => setLoginPasswordInput(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
-              />
-            </div>
+              <form onSubmit={handleEmailPasswordLogin} className="space-y-4 text-left">
+                {isRegisterMode && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-400 font-sans block">ชื่อผู้ใช้งาน / Display Name</label>
+                    <input
+                      type="text"
+                      value={registerDisplayNameInput}
+                      onChange={(e) => setRegisterDisplayNameInput(e.target.value)}
+                      placeholder="ชื่อของคุณ..."
+                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                    />
+                  </div>
+                )}
 
-            <button
-              type="submit"
-              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold rounded-xl text-xs font-sans uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 hover:shadow-indigo-600/30 cursor-pointer text-center"
-            >
-              {isRegisterMode ? 'สร้างบัญชีสมาชิกใหม่ (Register)' : 'ลงชื่อเข้าสู่คลัง (Sign In)'}
-            </button>
-          </form>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 font-sans block">อีเมลเข้าใช้ระบบ / Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={loginEmailInput}
+                    onChange={(e) => setLoginEmailInput(e.target.value)}
+                    placeholder="name@example.com"
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-400 font-sans block">รหัสผ่าน / Password (ขั้นต่ำ 6 ตัว)</label>
+                    {!isRegisterMode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForgotPasswordEmailInput(loginEmailInput);
+                          setIsForgotPasswordMode(true);
+                        }}
+                        className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 font-sans hover:underline cursor-pointer"
+                      >
+                        ลืมรหัสผ่าน?
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    value={loginPasswordInput}
+                    onChange={(e) => setLoginPasswordInput(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold rounded-xl text-xs font-sans uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 hover:shadow-indigo-600/30 cursor-pointer text-center"
+                >
+                  {isRegisterMode ? 'สร้างบัญชีสมาชิกใหม่ (Register)' : 'ลงชื่อเข้าสู่คลัง (Sign In)'}
+                </button>
+              </form>
+            </>
+          )}
 
           {/* OR divider */}
           <div className="relative flex items-center justify-center py-2">
@@ -3327,7 +3389,7 @@ export default function App() {
                   {currentUser?.displayName || currentUser?.email?.split('@')[0]}
                 </span>
                 <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-bold tracking-wider uppercase block bg-indigo-50 dark:bg-indigo-950/40 py-0.5 px-1.5 rounded-md border border-indigo-100/60 dark:border-indigo-900/40 mt-0.5 text-center">
-                  {currentUserRole === 'admin' ? '★ ผู้ดูแล (Admin)' : '● ผู้ใช้ (User)'}
+                  {currentUserRole === 'admin' ? '★ ผู้ดูแล (Admin)' : currentUserRole === 'editor' ? '✍ ผู้แก้ไข (Editor)' : '● ผู้ใช้ (User)'}
                 </span>
                 <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono block mt-0.5">{currentUser?.email}</span>
               </div>
