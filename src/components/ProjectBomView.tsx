@@ -472,7 +472,7 @@ function ProjectModulesManager({ proj, onEditJobProject, addToast }: ProjectModu
 
       {/* Edit Module Popup Modal */}
       {editingCode && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-100 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-sm w-full p-5 space-y-4 animate-in zoom-in-95 duration-200 text-left">
             <div>
               <h4 className="text-sm font-black text-slate-800">แก้ไขชื่อโมดูล</h4>

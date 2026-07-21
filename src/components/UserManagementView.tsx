@@ -28,6 +28,7 @@ interface UserManagementViewProps {
   onAddUserRole: (userData: { email: string; displayName: string; role: 'admin' | 'user'; uid?: string }) => Promise<void>;
   onDeleteUserRole: (uid: string) => Promise<void>;
   addToast: (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string) => void;
+  triggerConfirm?: (title: string, message: string, onConfirm: () => void) => void;
 }
 
 export default function UserManagementView({
@@ -37,7 +38,8 @@ export default function UserManagementView({
   onUpdateUser,
   onAddUserRole,
   onDeleteUserRole,
-  addToast
+  addToast,
+  triggerConfirm
 }: UserManagementViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
@@ -193,7 +195,7 @@ export default function UserManagementView({
     const newRole = user.role === 'admin' ? 'user' : 'admin';
     const confirmMsg = `คุณแน่ใจหรือไม่ว่าต้องการเปลี่ยนสิทธิ์ของ "${user.email}" เป็น ${newRole === 'admin' ? 'ผู้ดูแลระบบ (Admin)' : 'ผู้ใช้งานทั่วไป (User)'}?`;
     
-    if (confirm(confirmMsg)) {
+    const executeToggle = async () => {
       try {
         setIsUpdating(user.uid);
         await onUpdateUserRole(user.uid, newRole);
@@ -203,6 +205,12 @@ export default function UserManagementView({
       } finally {
         setIsUpdating(null);
       }
+    };
+
+    if (triggerConfirm) {
+      triggerConfirm('ยืนยันการเปลี่ยนบทบาท', confirmMsg, executeToggle);
+    } else if (confirm(confirmMsg)) {
+      executeToggle();
     }
   };
 
@@ -218,7 +226,9 @@ export default function UserManagementView({
       return;
     }
 
-    if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบสิทธิ์และบัญชีผู้ใช้งานของ "${user.email}" ออกจากคลัง?`)) {
+    const confirmMsg = `คุณแน่ใจหรือไม่ว่าต้องการลบสิทธิ์และบัญชีผู้ใช้งานของ "${user.email}" ออกจากคลัง?`;
+
+    const executeDelete = async () => {
       try {
         setIsUpdating(user.uid);
         await onDeleteUserRole(user.uid);
@@ -228,6 +238,12 @@ export default function UserManagementView({
       } finally {
         setIsUpdating(null);
       }
+    };
+
+    if (triggerConfirm) {
+      triggerConfirm('ยืนยันการลบสิทธิ์ผู้ใช้งาน', confirmMsg, executeDelete);
+    } else if (confirm(confirmMsg)) {
+      executeDelete();
     }
   };
 

@@ -771,7 +771,7 @@ export default function CategoryView({
 
       {/* Edit Category Popup Modal */}
       {isEditing && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-100 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-2xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 duration-200 text-left">
             <div>
               <h4 className="text-sm font-black text-slate-800 dark:text-slate-100">แก้ไขหมวดหมู่สินค้า</h4>
@@ -885,7 +885,7 @@ export default function CategoryView({
 
       {/* Edit Series Popup Modal */}
       {editingSeriesName && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-100 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 duration-200 text-left">
             <div>
               <h4 className="text-sm font-black text-slate-800">แก้ไขข้อมูล Series ย่อย</h4>

@@ -168,6 +168,31 @@ export default function App() {
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
   const [authLoading, setAuthLoading] = useState(true);
 
+  // Custom Confirmation Modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const triggerConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+
   // Login / Register inputs
   const [loginEmailInput, setLoginEmailInput] = useState('');
   const [loginPasswordInput, setLoginPasswordInput] = useState('');
@@ -345,11 +370,58 @@ export default function App() {
   useEffect(() => {
     if (currentUser && currentUserRole === 'admin') {
       const q = query(collection(db, 'user_roles'), orderBy('createdAt', 'desc'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      const unsubscribe = onSnapshot(q, async (snapshot) => {
         const list: UserRole[] = [];
+        let hasChaleeGtt = false;
+        let hasChaleeGood = false;
+
         snapshot.forEach((document) => {
-          list.push(document.data() as UserRole);
+          const r = document.data() as UserRole;
+          list.push(r);
+          if (r.email?.toLowerCase() === 'chalee@gtt2013.com') {
+            hasChaleeGtt = true;
+          }
+          if (r.email?.toLowerCase() === 'chaleesogood@gmail.com') {
+            hasChaleeGood = true;
+          }
         });
+
+        // Proactively auto-provision chalee@gtt2013.com if it's missing from Firestore user_roles
+        if (!hasChaleeGtt && !isDemoBypass) {
+          const tempUid = 'pre_chalee_gtt2013_com';
+          const chaleeGttRecord: UserRole = {
+            uid: tempUid,
+            email: 'chalee@gtt2013.com',
+            displayName: 'Chalee GTT',
+            role: 'admin',
+            createdAt: new Date().toISOString()
+          };
+          try {
+            await setDoc(doc(db, 'user_roles', tempUid), cleanUndefined(chaleeGttRecord));
+            console.log('Auto-provisioned default admin role for chalee@gtt2013.com');
+          } catch (e) {
+            console.error('Failed to auto-provision chalee@gtt2013.com:', e);
+          }
+        }
+
+        // Proactively auto-provision chaleesogood@gmail.com if it's missing from Firestore user_roles
+        if (!hasChaleeGood && !isDemoBypass) {
+          const tempUid = currentUser.uid;
+          const chaleeGoodRecord: UserRole = {
+            uid: tempUid,
+            email: 'chaleesogood@gmail.com',
+            displayName: currentUser.displayName || 'Chalee Sogood',
+            role: 'admin',
+            createdAt: new Date().toISOString()
+          };
+          try {
+            await setDoc(doc(db, 'user_roles', tempUid), cleanUndefined(chaleeGoodRecord));
+            console.log('Auto-provisioned default admin role for chaleesogood@gmail.com');
+          } catch (e) {
+            console.error('Failed to auto-provision chaleesogood@gmail.com:', e);
+          }
+        }
+
         setUserRoles(list);
       }, (error) => {
         handleFirestoreError("Firestore user_roles sync error", error);
@@ -358,7 +430,7 @@ export default function App() {
     } else {
       setUserRoles([]);
     }
-  }, [currentUser, currentUserRole]);
+  }, [currentUser, currentUserRole, isDemoBypass]);
 
   const checkFirestoreQuotaError = (error: any) => {
     if (error) {
@@ -1655,37 +1727,41 @@ export default function App() {
     const productToDelete = products.find((p) => p.id === id);
     if (!productToDelete) return;
 
-    if (confirm(`คุณแน่ใจหรือไม่ที่จะลบสินค้า "${productToDelete.name}" ออกจากระบบถาวร?`)) {
-      // Log deletion
-      const activity: StockActivity = {
-        id: `act-${Math.random().toString(36).substring(2, 9)}`,
-        productId: id,
-        productName: productToDelete.name,
-        type: 'adjust',
-        quantityChange: -productToDelete.quantity,
-        oldQuantity: productToDelete.quantity,
-        newQuantity: 0,
-        reason: 'ลบรายการสินค้าถาวรออกจากระบบคลังสินค้า',
-        timestamp: new Date().toISOString(),
-      };
+    triggerConfirm(
+      'ยืนยันการลบสินค้า',
+      `คุณแน่ใจหรือไม่ที่จะลบสินค้า "${productToDelete.name}" ออกจากระบบถาวร?`,
+      async () => {
+        // Log deletion
+        const activity: StockActivity = {
+          id: `act-${Math.random().toString(36).substring(2, 9)}`,
+          productId: id,
+          productName: productToDelete.name,
+          type: 'adjust',
+          quantityChange: -productToDelete.quantity,
+          oldQuantity: productToDelete.quantity,
+          newQuantity: 0,
+          reason: 'ลบรายการสินค้าถาวรออกจากระบบคลังสินค้า',
+          timestamp: new Date().toISOString(),
+        };
 
-      // Optimistic Update
-      const updatedProducts = products.filter((prod) => prod.id !== id);
-      const updatedActivities = [activity, ...activities];
-      setProducts(updatedProducts);
-      setActivities(updatedActivities);
-      localStorage.setItem('stock_manager_products', JSON.stringify(updatedProducts));
-      localStorage.setItem('stock_manager_activities', JSON.stringify(updatedActivities));
+        // Optimistic Update
+        const updatedProducts = products.filter((prod) => prod.id !== id);
+        const updatedActivities = [activity, ...activities];
+        setProducts(updatedProducts);
+        setActivities(updatedActivities);
+        localStorage.setItem('stock_manager_products', JSON.stringify(updatedProducts));
+        localStorage.setItem('stock_manager_activities', JSON.stringify(updatedActivities));
 
-      try {
-        await deleteDoc(doc(db, 'products', id));
-        await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
-        addToast('info', 'นำสินค้าออกจากระบบ', `ลบ "${productToDelete.name}" เรียบร้อยแล้ว`);
-      } catch (error: any) {
-        handleFirestoreError("Delete product error", error);
-        addToast('info', 'นำสินค้าออกแล้ว (โหมดจำลองเครื่อง)', `ลบรายการสินค้าในอุปกรณ์นี้เรียบร้อย`);
+        try {
+          await deleteDoc(doc(db, 'products', id));
+          await setDoc(doc(db, 'activities', activity.id), cleanUndefined(activity));
+          addToast('info', 'นำสินค้าออกจากระบบ', `ลบ "${productToDelete.name}" เรียบร้อยแล้ว`);
+        } catch (error: any) {
+          handleFirestoreError("Delete product error", error);
+          addToast('info', 'นำสินค้าออกแล้ว (โหมดจำลองเครื่อง)', `ลบรายการสินค้าในอุปกรณ์นี้เรียบร้อย`);
+        }
       }
-    }
+    );
   };
 
   // CORE REAL-TIME STOCK ADJUSTMENT ENGINE
@@ -2237,20 +2313,24 @@ export default function App() {
       addToast('error', 'ปฏิเสธการเข้าถึง', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ได้รับอนุญาตให้ลบประวัติการทำรายการ');
       return;
     }
-    if (confirm('คุณแน่ใจหรือไม่ที่ต้องการจะเคลียร์ประวัติการทำรายการในอดีตทั้งหมด? (ประวัติจะหายไปถาวร)')) {
-      try {
-        const querySnapshot = await getDocs(collection(db, 'activities'));
-        const batch = writeBatch(db);
-        querySnapshot.forEach((document) => {
-          batch.delete(doc(db, 'activities', document.id));
-        });
-        await batch.commit();
-        addToast('info', 'ล้างประวัติการทำรายการแล้ว', 'ประวัติความเคลื่อนไหวทั้งหมดถูกลบออกจากฐานข้อมูลเรียบร้อย');
-      } catch (error: any) {
-        console.error(error);
-        addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถล้างประวัติได้: ${error.message}`);
+    triggerConfirm(
+      'ยืนยันการเคลียร์ประวัติทำรายการ',
+      'คุณแน่ใจหรือไม่ที่ต้องการจะเคลียร์ประวัติการทำรายการในอดีตทั้งหมด? (ประวัติจะหายไปถาวร)',
+      async () => {
+        try {
+          const querySnapshot = await getDocs(collection(db, 'activities'));
+          const batch = writeBatch(db);
+          querySnapshot.forEach((document) => {
+            batch.delete(doc(db, 'activities', document.id));
+          });
+          await batch.commit();
+          addToast('info', 'ล้างประวัติการทำรายการแล้ว', 'ประวัติความเคลื่อนไหวทั้งหมดถูกลบออกจากฐานข้อมูลเรียบร้อย');
+        } catch (error: any) {
+          console.error(error);
+          addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถล้างประวัติได้: ${error.message}`);
+        }
       }
-    }
+    );
   };
 
   // Out of Stock & Low Stock items count for bell notification badges
@@ -2376,6 +2456,8 @@ export default function App() {
             activities={activities}
             onRollbackDatabase={handleRollbackDatabase}
             onRestoreCacheGroup={handleRestoreCacheGroup}
+            triggerConfirm={triggerConfirm}
+            addToast={addToast}
           />
         );
       case 'catalog':
@@ -2421,6 +2503,7 @@ export default function App() {
               await deleteDoc(doc(db, 'user_roles', uid));
             }}
             addToast={addToast}
+            triggerConfirm={triggerConfirm}
           />
         );
 
@@ -2520,35 +2603,55 @@ export default function App() {
       setIsOperationNotAllowed(false);
       if (isRegisterMode) {
         // Register standard user
-        const result = await createUserWithEmailAndPassword(auth, email, password);
-        const user = result.user;
+        let user;
+        let isAutoLogin = false;
+        try {
+          const result = await createUserWithEmailAndPassword(auth, email, password);
+          user = result.user;
+        } catch (regError: any) {
+          if (regError.code === 'auth/email-already-in-use') {
+            const loginResult = await signInWithEmailAndPassword(auth, email, password);
+            user = loginResult.user;
+            isAutoLogin = true;
+          } else {
+            throw regError;
+          }
+        }
         
-        // Update display name
-        const displayName = registerDisplayNameInput.trim() || email.split('@')[0];
-        await updateProfile(user, { displayName });
-        
-        // Save user role record
-        const userRoleRef = doc(db, 'user_roles', user.uid);
-        const isDefaultAdmin = email === 'chaleesogood@gmail.com' || email === 'chalee@gtt2013.com';
-        const defaultRole: 'admin' | 'user' = isDefaultAdmin ? 'admin' : 'user';
-        
-        const newRoleRecord: UserRole = {
-          uid: user.uid,
-          email,
-          displayName,
-          role: defaultRole,
-          createdAt: new Date().toISOString()
-        };
-        
-        await setDoc(userRoleRef, cleanUndefined(newRoleRecord));
-        addToast('success', 'สมัครสมาชิกสำเร็จ', `สร้างบัญชีและเข้าสู่ระบบเรียบร้อยแล้ว: ${email}`);
+        if (isAutoLogin) {
+          addToast('success', 'เข้าสู่ระบบสำเร็จ', `ตรวจพบว่าอีเมลนี้เคยสมัครสมาชิกแล้ว ระบบนำท่านเข้าสู่ระบบเรียบร้อย: ${email}`);
+        } else {
+          // Update display name
+          const displayName = registerDisplayNameInput.trim() || email.split('@')[0];
+          await updateProfile(user, { displayName });
+          
+          // Save user role record
+          const userRoleRef = doc(db, 'user_roles', user.uid);
+          const isDefaultAdmin = email === 'chaleesogood@gmail.com' || email === 'chalee@gtt2013.com';
+          const defaultRole: 'admin' | 'user' = isDefaultAdmin ? 'admin' : 'user';
+          
+          const newRoleRecord: UserRole = {
+            uid: user.uid,
+            email,
+            displayName,
+            role: defaultRole,
+            createdAt: new Date().toISOString()
+          };
+          
+          await setDoc(userRoleRef, cleanUndefined(newRoleRecord));
+          addToast('success', 'สมัครสมาชิกสำเร็จ', `สร้างบัญชีและเข้าสู่ระบบเรียบร้อยแล้ว: ${email}`);
+        }
       } else {
         // Login
         const result = await signInWithEmailAndPassword(auth, email, password);
         addToast('success', 'เข้าสู่ระบบสำเร็จ', `เข้าสู่ระบบสำเร็จในชื่อบัญชี ${result.user.email}`);
       }
     } catch (error: any) {
-      console.error("Auth error:", error);
+      if (error.code && error.code.startsWith('auth/')) {
+        console.warn("Auth validation state:", error.code);
+      } else {
+        console.error("Auth error:", error);
+      }
       let errMsg = error.message;
       if (error.code === 'auth/operation-not-allowed' || error.message?.includes('operation-not-allowed')) {
         setIsOperationNotAllowed(true);
@@ -3032,10 +3135,14 @@ export default function App() {
 
             <button
               onClick={() => {
-                if (confirm('คุณแน่ใจหรือไม่ว่าต้องการออกจากระบบคลังสินค้า?')) {
-                  handleSignOut();
-                  setIsMobileMenuOpen(false);
-                }
+                triggerConfirm(
+                  'ออกจากระบบ',
+                  'คุณแน่ใจหรือไม่ว่าต้องการออกจากระบบคลังสินค้า?',
+                  () => {
+                    handleSignOut();
+                    setIsMobileMenuOpen(false);
+                  }
+                );
               }}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 transition-all border border-dashed border-rose-900/40 mt-4 cursor-pointer"
             >
@@ -3226,9 +3333,13 @@ export default function App() {
               </div>
               <button
                 onClick={() => {
-                  if (confirm('คุณแน่ใจหรือไม่ว่าต้องการออกจากระบบคลังสินค้า?')) {
-                    handleSignOut();
-                  }
+                  triggerConfirm(
+                    'ออกจากระบบ',
+                    'คุณแน่ใจหรือไม่ว่าต้องการออกจากระบบคลังสินค้า?',
+                    () => {
+                      handleSignOut();
+                    }
+                  );
                 }}
                 className="h-9 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/20 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-700 hover:border-rose-100 text-slate-600 dark:text-slate-400 flex items-center justify-center font-bold text-[10px] font-sans tracking-wider transition-all cursor-pointer uppercase shrink-0"
                 title="ออกจากระบบ (Sign Out)"
@@ -3244,6 +3355,43 @@ export default function App() {
         <div className="animate-in fade-in duration-300">
           {renderTabContent()}
         </div>
+
+        {/* CUSTOM CONFIRMATION MODAL */}
+        {confirmModal.isOpen && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200 text-left">
+              <div className="p-6 space-y-4">
+                <div className="flex items-center gap-3 text-amber-500 dark:text-amber-400">
+                  <span className="p-2.5 bg-amber-500/10 rounded-2xl">
+                    <AlertTriangle className="h-6 w-6" />
+                  </span>
+                  <h3 className="font-sans font-black text-slate-900 dark:text-white text-base sm:text-lg">
+                    {confirmModal.title}
+                  </h3>
+                </div>
+                <p className="font-sans text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                  {confirmModal.message}
+                </p>
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                    className="px-4 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl text-xs sm:text-sm cursor-pointer"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmModal.onConfirm}
+                    className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs sm:text-sm cursor-pointer shadow-xs"
+                  >
+                    ยืนยัน
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* TOAST SYSTEM CONTAINER */}
         <div className="fixed bottom-5 right-5 space-y-3 z-50 flex flex-col items-end">

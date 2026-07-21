@@ -411,7 +411,7 @@ function ProjectModulesManager({
 
       {/* Edit Module Popup Modal */}
       {editingIndex !== null && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-100 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-sm w-full p-5 space-y-4 animate-in zoom-in-95 duration-200 text-left">
             <div>
               <h4 className="text-sm font-black text-slate-800">แก้ไขข้อมูลโมดูล</h4>
@@ -489,6 +489,8 @@ interface SettingsViewProps {
   activities?: any[];
   onRollbackDatabase?: (targetTimeStr: string) => Promise<void>;
   onRestoreCacheGroup?: (groupData: Record<string, any[]>) => Promise<void>;
+  triggerConfirm?: (title: string, message: string, onConfirm: () => void) => void;
+  addToast?: (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string) => void;
 }
 
 type SubTab = 'projects' | 'employees' | 'brands' | 'database';
@@ -513,7 +515,9 @@ export default function SettingsView({
   onRestoreBackup,
   activities = [],
   onRollbackDatabase,
-  onRestoreCacheGroup
+  onRestoreCacheGroup,
+  triggerConfirm,
+  addToast
 }: SettingsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('projects');
 
@@ -1191,10 +1195,17 @@ export default function SettingsView({
                           <button
                             onClick={() => {
                               if (associatedTasks.length > 0) {
-                                alert(`ไม่สามารถลบรหัสงาน ${activeProjObj.jobNo} ได้ เนื่องจากยังมีโมดูลย่อยและใบสั่งงานในระบบอ้างอิงอยู่จำนวน ${associatedTasks.length} รายการ`);
+                                if (addToast) {
+                                  addToast('warning', 'ไม่สามารถลบโครงการได้', `ไม่สามารถลบรหัสงาน ${activeProjObj.jobNo} ได้ เนื่องจากยังมีโมดูลย่อยและใบสั่งงานในระบบอ้างอิงอยู่จำนวน ${associatedTasks.length} รายการ`);
+                                } else {
+                                  alert(`ไม่สามารถลบรหัสงาน ${activeProjObj.jobNo} ได้ เนื่องจากยังมีโมดูลย่อยและใบสั่งงานในระบบอ้างอิงอยู่จำนวน ${associatedTasks.length} รายการ`);
+                                }
                                 return;
                               }
-                              if (confirm(`ยืนยันการลบโครงการ ${activeProjObj.jobNo} หรือไม่?`)) {
+                              const confirmMsg = `ยืนยันการลบโครงการ ${activeProjObj.jobNo} หรือไม่?`;
+                              if (triggerConfirm) {
+                                triggerConfirm('ยืนยันการลบโครงการ', confirmMsg, () => onDeleteJobProject(activeProjObj.id));
+                              } else if (confirm(confirmMsg)) {
                                 onDeleteJobProject(activeProjObj.id);
                               }
                             }}
@@ -1333,10 +1344,17 @@ export default function SettingsView({
                           <button
                             onClick={() => {
                               if (associatedTasks.length > 0) {
-                                alert(`ไม่สามารถลบรหัสงาน ${proj.jobNo} ได้ เนื่องจากยังมีโมดูลย่อยและใบสั่งงานในระบบอ้างอิงอยู่จำนวน ${associatedTasks.length} รายการ`);
+                                if (addToast) {
+                                  addToast('warning', 'ไม่สามารถลบโครงการได้', `ไม่สามารถลบรหัสงาน ${proj.jobNo} ได้ เนื่องจากยังมีโมดูลย่อยและใบสั่งงานในระบบอ้างอิงอยู่จำนวน ${associatedTasks.length} รายการ`);
+                                } else {
+                                  alert(`ไม่สามารถลบรหัสงาน ${proj.jobNo} ได้ เนื่องจากยังมีโมดูลย่อยและใบสั่งงานในระบบอ้างอิงอยู่จำนวน ${associatedTasks.length} รายการ`);
+                                }
                                 return;
                               }
-                              if (confirm(`ยืนยันการลบโครงการ ${proj.jobNo} หรือไม่?`)) {
+                              const confirmMsg = `ยืนยันการลบโครงการ ${proj.jobNo} หรือไม่?`;
+                              if (triggerConfirm) {
+                                triggerConfirm('ยืนยันการลบโครงการ', confirmMsg, () => onDeleteJobProject(proj.id));
+                              } else if (confirm(confirmMsg)) {
                                 onDeleteJobProject(proj.id);
                               }
                             }}
@@ -1526,10 +1544,17 @@ export default function SettingsView({
                               <button
                                 onClick={() => {
                                   if (assignedJobsCount > 0) {
-                                    alert(`ไม่สามารถลบรายชื่อพนักงาน "${emp.name}" ได้ เนื่องจากมีงานที่มอบหมายค้างอยู่จำนวน ${assignedJobsCount} รายการ`);
+                                    if (addToast) {
+                                      addToast('warning', 'ไม่สามารถลบรายชื่อพนักงานได้', `ไม่สามารถลบรายชื่อพนักงาน "${emp.name}" ได้ เนื่องจากยังมีงานมอบหมายค้างอยู่ ${assignedJobsCount} รายการ`);
+                                    } else {
+                                      alert(`ไม่สามารถลบรายชื่อพนักงาน "${emp.name}" ได้ เนื่องจากมีงานที่มอบหมายค้างอยู่จำนวน ${assignedJobsCount} รายการ`);
+                                    }
                                     return;
                                   }
-                                  if (confirm(`ต้องการลบผู้บริหาร "${emp.name}" หรือไม่?`)) {
+                                  const confirmMsg = `ต้องการลบผู้บริหาร "${emp.name}" หรือไม่?`;
+                                  if (triggerConfirm) {
+                                    triggerConfirm('ยืนยันการลบผู้บริหาร', confirmMsg, () => onDeleteEmployee(emp.id));
+                                  } else if (confirm(confirmMsg)) {
                                     onDeleteEmployee(emp.id);
                                   }
                                 }}
@@ -1692,10 +1717,17 @@ export default function SettingsView({
                                         <button
                                           onClick={() => {
                                             if (assignedJobsCount > 0) {
-                                              alert(`ไม่สามารถลบรายชื่อพนักงาน "${emp.name}" ได้ เนื่องจากมีงานที่มอบหมายค้างอยู่จำนวน ${assignedJobsCount} รายการ`);
+                                              if (addToast) {
+                                                addToast('warning', 'ไม่สามารถลบรายชื่อพนักงานได้', `ไม่สามารถลบรายชื่อพนักงาน "${emp.name}" ได้ เนื่องจากยังมีงานมอบหมายค้างอยู่ ${assignedJobsCount} รายการ`);
+                                              } else {
+                                                alert(`ไม่สามารถลบรายชื่อพนักงาน "${emp.name}" ได้ เนื่องจากมีงานที่มอบหมายค้างอยู่จำนวน ${assignedJobsCount} รายการ`);
+                                              }
                                               return;
                                             }
-                                            if (confirm(`ต้องการลบรายชื่อ "${emp.name}" ออกจากแผนก?`)) {
+                                            const confirmMsg = `ต้องการลบรายชื่อ "${emp.name}" ออกจากแผนก?`;
+                                            if (triggerConfirm) {
+                                              triggerConfirm('ยืนยันการลบรายชื่อพนักงาน', confirmMsg, () => onDeleteEmployee(emp.id));
+                                            } else if (confirm(confirmMsg)) {
                                               onDeleteEmployee(emp.id);
                                             }
                                           }}
@@ -1790,10 +1822,17 @@ export default function SettingsView({
                                         <button
                                           onClick={() => {
                                             if (assignedJobsCount > 0) {
-                                              alert(`ไม่สามารถลบพนักงาน "${emp.name}" ได้ เนื่องจากยังมีงานค้าง ${assignedJobsCount} งาน`);
+                                              if (addToast) {
+                                                addToast('warning', 'ไม่สามารถลบพนักงานได้', `ไม่สามารถลบพนักงาน "${emp.name}" ได้ เนื่องจากยังมีงานค้าง ${assignedJobsCount} งาน`);
+                                              } else {
+                                                alert(`ไม่สามารถลบพนักงาน "${emp.name}" ได้ เนื่องจากยังมีงานค้าง ${assignedJobsCount} งาน`);
+                                              }
                                               return;
                                             }
-                                            if (confirm(`ต้องการลบรายชื่อ "${emp.name}" หรือไม่?`)) {
+                                            const confirmMsg = `ต้องการลบรายชื่อ "${emp.name}" หรือไม่?`;
+                                            if (triggerConfirm) {
+                                              triggerConfirm('ยืนยันการลบรายชื่อพนักงาน', confirmMsg, () => onDeleteEmployee(emp.id));
+                                            } else if (confirm(confirmMsg)) {
                                               onDeleteEmployee(emp.id);
                                             }
                                           }}
@@ -2017,10 +2056,17 @@ export default function SettingsView({
                             <button
                               onClick={() => {
                                 if (assignedJobsCount > 0) {
-                                  alert(`ไม่สามารถลบรายชื่อพนักงาน "${emp.name}" ได้ เนื่องจากมีงานที่มอบหมายค้างอยู่จำนวน ${assignedJobsCount} รายการ`);
+                                  if (addToast) {
+                                    addToast('warning', 'ไม่สามารถลบรายชื่อพนักงานได้', `ไม่สามารถลบรายชื่อพนักงาน "${emp.name}" ได้ เนื่องจากยังมีงานมอบหมายค้างอยู่ ${assignedJobsCount} รายการ`);
+                                  } else {
+                                    alert(`ไม่สามารถลบรายชื่อพนักงาน "${emp.name}" ได้ เนื่องจากมีงานที่มอบหมายค้างอยู่จำนวน ${assignedJobsCount} รายการ`);
+                                  }
                                   return;
                                 }
-                                if (confirm(`คุณต้องการนำรายชื่อพนักงาน "${emp.name}" ออกจากระบบหรือไม่?`)) {
+                                const confirmMsg = `คุณต้องการนำรายชื่อพนักงาน "${emp.name}" ออกจากระบบหรือไม่?`;
+                                if (triggerConfirm) {
+                                  triggerConfirm('ยืนยันการลบรายชื่อพนักงาน', confirmMsg, () => onDeleteEmployee(emp.id));
+                                } else if (confirm(confirmMsg)) {
                                   onDeleteEmployee(emp.id);
                                 }
                               }}
