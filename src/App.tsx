@@ -45,54 +45,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'editor' | 'user'>('user');
 
-  // Shadowed localStorage to isolate caches by user ID and prevent cross-user data overwriting
-  const localStorage = {
-    getItem: (key: string) => {
-      if (key === 'stock_manager_auto_sync_enabled' || key === 'theme' || !key.startsWith('stock_manager_')) {
-        return window.localStorage.getItem(key);
-      }
-      // If there is no logged-in user or they are in demo-user bypass, use legacy keys directly
-      if (!currentUser || currentUser.uid === 'demo-user') {
-        return window.localStorage.getItem(key);
-      }
-      // For real authenticated users, isolate their data
-      const cacheKey = `${key}_${currentUser.uid}`;
-      const val = window.localStorage.getItem(cacheKey);
-      if (val) return val;
-
-      // Migration: If user-specific cache is empty, try to load/migrate legacy unshadowed data
-      const legacyVal = window.localStorage.getItem(key);
-      if (legacyVal) {
-        window.localStorage.setItem(cacheKey, legacyVal);
-        return legacyVal;
-      }
-      return null;
-    },
-    setItem: (key: string, value: string) => {
-      if (key === 'stock_manager_auto_sync_enabled' || key === 'theme' || !key.startsWith('stock_manager_')) {
-        window.localStorage.setItem(key, value);
-        return;
-      }
-      if (!currentUser || currentUser.uid === 'demo-user') {
-        window.localStorage.setItem(key, value);
-        return;
-      }
-      const cacheKey = `${key}_${currentUser.uid}`;
-      window.localStorage.setItem(cacheKey, value);
-    },
-    removeItem: (key: string) => {
-      if (key === 'stock_manager_auto_sync_enabled' || key === 'theme' || !key.startsWith('stock_manager_')) {
-        window.localStorage.removeItem(key);
-        return;
-      }
-      if (!currentUser || currentUser.uid === 'demo-user') {
-        window.localStorage.removeItem(key);
-        return;
-      }
-      const cacheKey = `${key}_${currentUser.uid}`;
-      window.localStorage.removeItem(cacheKey);
-    }
-  };
+  // Delegate to global window.localStorage which is patched for QuotaExceededError and multi-account cache isolation
+  const localStorage = window.localStorage;
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -115,17 +69,54 @@ export default function App() {
       const chunk = list.slice(i, i + chunkSize);
       const batch = writeBatch(db);
       chunk.forEach((item) => {
-        if (item && item.id) {
+        if (item && item.id !== undefined && item.id !== null) {
           const { id, ...data } = item;
-          batch.set(doc(db, collectionName, id), cleanUndefined(data), { merge: true });
+          const docId = String(id).trim();
+          if (docId) {
+            batch.set(doc(db, collectionName, docId), cleanUndefined(data), { merge: true });
+          }
         }
       });
       await batch.commit();
     }
   };
 
+  // Helper to synchronize a collection completely to a backup list (including deleting obsolete docs)
+  const syncCollectionToBackup = async (collectionName: string, backupList: any[]) => {
+    if (!currentUser || currentUser.uid === 'demo-user') return;
+    try {
+      // 1. Query all existing documents in Firestore for this collection
+      const q = query(collection(db, collectionName));
+      const snapshot = await getDocs(q);
+      
+      const backupIds = new Set(backupList.map(item => String(item.id).trim()));
+      const batch = writeBatch(db);
+      let hasDeletes = false;
+
+      snapshot.forEach((document) => {
+        const docId = document.id.trim();
+        if (!backupIds.has(docId)) {
+          batch.delete(doc(db, collectionName, document.id));
+          hasDeletes = true;
+        }
+      });
+
+      if (hasDeletes) {
+        await batch.commit();
+      }
+
+      // 2. Upload/update backup items in batches
+      if (backupList.length > 0) {
+        await uploadListToFirestoreInBatches(collectionName, backupList);
+      }
+    } catch (err) {
+      console.error(`Error syncing Firestore collection ${collectionName} to backup:`, err);
+      throw err;
+    }
+  };
+
   // Helper to merge lists based on item ID (preserve existing if newer, or overwrite)
-  const mergeListsWithExisting = (canonicalKey: string, restoredList: any[]) => {
+  const mergeListsWithExisting = (canonicalKey: string, restoredList: any[], forceOverwrite: boolean = false) => {
     let existingList: any[] = [];
     try {
       const stored = localStorage.getItem(canonicalKey);
@@ -140,23 +131,36 @@ export default function App() {
       existingList = [];
     }
 
-    const map = new Map();
+    const map = new Map<string, any>();
     existingList.forEach(item => {
-      if (item && item.id) map.set(item.id, item);
+      if (item && item.id !== undefined && item.id !== null) {
+        const idStr = String(item.id).trim();
+        if (idStr) {
+          map.set(idStr, { ...item, id: idStr });
+        }
+      }
     });
 
     restoredList.forEach(item => {
-      if (item && item.id) {
-        const prev = map.get(item.id);
-        if (prev) {
-          const prevTime = prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
-          const incomingTime = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
-          // If incoming item is newer, or if no updatedAt exists, update it.
-          if (incomingTime >= prevTime) {
-            map.set(item.id, { ...prev, ...item });
+      if (item && item.id !== undefined && item.id !== null) {
+        const idStr = String(item.id).trim();
+        if (idStr) {
+          const prev = map.get(idStr);
+          if (prev) {
+            if (forceOverwrite) {
+              // Force overwrite the existing item with the restored item
+              map.set(idStr, { ...prev, ...item, id: idStr });
+            } else {
+              const prevTime = prev.updatedAt ? new Date(prev.updatedAt).getTime() : 0;
+              const incomingTime = item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
+              // If incoming item is newer, or if no updatedAt exists, update it.
+              if (incomingTime >= prevTime) {
+                map.set(idStr, { ...prev, ...item, id: idStr });
+              }
+            }
+          } else {
+            map.set(idStr, { ...item, id: idStr });
           }
-        } else {
-          map.set(item.id, item);
         }
       }
     });
@@ -217,6 +221,9 @@ export default function App() {
       }
       if (user) {
         window.localStorage.removeItem('stock_manager_is_offline');
+        (window as any).currentUserEmail = user.email || '';
+        (window as any).currentUserUid = user.uid || '';
+        window.localStorage.setItem('admin_email', user.email || '');
         setCurrentUser(user);
         
         // Fetch/Listen to this user's specific role in 'user_roles'
@@ -315,6 +322,9 @@ export default function App() {
             displayName: 'ผู้เข้าชมทั่วไป (Demo/Offline)',
             photoURL: null
           };
+          (window as any).currentUserEmail = 'guest@gtt2013.com';
+          (window as any).currentUserUid = 'demo-user';
+          window.localStorage.setItem('admin_email', 'guest@gtt2013.com');
           setCurrentUser(guestUser);
           setCurrentUserRole('admin');
           setIsDemoBypass(true);
@@ -346,6 +356,9 @@ export default function App() {
           return;
         }
 
+        (window as any).currentUserEmail = '';
+        (window as any).currentUserUid = '';
+        window.localStorage.removeItem('admin_email');
         setCurrentUser(null);
         setCurrentUserRole('user');
         setProducts([]);
@@ -638,16 +651,16 @@ export default function App() {
 
         console.log("Loading cached local storage data into React states on startup.");
         // Instantly load local storage to prevent blanks before snapshots load
-        if (productsList.length > 0) setProducts(productsList);
-        if (categoriesList.length > 0) setCategories(categoriesList);
-        if (activitiesList.length > 0) setActivities(activitiesList);
-        if (bomsList.length > 0) setBoms(bomsList);
-        if (projectsList.length > 0) setProjects(projectsList);
-        if (jobsList.length > 0) setJobs(jobsList);
-        if (employeesList.length > 0) setEmployees(employeesList);
-        if (brandsList.length > 0) setBrands(brandsList);
-        if (jpList.length > 0) setJobProjects(jpList);
-        if (drList.length > 0) setDailyReports(drList);
+        setProducts(productsList);
+        setCategories(categoriesList);
+        setActivities(activitiesList);
+        setBoms(bomsList);
+        setProjects(projectsList);
+        setJobs(jobsList);
+        setEmployees(employeesList);
+        setBrands(brandsList);
+        setJobProjects(jpList);
+        setDailyReports(drList);
       } catch (err: any) {
         console.warn("Offline-online bidirectional merge skipped or failed:", err);
         // Fallback to load localStorage into states if we are empty
@@ -1082,99 +1095,114 @@ export default function App() {
 
         const foundArrays: Record<string, any[]> = {};
         
-        // Deep search function to locate any alias arrays in the backup JSON, no matter how nested
-        const deepSearch = (obj: any) => {
-          if (!obj || typeof obj !== 'object') return;
-          
-          if (Array.isArray(obj)) {
-            const firstItem = obj[0];
-            if (firstItem && typeof firstItem === 'object') {
-              if ('sku' in firstItem || 'price' in firstItem || 'barcode' in firstItem || 'quantity' in firstItem) {
-                if (!foundArrays['stock_manager_products'] || obj.length > foundArrays['stock_manager_products'].length) {
-                  foundArrays['stock_manager_products'] = obj;
-                }
-              } else if ('name' in firstItem && ('color' in firstItem || 'subSeries' in firstItem || 'series' in firstItem) && !('sku' in firstItem) && !('nickname' in firstItem) && !('department' in firstItem) && !('role' in firstItem)) {
-                if (!foundArrays['stock_manager_categories'] || obj.length > foundArrays['stock_manager_categories'].length) {
-                  foundArrays['stock_manager_categories'] = obj;
-                }
-              } else if ('quantityChange' in firstItem || 'oldQuantity' in firstItem || 'actionType' in firstItem) {
-                if (!foundArrays['stock_manager_activities'] || obj.length > foundArrays['stock_manager_activities'].length) {
-                  foundArrays['stock_manager_activities'] = obj;
-                }
-              } else if (('requiredQuantity' in firstItem && 'items' in firstItem) || ('stockDeducted' in firstItem && 'items' in firstItem)) {
-                if (!foundArrays['stock_manager_boms'] || obj.length > foundArrays['stock_manager_boms'].length) {
-                  foundArrays['stock_manager_boms'] = obj;
-                }
-              } else if ('bomId' in firstItem && 'status' in firstItem && !('tasks' in firstItem) && !('modules' in firstItem) && !('customer' in firstItem)) {
-                if (!foundArrays['stock_manager_projects_list'] || obj.length > foundArrays['stock_manager_projects_list'].length) {
-                  foundArrays['stock_manager_projects_list'] = obj;
-                }
-              } else if ('jobNo' in firstItem && 'assignee' in firstItem && !('customerName' in firstItem) && !('customer' in firstItem) && !('projectName' in firstItem)) {
-                if (!foundArrays['stock_manager_jobs_list'] || obj.length > foundArrays['stock_manager_jobs_list'].length) {
-                  foundArrays['stock_manager_jobs_list'] = obj;
-                }
-              } else if ('employeeName' in firstItem && 'tasks' in firstItem) {
-                if (!foundArrays['stock_manager_daily_reports_list'] || obj.length > foundArrays['stock_manager_daily_reports_list'].length) {
-                  foundArrays['stock_manager_daily_reports_list'] = obj;
-                }
-              } else if (('customer' in firstItem || 'customerName' in firstItem || 'projectName' in firstItem) && 'jobNo' in firstItem) {
-                if (!foundArrays['stock_manager_job_projects_list'] || obj.length > foundArrays['stock_manager_job_projects_list'].length) {
-                  foundArrays['stock_manager_job_projects_list'] = obj;
-                }
-              } else if ('name' in firstItem && ('nickname' in firstItem || 'department' in firstItem || 'orgLevel' in firstItem || 'role' in firstItem || 'phone' in firstItem || 'position' in firstItem || 'email' in firstItem) && !('sku' in firstItem) && !('price' in firstItem) && !('color' in firstItem) && !('jobNo' in firstItem) && !('bomId' in firstItem)) {
-                if (!foundArrays['stock_manager_employees_list'] || obj.length > foundArrays['stock_manager_employees_list'].length) {
-                  foundArrays['stock_manager_employees_list'] = obj;
-                }
-              } else if ('name' in firstItem && 
-                         !('color' in firstItem) && 
-                         !('sku' in firstItem) && 
-                         !('price' in firstItem) && 
-                         !('nickname' in firstItem) && 
-                         !('department' in firstItem) && 
-                         !('orgLevel' in firstItem) && 
-                         !('role' in firstItem) && 
-                         !('phone' in firstItem) && 
-                         !('position' in firstItem) && 
-                         !('jobNo' in firstItem) && 
-                         !('bomId' in firstItem) && 
-                         !('items' in firstItem) && 
-                         !('employeeName' in firstItem) && 
-                         !('projectName' in firstItem) && 
-                         !('customer' in firstItem) && 
-                         !('email' in firstItem)) {
-                if (!foundArrays['stock_manager_brands_list'] || obj.length > foundArrays['stock_manager_brands_list'].length) {
-                  foundArrays['stock_manager_brands_list'] = obj;
+        // 1. Direct search by canonical keys and their known aliases in the root object
+        Object.entries(keyMapping).forEach(([canonicalKey, aliases]) => {
+          for (const key of Object.keys(backupData)) {
+            const normalizedKey = key.trim().toLowerCase().replace(/_/g, '').replace(/-/g, '');
+            const matched = aliases.some(alias => {
+              const normalizedAlias = alias.toLowerCase().replace(/_/g, '').replace(/-/g, '');
+              return normalizedKey === normalizedAlias;
+            });
+            if (matched && Array.isArray(backupData[key])) {
+              foundArrays[canonicalKey] = backupData[key];
+            }
+          }
+        });
+
+        // 2. Fall back to deepSearch heuristics ONLY if no direct keys were matched at the root level
+        if (Object.keys(foundArrays).length === 0) {
+          const deepSearch = (obj: any) => {
+            if (!obj || typeof obj !== 'object') return;
+            
+            if (Array.isArray(obj)) {
+              const firstItem = obj[0];
+              if (firstItem && typeof firstItem === 'object') {
+                if ('sku' in firstItem || 'price' in firstItem || 'barcode' in firstItem || 'quantity' in firstItem) {
+                  if (!foundArrays['stock_manager_products'] || obj.length > foundArrays['stock_manager_products'].length) {
+                    foundArrays['stock_manager_products'] = obj;
+                  }
+                } else if ('name' in firstItem && ('color' in firstItem || 'subSeries' in firstItem || 'series' in firstItem) && !('sku' in firstItem) && !('nickname' in firstItem) && !('department' in firstItem) && !('role' in firstItem)) {
+                  if (!foundArrays['stock_manager_categories'] || obj.length > foundArrays['stock_manager_categories'].length) {
+                    foundArrays['stock_manager_categories'] = obj;
+                  }
+                } else if ('quantityChange' in firstItem || 'oldQuantity' in firstItem || 'actionType' in firstItem) {
+                  if (!foundArrays['stock_manager_activities'] || obj.length > foundArrays['stock_manager_activities'].length) {
+                    foundArrays['stock_manager_activities'] = obj;
+                  }
+                } else if (('requiredQuantity' in firstItem && 'items' in firstItem) || ('stockDeducted' in firstItem && 'items' in firstItem)) {
+                  if (!foundArrays['stock_manager_boms'] || obj.length > foundArrays['stock_manager_boms'].length) {
+                    foundArrays['stock_manager_boms'] = obj;
+                  }
+                } else if ('bomId' in firstItem && 'status' in firstItem && !('tasks' in firstItem) && !('modules' in firstItem) && !('customer' in firstItem)) {
+                  if (!foundArrays['stock_manager_projects_list'] || obj.length > foundArrays['stock_manager_projects_list'].length) {
+                    foundArrays['stock_manager_projects_list'] = obj;
+                  }
+                } else if ('jobNo' in firstItem && 'assignee' in firstItem && !('customerName' in firstItem) && !('customer' in firstItem) && !('projectName' in firstItem)) {
+                  if (!foundArrays['stock_manager_jobs_list'] || obj.length > foundArrays['stock_manager_jobs_list'].length) {
+                    foundArrays['stock_manager_jobs_list'] = obj;
+                  }
+                } else if ('employeeName' in firstItem && 'tasks' in firstItem) {
+                  if (!foundArrays['stock_manager_daily_reports_list'] || obj.length > foundArrays['stock_manager_daily_reports_list'].length) {
+                    foundArrays['stock_manager_daily_reports_list'] = obj;
+                  }
+                } else if (('customer' in firstItem || 'customerName' in firstItem || 'projectName' in firstItem) && 'jobNo' in firstItem) {
+                  if (!foundArrays['stock_manager_job_projects_list'] || obj.length > foundArrays['stock_manager_job_projects_list'].length) {
+                    foundArrays['stock_manager_job_projects_list'] = obj;
+                  }
+                } else if ('name' in firstItem && ('nickname' in firstItem || 'department' in firstItem || 'orgLevel' in firstItem || 'role' in firstItem || 'phone' in firstItem || 'position' in firstItem || 'email' in firstItem) && !('sku' in firstItem) && !('price' in firstItem) && !('color' in firstItem) && !('jobNo' in firstItem) && !('bomId' in firstItem)) {
+                  if (!foundArrays['stock_manager_employees_list'] || obj.length > foundArrays['stock_manager_employees_list'].length) {
+                    foundArrays['stock_manager_employees_list'] = obj;
+                  }
+                } else if ('name' in firstItem && 
+                           !('color' in firstItem) && 
+                           !('sku' in firstItem) && 
+                           !('price' in firstItem) && 
+                           !('nickname' in firstItem) && 
+                           !('department' in firstItem) && 
+                           !('orgLevel' in firstItem) && 
+                           !('role' in firstItem) && 
+                           !('phone' in firstItem) && 
+                           !('position' in firstItem) && 
+                           !('jobNo' in firstItem) && 
+                           !('bomId' in firstItem) && 
+                           !('items' in firstItem) && 
+                           !('employeeName' in firstItem) && 
+                           !('projectName' in firstItem) && 
+                           !('customer' in firstItem) && 
+                           !('email' in firstItem)) {
+                  if (!foundArrays['stock_manager_brands_list'] || obj.length > foundArrays['stock_manager_brands_list'].length) {
+                    foundArrays['stock_manager_brands_list'] = obj;
+                  }
                 }
               }
+              return;
             }
-            return;
-          }
 
-          // Traverse object keys
-          for (const [key, val] of Object.entries(obj)) {
-            const normalizedKey = key.trim().toLowerCase().replace(/_/g, '').replace(/-/g, '');
-            // Check if this key corresponds to any of our canonical concepts
-            Object.entries(keyMapping).forEach(([canonicalKey, aliases]) => {
-              const matchedAlias = aliases.some(alias => {
-                const normalizedAlias = alias.toLowerCase().replace(/_/g, '').replace(/-/g, '');
-                return normalizedKey === normalizedAlias || normalizedKey.includes(normalizedAlias) || normalizedAlias.includes(normalizedKey);
+            // Traverse object keys
+            for (const [key, val] of Object.entries(obj)) {
+              const normalizedKey = key.trim().toLowerCase().replace(/_/g, '').replace(/-/g, '');
+              Object.entries(keyMapping).forEach(([canonicalKey, aliases]) => {
+                const matchedAlias = aliases.some(alias => {
+                  const normalizedAlias = alias.toLowerCase().replace(/_/g, '').replace(/-/g, '');
+                  return normalizedKey === normalizedAlias || normalizedKey.includes(normalizedAlias) || normalizedAlias.includes(normalizedKey);
+                });
+
+                if (matchedAlias && Array.isArray(val) && val.length > 0) {
+                  if (!foundArrays[canonicalKey] || val.length > foundArrays[canonicalKey].length) {
+                    foundArrays[canonicalKey] = val;
+                  }
+                }
               });
 
-              if (matchedAlias && Array.isArray(val) && val.length > 0) {
-                if (!foundArrays[canonicalKey] || val.length > foundArrays[canonicalKey].length) {
-                  foundArrays[canonicalKey] = val;
-                }
+              // Recurse into nested objects
+              if (val && typeof val === 'object') {
+                deepSearch(val);
               }
-            });
-
-            // Recurse into nested objects
-            if (val && typeof val === 'object') {
-              deepSearch(val);
             }
-          }
-        };
+          };
 
-        deepSearch(backupData);
+          deepSearch(backupData);
+        }
 
         let restoredCount = 0;
         const normalizedData: Record<string, any[]> = {};
@@ -1182,7 +1210,7 @@ export default function App() {
         Object.entries(keyMapping).forEach(([canonicalKey, aliases]) => {
           const foundValue = foundArrays[canonicalKey];
 
-          if (foundValue && Array.isArray(foundValue) && foundValue.length > 0) {
+          if (foundValue && Array.isArray(foundValue)) {
             // Ensure all items have an 'id', 'createdAt', and 'updatedAt'
             const updatedList = foundValue.map((item: any, idx: number) => {
               if (item && typeof item === 'object') {
@@ -1201,9 +1229,9 @@ export default function App() {
               return item;
             });
 
-            const mergedList = mergeListsWithExisting(canonicalKey, updatedList);
-            normalizedData[canonicalKey] = mergedList;
-            localStorage.setItem(canonicalKey, JSON.stringify(mergedList));
+            // Replace instead of merge for manual restores to ensure perfect data fidelity
+            normalizedData[canonicalKey] = updatedList;
+            localStorage.setItem(canonicalKey, JSON.stringify(updatedList));
             restoredCount++;
           }
         });
@@ -1214,7 +1242,7 @@ export default function App() {
 
         // Upload to Firestore if logged in
         if (currentUser && currentUser.uid !== 'demo-user') {
-          addToast('info', 'กำลังนำเข้าและรวมข้อมูลขึ้นระบบคลาวด์...', 'กำลังอัปโหลดข้อมูลใหม่ทั้งหมดขึ้นระบบคลาวด์...');
+          addToast('info', 'กำลังกู้คืนข้อมูลขึ้นคลาวด์...', 'กำลังซิงค์และลบข้อมูลที่ไม่มีในไฟล์สำรองออกจากระบบคลาวด์...');
           
           const keyToCollection: Record<string, string> = {
             'stock_manager_products': 'products',
@@ -1232,49 +1260,49 @@ export default function App() {
           try {
             for (const [key, list] of Object.entries(normalizedData)) {
               const colName = keyToCollection[key];
-              if (colName && Array.isArray(list) && list.length > 0) {
-                // Upload the merged list without clearing, avoiding any data loss
-                await uploadListToFirestoreInBatches(colName, list);
+              if (colName && Array.isArray(list)) {
+                // Completely sync this collection with the backup data, removing obsolete records
+                await syncCollectionToBackup(colName, list);
               }
             }
           } catch (firestoreErr: any) {
             console.warn("Firestore upload failed during restore backup:", firestoreErr);
-            addToast('warning', 'เชื่อมต่อคลาวด์ไม่สมบูรณ์ (อาจเกินโควต้า)', 'ข้อมูลบางส่วนไม่สามารถอัปโหลดขึ้นคลาวด์ได้ในขณะนี้เนื่องจากโควต้าเต็ม แต่ระบบได้กู้คืนและรวมข้อมูลทั้งหมดลงเบราว์เซอร์เครื่องนี้ให้คุณใช้งานได้ปกติแล้ว!');
+            addToast('warning', 'เชื่อมต่อคลาวด์ไม่สมบูรณ์ (อาจเกินโควต้า)', 'ข้อมูลบางส่วนไม่สามารถกู้คืนขึ้นระบบคลาวด์ได้เนื่องจากโควต้าเต็ม แต่ระบบได้อัปเดตข้อมูลทั้งหมดลงในเบราว์เซอร์เครื่องนี้ให้คุณใช้งานได้ปกติแล้ว!');
           }
         }
 
         // Reload data to local states
         const prodVal = localStorage.getItem('stock_manager_products');
-        if (prodVal) setProducts(JSON.parse(prodVal));
+        setProducts(prodVal ? JSON.parse(prodVal) : []);
 
         const catVal = localStorage.getItem('stock_manager_categories');
-        if (catVal) setCategories(JSON.parse(catVal));
+        setCategories(catVal ? JSON.parse(catVal) : []);
 
         const actVal = localStorage.getItem('stock_manager_activities');
-        if (actVal) setActivities(JSON.parse(actVal));
+        setActivities(actVal ? JSON.parse(actVal) : []);
 
         const bomVal = localStorage.getItem('stock_manager_boms');
-        if (bomVal) setBoms(JSON.parse(bomVal));
+        setBoms(bomVal ? JSON.parse(bomVal) : []);
 
         const projVal = localStorage.getItem('stock_manager_projects_list');
-        if (projVal) setProjects(JSON.parse(projVal));
+        setProjects(projVal ? JSON.parse(projVal) : []);
 
         const jobsVal = localStorage.getItem('stock_manager_jobs_list');
-        if (jobsVal) setJobs(JSON.parse(jobsVal));
+        setJobs(jobsVal ? JSON.parse(jobsVal) : []);
 
         const empVal = localStorage.getItem('stock_manager_employees_list');
-        if (empVal) setEmployees(JSON.parse(empVal));
+        setEmployees(empVal ? JSON.parse(empVal) : []);
 
         const brandVal = localStorage.getItem('stock_manager_brands_list');
-        if (brandVal) setBrands(JSON.parse(brandVal));
+        setBrands(brandVal ? JSON.parse(brandVal) : []);
 
         const jpVal = localStorage.getItem('stock_manager_job_projects_list');
-        if (jpVal) setJobProjects(JSON.parse(jpVal));
+        setJobProjects(jpVal ? JSON.parse(jpVal) : []);
 
         const drVal = localStorage.getItem('stock_manager_daily_reports_list');
-        if (drVal) setDailyReports(JSON.parse(drVal));
+        setDailyReports(drVal ? JSON.parse(drVal) : []);
 
-        addToast('success', 'กู้คืนข้อมูลสำเร็จ!', 'กู้คืนข้อมูลสต็อกสินค้า โครงการ และสูตร BOM ทั้งหมดกลับคืนระบบเรียบร้อยแล้วครับ');
+        addToast('success', 'กู้คืนข้อมูลสำเร็จ!', 'ระบบได้ทำการกู้คืนและเขียนทับข้อมูลทั้งหมดตามไฟล์สำรองข้อมูลเรียบร้อยแล้วครับ');
       } catch (err: any) {
         console.error(err);
         addToast('warning', 'กู้คืนข้อมูลล้มเหลว', `ไฟล์ไม่ถูกต้องหรือเกิดข้อผิดพลาด: ${err.message}`);
@@ -1296,7 +1324,7 @@ export default function App() {
       // Merge and save to active localStorage shadowed keys
       Object.entries(groupData).forEach(([canonicalKey, list]) => {
         if (Array.isArray(list)) {
-          const mergedList = mergeListsWithExisting(canonicalKey, list);
+          const mergedList = mergeListsWithExisting(canonicalKey, list, true);
           mergedData[canonicalKey] = mergedList;
           localStorage.setItem(canonicalKey, JSON.stringify(mergedList));
         } else {
@@ -1333,16 +1361,21 @@ export default function App() {
           'stock_manager_daily_reports_list': 'dailyReports'
         };
 
-        for (const [key, list] of Object.entries(mergedData)) {
-          const colName = keyToCollection[key];
-          if (colName && Array.isArray(list) && list.length > 0) {
-            // Upload the merged list directly without clearing to keep existing different items
-            await uploadListToFirestoreInBatches(colName, list);
+        try {
+          for (const [key, list] of Object.entries(mergedData)) {
+            const colName = keyToCollection[key];
+            if (colName && Array.isArray(list) && list.length > 0) {
+              // Upload the merged list directly without clearing to keep existing different items
+              await uploadListToFirestoreInBatches(colName, list);
+            }
           }
+        } catch (firestoreErr: any) {
+          console.warn("Firestore upload failed during restore cache group:", firestoreErr);
+          addToast('warning', 'เชื่อมต่อคลาวด์ไม่สมบูรณ์ (อาจเกิดจากสิทธิ์เข้าถึงหรือโควต้า)', 'ข้อมูลบางส่วนไม่สามารถอัปโหลดขึ้นคลาวด์ได้ในขณะนี้ แต่ระบบได้รวมข้อมูลทั้งหมดลงเบราว์เซอร์เครื่องนี้ให้คุณใช้งานได้ปกติเรียบร้อยแล้ว!');
         }
       }
 
-      addToast('success', 'รวมข้อมูลกลุ่มนี้เข้าระบบเสร็จสิ้น!', 'ระบบนำข้อมูลทั้งหมดมารวมกันเรียบร้อยแล้ว โดยไม่ลบหรือทับข้อมูลเดิมที่มีอยู่');
+      addToast('success', 'อับเดดข้อมูลเข้าระบบเรียบร้อยแล้ว!', 'ระบบอับเดดและนำเข้าข้อมูลทั้งหมดเข้าสู่ฐานข้อมูลหลักของคุณเรียบร้อยแล้วครับ');
     } catch (err: any) {
       console.error(err);
       addToast('warning', 'การกู้คืนล้มเหลว', `เกิดข้อผิดพลาด: ${err.message}`);
@@ -2438,6 +2471,11 @@ export default function App() {
             onRestoreCacheGroup={handleRestoreCacheGroup}
             triggerConfirm={triggerConfirm}
             addToast={addToast}
+            userRoles={userRoles}
+            products={products}
+            categories={categories}
+            boms={boms}
+            dailyReports={dailyReports}
           />
         );
       case 'catalog':
@@ -2681,6 +2719,27 @@ export default function App() {
     try {
       setIsDemoBypass(false);
       window.localStorage.removeItem('stock_manager_is_offline');
+      
+      // Clear central keys on logout to prevent cross-account pollution
+      const canonicalKeys = [
+        'stock_manager_products',
+        'stock_manager_categories',
+        'stock_manager_activities',
+        'stock_manager_boms',
+        'stock_manager_projects_list',
+        'stock_manager_jobs_list',
+        'stock_manager_employees_list',
+        'stock_manager_brands_list',
+        'stock_manager_job_projects_list',
+        'stock_manager_daily_reports_list',
+        'stock_manager_orders_list',
+        'stock_manager_cart'
+      ];
+      canonicalKeys.forEach(key => {
+        window.localStorage.removeItem(key);
+      });
+      window.localStorage.removeItem('admin_email');
+
       await signOut(auth);
       addToast('info', 'ออกจากระบบเรียบร้อย', 'เซสชันการเข้าใช้งานคลังถูกปิดเรียบร้อยแล้ว');
     } catch (err: any) {

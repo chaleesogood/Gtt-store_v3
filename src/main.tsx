@@ -35,9 +35,12 @@ import {createRoot} from 'react-dom/client';
   };
 })();
 
-// Safe LocalStorage patch to handle QuotaExceededError and disabled iframe local storage
+// Safe LocalStorage patch to handle QuotaExceededError and ensure a single unified main database across all accounts
 (function() {
   let isLocalStorageAvailable = false;
+  let mockStorage: any = null;
+  const memoryStorage: Record<string, string> = {};
+
   try {
     const testKey = '__storage_test__';
     window.localStorage.setItem(testKey, testKey);
@@ -47,26 +50,118 @@ import {createRoot} from 'react-dom/client';
     console.warn('[Storage Patch] Native localStorage is not fully functional or blocked:', e);
   }
 
-  if (isLocalStorageAvailable) {
-    // Wrap setItem to catch QuotaExceededError gracefully
+  // Canonical keys that form the shared main database
+  const canonicalKeys = [
+    'stock_manager_products',
+    'stock_manager_categories',
+    'stock_manager_activities',
+    'stock_manager_boms',
+    'stock_manager_projects_list',
+    'stock_manager_jobs_list',
+    'stock_manager_employees_list',
+    'stock_manager_brands_list',
+    'stock_manager_job_projects_list',
+    'stock_manager_daily_reports_list',
+    'stock_manager_user_roles'
+  ];
+
+  // Consolidate any legacy account-suffixed keys into the canonical single main database
+  const consolidateAccountCaches = () => {
     try {
+      if (!isLocalStorageAvailable) return;
+      const keysToClean: string[] = [];
+      
+      canonicalKeys.forEach((canonicalKey) => {
+        const itemsMap = new Map<string, any>();
+
+        // 1. Load items from main canonical key
+        const mainVal = window.localStorage.getItem(canonicalKey);
+        if (mainVal) {
+          try {
+            const list = JSON.parse(mainVal);
+            if (Array.isArray(list)) {
+              list.forEach(item => {
+                const id = item?.id ? String(item.id).trim() : null;
+                if (id) itemsMap.set(id, item);
+              });
+            }
+          } catch (e) {}
+        }
+
+        // 2. Scan for suffixed keys (e.g. stock_manager_products_email@domain.com)
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const k = window.localStorage.key(i);
+          if (k && k.startsWith(`${canonicalKey}_`) && k !== canonicalKey) {
+            keysToClean.push(k);
+            const suffixedVal = window.localStorage.getItem(k);
+            if (suffixedVal) {
+              try {
+                const list = JSON.parse(suffixedVal);
+                if (Array.isArray(list)) {
+                  list.forEach(item => {
+                    const id = item?.id ? String(item.id).trim() : null;
+                    if (id && !itemsMap.has(id)) {
+                      itemsMap.set(id, item);
+                    }
+                  });
+                }
+              } catch (e) {}
+            }
+          }
+        }
+
+        // Save consolidated list back to main canonical key
+        if (itemsMap.size > 0) {
+          window.localStorage.setItem(canonicalKey, JSON.stringify(Array.from(itemsMap.values())));
+        }
+      });
+
+      // Remove suffixed keys after consolidation
+      keysToClean.forEach(k => {
+        try { window.localStorage.removeItem(k); } catch (e) {}
+      });
+    } catch (err) {
+      console.warn('[Storage Patch] Cache consolidation error:', err);
+    }
+  };
+
+  if (isLocalStorageAvailable) {
+    consolidateAccountCaches();
+
+    try {
+      const originalGetItem = window.localStorage.getItem;
       const originalSetItem = window.localStorage.setItem;
+      const originalRemoveItem = window.localStorage.removeItem;
+
+      // Always return single main canonical database key
+      window.localStorage.getItem = function (key: string) {
+        return originalGetItem.call(window.localStorage, key);
+      };
+
       window.localStorage.setItem = function (key: string, value: string) {
         try {
           originalSetItem.call(window.localStorage, key, value);
         } catch (error) {
-          console.warn(`[Storage Patch] Quota exceeded for key "${key}". Value not saved to local storage but app remains stable.`, error);
+          console.warn(`[Storage Patch] Quota exceeded or write failed for key "${key}".`, error);
         }
       };
+
+      window.localStorage.removeItem = function (key: string) {
+        try {
+          originalRemoveItem.call(window.localStorage, key);
+        } catch (e) {}
+      };
+
     } catch (e) {
-      console.error('[Storage Patch] Failed to override setItem:', e);
+      console.error('[Storage Patch] Failed to override native localStorage:', e);
     }
   } else {
     // Mock localStorage in-memory fallback
     try {
-      const memoryStorage: Record<string, string> = {};
-      const mockStorage = {
-        getItem: (key: string) => (key in memoryStorage ? memoryStorage[key] : null),
+      mockStorage = {
+        getItem: (key: string) => {
+          return key in memoryStorage ? memoryStorage[key] : null;
+        },
         setItem: (key: string, value: string) => {
           memoryStorage[key] = String(value);
         },
@@ -89,7 +184,7 @@ import {createRoot} from 'react-dom/client';
         configurable: true,
         writable: true
       });
-      console.log('[Storage Patch] Mock localStorage in-memory storage successfully installed.');
+      console.log('[Storage Patch] Unified single-database mock localStorage successfully installed.');
     } catch (e) {
       console.error('[Storage Patch] Failed to define mock localStorage:', e);
     }

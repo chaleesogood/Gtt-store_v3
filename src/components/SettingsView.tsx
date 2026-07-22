@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Job, Employee, JobProject, normalizeModules, Brand } from '../types';
+import { Job, Employee, JobProject, normalizeModules, Brand, UserRole } from '../types';
 import { 
   FolderGit2, 
   Users, 
@@ -29,7 +29,9 @@ import {
   Database,
   RotateCcw,
   Download,
-  CloudUpload
+  CloudUpload,
+  Server,
+  CheckCircle2
 } from 'lucide-react';
 
 const getDeptBadgeStyle = (dept: string) => {
@@ -490,6 +492,11 @@ interface SettingsViewProps {
   onRestoreCacheGroup?: (groupData: Record<string, any[]>) => Promise<void>;
   triggerConfirm?: (title: string, message: string, onConfirm: () => void) => void;
   addToast?: (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string) => void;
+  userRoles?: UserRole[];
+  products?: any[];
+  categories?: any[];
+  boms?: any[];
+  dailyReports?: any[];
 }
 
 type SubTab = 'projects' | 'employees' | 'brands' | 'database';
@@ -515,7 +522,12 @@ export default function SettingsView({
   onRollbackDatabase,
   onRestoreCacheGroup,
   triggerConfirm,
-  addToast
+  addToast,
+  userRoles = [],
+  products = [],
+  categories = [],
+  boms = [],
+  dailyReports = []
 }: SettingsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('projects');
 
@@ -580,8 +592,17 @@ export default function SettingsView({
           }
         }
 
-        if (!groups[suffix]) {
-          groups[suffix] = {};
+        // Canonicalize suffix to groupKey (if suffix is a UID that has an associated email, use email)
+        let groupKey = suffix;
+        if (suffix !== 'global' && suffix !== 'guest' && suffix !== 'demo-user') {
+          const matchedUser = userRoles?.find(u => u.uid === suffix);
+          if (matchedUser && matchedUser.email) {
+            groupKey = matchedUser.email;
+          }
+        }
+
+        if (!groups[groupKey]) {
+          groups[groupKey] = {};
         }
 
         try {
@@ -589,7 +610,24 @@ export default function SettingsView({
           if (val) {
             const parsed = JSON.parse(val);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              groups[suffix][canonicalMatch] = parsed;
+              if (groups[groupKey][canonicalMatch]) {
+                // If we already have items for this canonical collection in this email/group, merge them uniquely by id
+                const existing = groups[groupKey][canonicalMatch];
+                const mergedMap = new Map();
+                existing.forEach((item: any) => {
+                  if (item && item.id) {
+                    mergedMap.set(item.id, item);
+                  }
+                });
+                parsed.forEach((item: any) => {
+                  if (item && item.id) {
+                    mergedMap.set(item.id, { ...(mergedMap.get(item.id) || {}), ...item });
+                  }
+                });
+                groups[groupKey][canonicalMatch] = Array.from(mergedMap.values());
+              } else {
+                groups[groupKey][canonicalMatch] = parsed;
+              }
             }
           }
         } catch (e) {
@@ -608,7 +646,7 @@ export default function SettingsView({
     if (activeSubTab === 'database') {
       performCacheScan();
     }
-  }, [activeSubTab]);
+  }, [activeSubTab, userRoles]);
 
   // Search States
   const [projSearch, setProjSearch] = useState('');
@@ -3222,6 +3260,75 @@ export default function SettingsView({
             </p>
           </div>
 
+          {/* Unified Central Database Status & Record Collections List */}
+          <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 text-white rounded-2xl p-5 sm:p-6 shadow-md border border-indigo-500/30 space-y-5">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-indigo-500/20">
+              <div className="flex items-start gap-3">
+                <div className="p-3 bg-indigo-500/20 text-indigo-300 rounded-xl border border-indigo-400/30 shrink-0">
+                  <Server className="h-6 w-6 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-sm font-extrabold text-white font-sans">
+                      รายการและสถานะข้อมูลที่บันทึกในระบบ Database หลัก
+                    </h4>
+                    <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1.5 shadow-2xs">
+                      <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
+                      ทุก ID ใช้งาน Database เดียวกัน
+                    </span>
+                  </div>
+                  <p className="text-xs text-indigo-200/80 mt-1 leading-relaxed">
+                    ทุกบัญชีผู้ใช้งาน (Admin, Editor, User) ถูกเชื่อมโยงเข้ากับ <strong>ฐานข้อมูลหลักกลางชุดเดียวกันแบบ Real-time</strong> การอัปเดตข้อมูลจากบัญชีใดจะมีผลทันทีต่อทุกบัญชี
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Grid of collections records count */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              <div className="bg-white/10 dark:bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-xl p-3 text-center transition-all hover:bg-white/15">
+                <div className="text-[10px] text-indigo-200 font-bold mb-1">📦 สินค้าในคลัง (Products)</div>
+                <div className="text-xl font-black text-white">{products.length} <span className="text-[10px] font-normal text-indigo-300">รายการ</span></div>
+              </div>
+              <div className="bg-white/10 dark:bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-xl p-3 text-center transition-all hover:bg-white/15">
+                <div className="text-[10px] text-indigo-200 font-bold mb-1">📁 หมวดหมู่ (Categories)</div>
+                <div className="text-xl font-black text-white">{categories.length} <span className="text-[10px] font-normal text-indigo-300">หมวด</span></div>
+              </div>
+              <div className="bg-white/10 dark:bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-xl p-3 text-center transition-all hover:bg-white/15">
+                <div className="text-[10px] text-indigo-200 font-bold mb-1">🛠️ สูตร BOM (BOMs)</div>
+                <div className="text-xl font-black text-white">{boms.length} <span className="text-[10px] font-normal text-indigo-300">ชุด</span></div>
+              </div>
+              <div className="bg-white/10 dark:bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-xl p-3 text-center transition-all hover:bg-white/15">
+                <div className="text-[10px] text-indigo-200 font-bold mb-1">🏗️ โครงการ (Projects)</div>
+                <div className="text-xl font-black text-white">{jobProjects.length} <span className="text-[10px] font-normal text-indigo-300">โครงการ</span></div>
+              </div>
+              <div className="bg-white/10 dark:bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-xl p-3 text-center transition-all hover:bg-white/15">
+                <div className="text-[10px] text-indigo-200 font-bold mb-1">📋 ใบสั่งงาน (Jobs)</div>
+                <div className="text-xl font-black text-white">{jobs.length} <span className="text-[10px] font-normal text-indigo-300">ใบงาน</span></div>
+              </div>
+              <div className="bg-white/10 dark:bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-xl p-3 text-center transition-all hover:bg-white/15">
+                <div className="text-[10px] text-indigo-200 font-bold mb-1">👥 พนักงาน (Employees)</div>
+                <div className="text-xl font-black text-white">{employees.length} <span className="text-[10px] font-normal text-indigo-300">คน</span></div>
+              </div>
+              <div className="bg-white/10 dark:bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-xl p-3 text-center transition-all hover:bg-white/15">
+                <div className="text-[10px] text-indigo-200 font-bold mb-1">🏷️ แบรนด์ (Brands)</div>
+                <div className="text-xl font-black text-white">{brands.length} <span className="text-[10px] font-normal text-indigo-300">ยี่ห้อ</span></div>
+              </div>
+              <div className="bg-white/10 dark:bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-xl p-3 text-center transition-all hover:bg-white/15">
+                <div className="text-[10px] text-indigo-200 font-bold mb-1">📝 รายงานวัน (Daily)</div>
+                <div className="text-xl font-black text-white">{dailyReports.length} <span className="text-[10px] font-normal text-indigo-300">รายงาน</span></div>
+              </div>
+              <div className="bg-white/10 dark:bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-xl p-3 text-center transition-all hover:bg-white/15">
+                <div className="text-[10px] text-indigo-200 font-bold mb-1">📜 ประวัติ (Activities)</div>
+                <div className="text-xl font-black text-white">{activities.length} <span className="text-[10px] font-normal text-indigo-300">บันทึก</span></div>
+              </div>
+              <div className="bg-white/10 dark:bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-xl p-3 text-center transition-all hover:bg-white/15">
+                <div className="text-[10px] text-indigo-200 font-bold mb-1">🛡️ บัญชีผู้ใช้ (User Roles)</div>
+                <div className="text-xl font-black text-white">{userRoles.length} <span className="text-[10px] font-normal text-indigo-300">บัญชี</span></div>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* Box 2: Manual Backup / Restore */}
@@ -3311,13 +3418,25 @@ export default function SettingsView({
                       if (totalItems === 0) return null;
 
                       let name = `กลุ่มแคชบัญชี: ${suffix}`;
+                      let badgeText = suffix;
                       let badgeColor = 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
+                      
+                      const matchedUser = userRoles?.find(u => u.uid === suffix);
+                      if (matchedUser) {
+                        name = `กลุ่มแคชบัญชี: ${matchedUser.email}`;
+                        badgeText = matchedUser.email;
+                      } else if (suffix.includes('@')) {
+                        name = `กลุ่มแคชบัญชี: ${suffix}`;
+                        badgeText = suffix;
+                      }
                       
                       if (suffix === 'global') {
                         name = 'ข้อมูลเดิมบนเครื่อง (ก่อนระบบล็อกอิน / Legacy Cache)';
+                        badgeText = 'global';
                         badgeColor = 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400';
                       } else if (suffix === 'guest' || suffix === 'demo-user') {
                         name = 'ข้อมูลผู้เข้าชมออฟไลน์ (Guest / Demo Offline Cache)';
+                        badgeText = 'guest';
                         badgeColor = 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400';
                       }
 
@@ -3328,8 +3447,8 @@ export default function SettingsView({
                               <span className="text-[11px] font-bold text-slate-800 dark:text-slate-100 leading-normal">
                                 {name}
                               </span>
-                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${badgeColor}`}>
-                                {suffix}
+                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0 max-w-[150px] truncate ${badgeColor}`} title={badgeText}>
+                                {badgeText}
                               </span>
                             </div>
                             
@@ -3410,8 +3529,8 @@ export default function SettingsView({
                             >
                               <RotateCcw className="h-3 w-3" />
                               {confirmingSuffix === suffix
-                                ? '⚠️ คลิกอีกครั้งเพื่อยืนยันการคืนค่าข้อมูลกลุ่มนี้ทันที!'
-                                : 'คืนค่าข้อมูลกลุ่มนี้เข้าระบบ (Restore Group)'}
+                                ? '⚠️ คลิกอีกครั้งเพื่อยืนยันการอับเดดข้อมูล!'
+                                : 'อับเดดข้อมูล'}
                             </button>
                           </div>
                         </div>
