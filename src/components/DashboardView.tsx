@@ -126,7 +126,7 @@ export default function DashboardView({
 
   // Category distribution
   const categoryStats = [...categories]
-    .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true, sensitivity: 'base' }))
+    .sort((a, b) => (a?.name || '').localeCompare(b?.name || '', 'th', { numeric: true, sensitivity: 'base' }))
     .map((cat) => {
     const catProducts = products.filter((p) => p.category === cat.id);
     const count = catProducts.length;

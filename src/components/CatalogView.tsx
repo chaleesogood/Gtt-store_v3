@@ -263,7 +263,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
       
       const normalizedSearch = searchQuery.toLowerCase().trim();
       const matchesSearch = !normalizedSearch || 
-        p.name.toLowerCase().includes(normalizedSearch) ||
+        (p.name || '').toLowerCase().includes(normalizedSearch) ||
         (p.sku && p.sku.toLowerCase().includes(normalizedSearch)) ||
         (p.brand && p.brand.toLowerCase().includes(normalizedSearch)) ||
         (p.description && p.description.toLowerCase().includes(normalizedSearch)) ||
@@ -607,7 +607,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                               <div className="w-28 shrink-0 text-left lg:text-right font-sans">
                                 <span className="lg:hidden text-[9px] font-black text-slate-400 dark:text-slate-500 block mb-1 uppercase tracking-wider font-sans">ราคาต่อหน่วย:</span>
                                 <span className="text-[12.5px] font-black text-slate-800 dark:text-slate-150">
-                                  ฿{prod.price.toLocaleString()}
+                                  ฿{(prod.price ?? 0).toLocaleString()}
                                 </span>
                               </div>
 
@@ -786,7 +786,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                 <div className="text-left">
                   <span className="text-[9px] font-bold text-indigo-500 dark:text-indigo-400 block font-sans">ราคาขายอ้างอิง</span>
                   <span className="text-base font-mono font-extrabold text-indigo-600 dark:text-indigo-400">
-                    ฿{selectedProduct.price.toLocaleString()}
+                    ฿{(selectedProduct.price ?? 0).toLocaleString()}
                   </span>
                 </div>
                 <div className="text-right">
@@ -1031,7 +1031,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                                 {/* Group Selector Column */}
                                 <div className="sm:col-span-4">
                                   <select
-                                    value={item.group}
+                                    value={item.group || 'ทั่วไป'}
                                     onChange={(e) => updateCartItemField(item.product.id, 'group', e.target.value)}
                                     className="w-full px-2 py-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-[11px] font-sans font-bold text-slate-700 dark:text-slate-300 focus:outline-hidden"
                                   >
@@ -1048,7 +1048,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                                 <div className="sm:col-span-4 flex items-center justify-end text-right text-[11px] font-sans">
                                   <span className="text-slate-400 mr-1 font-bold">รวม:</span>
                                   <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">
-                                    ฿{subtotal.toLocaleString()}
+                                    ฿{(subtotal ?? 0).toLocaleString()}
                                   </span>
                                 </div>
 
@@ -1057,7 +1057,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                                   <input 
                                     type="text"
                                     placeholder="ใส่หมายเหตุ (เช่น ระบุตำแหน่งประกอบพิเศษ, สี, หรือขนาดกระแสไฟ)"
-                                    value={item.remark}
+                                    value={item.remark || ''}
                                     onChange={(e) => updateCartItemField(item.product.id, 'remark', e.target.value)}
                                     className="w-full px-2.5 py-1 bg-slate-50/50 dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-xl text-[10px] text-slate-600 dark:text-slate-400 placeholder:text-slate-400 font-sans focus:outline-hidden"
                                   />
@@ -1089,7 +1089,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                 <div className="flex justify-between items-center text-sm font-sans font-black">
                   <span className="text-slate-800 dark:text-slate-100">มูลค่ารวมคาดการณ์ (Total Value):</span>
                   <span className="font-mono text-base text-indigo-600 dark:text-indigo-400">
-                    ฿{cart.filter(item => item.checked).reduce((acc, curr) => acc + (curr.product.price * curr.quantity), 0).toLocaleString()}
+                    ฿{cart.filter(item => item.checked).reduce((acc, curr) => acc + ((curr.product?.price || 0) * curr.quantity), 0).toLocaleString()}
                   </span>
                 </div>
 
@@ -1173,7 +1173,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
                         <td className="py-2 px-3 border-r border-slate-200 font-mono font-bold">{p.sku || 'N/A'}</td>
                         <td className="py-2 px-3 border-r border-slate-200 font-bold uppercase">{p.brand || 'No Brand'}</td>
                         <td className="py-2 px-3 border-r border-slate-200 text-indigo-700 font-bold">{p.series || '-'}</td>
-                        <td className="py-2 px-3 border-r border-slate-200 text-right font-mono font-bold">฿{p.price.toLocaleString()}</td>
+                        <td className="py-2 px-3 border-r border-slate-200 text-right font-mono font-bold">฿{(p.price ?? 0).toLocaleString()}</td>
                         <td className={`py-2 px-3 text-right font-mono font-extrabold ${p.quantity === 0 ? 'text-rose-600 font-black' : ''}`}>
                           {p.quantity === 0 ? 'หมด' : `${p.quantity} ${p.unit || 'ชิ้น'}`}
                         </td>

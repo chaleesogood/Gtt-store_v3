@@ -43,9 +43,12 @@ export default function DailyReportView({
 
   // Helper to fetch jobs done by employee on a specific date
   const getAssociatedJobsForDate = (empName: string, dateStr: string) => {
+    const cleanEmp = (empName || '').trim().toLowerCase();
     return jobs.filter(j => {
-      const isSameAssignee = j.assignee.trim().toLowerCase() === empName.trim().toLowerCase() ||
-                             j.assignee.includes(empName) || empName.includes(j.assignee);
+      const assigneeStr = (j.assignee || '').trim().toLowerCase();
+      const isSameAssignee = assigneeStr === cleanEmp ||
+                             (j.assignee && empName && j.assignee.includes(empName)) ||
+                             (empName && j.assignee && empName.includes(j.assignee));
       
       const isSameDate = j.targetDate === dateStr || (j.updatedAt && j.updatedAt.startsWith(dateStr));
       return isSameAssignee && isSameDate;
@@ -107,7 +110,7 @@ export default function DailyReportView({
 
   // Apply filters on the compiled list
   const filteredReports = compiledReports.filter(rep => {
-    const matchEmp = rep.employeeName.toLowerCase().includes(searchEmployee.toLowerCase());
+    const matchEmp = (rep.employeeName || '').toLowerCase().includes(searchEmployee.toLowerCase());
     const matchStatus = filterStatus === 'all' ? true : rep.status === filterStatus;
     return matchEmp && matchStatus;
   });
@@ -546,8 +549,11 @@ export default function DailyReportView({
                   ) : (
                     <div className="space-y-1.5">
                       {jobs.filter(j => {
-                        const isSameAssignee = j.assignee.trim().toLowerCase() === rep.employeeName.trim().toLowerCase() ||
-                                               j.assignee.includes(rep.employeeName) || rep.employeeName.includes(j.assignee);
+                        const assigneeStr = (j.assignee || '').trim().toLowerCase();
+                        const empStr = (rep.employeeName || '').trim().toLowerCase();
+                        const isSameAssignee = assigneeStr === empStr ||
+                                               (j.assignee && rep.employeeName && j.assignee.includes(rep.employeeName)) ||
+                                               (rep.employeeName && j.assignee && rep.employeeName.includes(j.assignee));
                         const isSameDate = j.targetDate === rep.date || (j.updatedAt && j.updatedAt.startsWith(rep.date));
                         return isSameAssignee && isSameDate;
                       }).map(job => {

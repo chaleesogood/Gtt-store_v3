@@ -102,8 +102,8 @@ export default function ReportsView({ products, categories, activities }: Report
       const matchesWarehouse = selectedWarehouse === 'all' || p.warehouse === selectedWarehouse;
       const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
       const matchesSearch = searchQuery === '' || 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        p.sku.toLowerCase().includes(searchQuery.toLowerCase());
+        (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+        (p.sku || '').toLowerCase().includes(searchQuery.toLowerCase());
       return matchesWarehouse && matchesCategory && matchesSearch;
     });
   }, [products, selectedWarehouse, selectedCategory, searchQuery]);
@@ -141,7 +141,7 @@ export default function ReportsView({ products, categories, activities }: Report
   // REPORT 1: Stock Report Grouped by Category & Warehouse
   // ==========================================
   const stockByCategory = useMemo(() => {
-    const sorted = [...categories].sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true, sensitivity: 'base' }));
+    const sorted = [...categories].sort((a, b) => (a?.name || '').localeCompare(b?.name || '', 'th', { numeric: true, sensitivity: 'base' }));
     return sorted.map(cat => {
       const catProducts = filteredProducts.filter(p => p.category === cat.id);
       const totalQty = catProducts.reduce((sum, p) => sum + p.quantity, 0);
@@ -187,7 +187,9 @@ export default function ReportsView({ products, categories, activities }: Report
     const groups: Record<string, { label: string; inQty: number; outQty: number; totalCount: number; timestamp: number }> = {};
 
     filteredActivities.forEach(act => {
+      if (!act.timestamp) return;
       const date = new Date(act.timestamp);
+      if (isNaN(date.getTime())) return;
       let groupKey = '';
       let label = '';
 
@@ -449,9 +451,9 @@ export default function ReportsView({ products, categories, activities }: Report
               >
                 <option value="all">ทุกกลุ่มสินค้า ({categories.length} กลุ่ม)</option>
                 {[...categories]
-                  .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true, sensitivity: 'base' }))
+                  .sort((a, b) => (a?.name || '').localeCompare(b?.name || '', 'th', { numeric: true, sensitivity: 'base' }))
                   .map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.name.split(' (')[0]}</option>
+                    <option key={cat.id} value={cat.id}>{(cat.name || '').split(' (')[0]}</option>
                   ))}
               </select>
             </div>

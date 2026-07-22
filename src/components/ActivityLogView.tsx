@@ -14,7 +14,7 @@ export default function ActivityLogView({ activities, onClearLogs }: ActivityLog
   // Filter logs
   const filteredActivities = activities.filter((act) => {
     const matchesSearch =
-      act.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (act.productName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (act.reason && act.reason.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesType = typeFilter === 'all' || act.type === typeFilter;

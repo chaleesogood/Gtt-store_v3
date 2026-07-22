@@ -641,8 +641,8 @@ export default function OrderingSystemView({
   const filteredOrders = orders
     .filter(o => {
       const matchesSearch = 
-        o.orderTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        o.requesterName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.orderTitle || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.requesterName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (o.remark && o.remark.toLowerCase().includes(searchTerm.toLowerCase()));
       
       let matchesStatusTab = true;
@@ -660,8 +660,8 @@ export default function OrderingSystemView({
     .sort((a, b) => {
       let comparison = 0;
       if (sortBy === 'createdAt') {
-        const valA = a.createdAt || '';
-        const valB = b.createdAt || '';
+        const valA = String(a.createdAt || '');
+        const valB = String(b.createdAt || '');
         comparison = valA.localeCompare(valB);
       } else if (sortBy === 'totalPrice') {
         const valA = a.totalPrice || 0;
@@ -721,9 +721,9 @@ export default function OrderingSystemView({
     });
 
     return Object.values(groups).sort((a, b) => {
-      if (a.jobNo === '') return 1;
-      if (b.jobNo === '') return -1;
-      return a.jobNo.localeCompare(b.jobNo);
+      if (!a.jobNo) return 1;
+      if (!b.jobNo) return -1;
+      return (a.jobNo || '').localeCompare(b.jobNo || '');
     });
   }, [filteredOrders]);
 
@@ -860,7 +860,7 @@ export default function OrderingSystemView({
 
         <div className="bg-slate-50/40 p-1.5 rounded-lg border border-slate-100 flex items-center justify-between">
           <span className="text-[10px] text-slate-500 font-sans">รวมงบประมาณจัดซื้อ:</span>
-          <span className="text-xs font-black text-indigo-600 font-mono">฿{totalSpend.toLocaleString('th-TH')}</span>
+          <span className="text-xs font-black text-indigo-600 font-mono">฿{(totalSpend || 0).toLocaleString('th-TH')}</span>
         </div>
       </div>
 
@@ -884,7 +884,7 @@ export default function OrderingSystemView({
               <select
                 required
                 className="w-full px-2 py-0.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
-                value={requesterName}
+                value={requesterName || ''}
                 onChange={(e) => setRequesterName(e.target.value)}
               >
                 <option value="">-- เลือกผู้ขอซื้อ --</option>
@@ -901,7 +901,7 @@ export default function OrderingSystemView({
               <label className="font-bold text-slate-500">คนจัดซื้อ / ผู้ดำเนินการ</label>
               <select
                 className="w-full px-2 py-0.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
-                value={purchaserName}
+                value={purchaserName || ''}
                 onChange={(e) => setPurchaserName(e.target.value)}
               >
                 <option value="">-- เลือกคนจัดซื้อ --</option>
@@ -918,7 +918,7 @@ export default function OrderingSystemView({
               <label className="font-bold text-slate-500">Job.No (หมายเลขงาน)</label>
               <select
                 className="w-full px-2 py-0.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
-                value={jobNo}
+                value={jobNo || ''}
                 onChange={(e) => {
                   const val = e.target.value;
                   setJobNo(val);
@@ -947,7 +947,7 @@ export default function OrderingSystemView({
                 disabled
                 placeholder="จะเลือกตามหมายเลขงานอัตโนมัติ"
                 className="w-full px-2 py-0.5 bg-slate-100 border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] text-slate-600 font-medium"
-                value={jobName}
+                value={jobName || ''}
                 onChange={(e) => setJobName(e.target.value)}
               />
             </div>
@@ -957,7 +957,7 @@ export default function OrderingSystemView({
               <label className="font-bold text-slate-500">เชื่อมโยงสินค้าที่มีอยู่ในคลังสต็อก</label>
               <select
                 className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
-                value={selectedProductId}
+                value={selectedProductId || ''}
                 onChange={(e) => setSelectedProductId(e.target.value)}
               >
                 <option value="">-- เป็นสินค้าพัสดุภายนอก (ไม่ได้เก็บสต็อก) --</option>
@@ -978,7 +978,7 @@ export default function OrderingSystemView({
                 disabled={!!selectedProductId}
                 placeholder="ระบุชื่อพัสดุ อุปกรณ์ หรืออะไหล่"
                 className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
-                value={orderTitle}
+                value={orderTitle || ''}
                 onChange={(e) => setOrderTitle(e.target.value)}
               />
             </div>
@@ -1004,7 +1004,7 @@ export default function OrderingSystemView({
                 disabled={!!selectedProductId}
                 placeholder="ชิ้น, ตัว, ม้วน"
                 className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
-                value={unit}
+                value={unit || ''}
                 onChange={(e) => setUnit(e.target.value)}
               />
             </div>
@@ -1029,7 +1029,7 @@ export default function OrderingSystemView({
                 type="text"
                 placeholder="ลิงก์สั่งซื้อ หรือรายละเอียดแนบ"
                 className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
-                value={remark}
+                value={remark || ''}
                 onChange={(e) => setRemark(e.target.value)}
               />
             </div>
@@ -1039,7 +1039,7 @@ export default function OrderingSystemView({
           <div className="flex justify-end gap-1.5 pt-1 border-t border-slate-200">
             {pricePerUnit > 0 && (
               <span className="text-[10px] text-slate-500 font-bold mr-auto self-center">
-                ประมาณราคารวม: <strong className="text-indigo-600 font-mono">฿{(pricePerUnit * quantity).toLocaleString('th-TH')}</strong>
+                ประมาณราคารวม: <strong className="text-indigo-600 font-mono">฿{((pricePerUnit || 0) * (quantity || 0)).toLocaleString('th-TH')}</strong>
               </span>
             )}
             <button
@@ -1229,7 +1229,7 @@ export default function OrderingSystemView({
                             </div>
                             <div className="flex items-center gap-3 text-[10px] text-slate-500">
                               {totalJobSpend > 0 && (
-                                <span>งบประมาณงานรวม: <strong className="text-indigo-600 font-mono text-[11px]">฿{totalJobSpend.toLocaleString('th-TH')}</strong></span>
+                                <span>งบประมาณงานรวม: <strong className="text-indigo-600 font-mono text-[11px]">฿{(totalJobSpend || 0).toLocaleString('th-TH')}</strong></span>
                               )}
                               <div className="flex items-center gap-1 text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full font-bold text-[9px] transition-colors hover:bg-indigo-100">
                                 <span>{isCollapsed ? 'ขยายรายการ' : 'ซ่อนรายการ'}</span>
@@ -1449,7 +1449,7 @@ export default function OrderingSystemView({
                   <select
                     required
                     className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
-                    value={editRequesterName}
+                    value={editRequesterName || ''}
                     onChange={(e) => setEditRequesterName(e.target.value)}
                   >
                     <option value="">-- เลือกผู้ขอซื้อ --</option>
@@ -1466,7 +1466,7 @@ export default function OrderingSystemView({
                   <label className="font-bold text-slate-500">ชื่อคนจัดซื้อ</label>
                   <select
                     className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
-                    value={editPurchaserName}
+                    value={editPurchaserName || ''}
                     onChange={(e) => setEditPurchaserName(e.target.value)}
                   >
                     <option value="">-- เลือกคนจัดซื้อ --</option>
@@ -1483,7 +1483,7 @@ export default function OrderingSystemView({
                   <label className="font-bold text-slate-500">สถานะจัดซื้อ *</label>
                   <select
                     className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
-                    value={editStatus}
+                    value={editStatus || 'pending'}
                     onChange={(e) => setEditStatus(e.target.value as any)}
                   >
                     <option value="pending">1. ขอซื้อ (Pending)</option>
@@ -1501,7 +1501,7 @@ export default function OrderingSystemView({
                   <label className="font-bold text-slate-500">Job.No (เลขงาน)</label>
                   <select
                     className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
-                    value={editJobNo}
+                    value={editJobNo || ''}
                     onChange={(e) => {
                       const val = e.target.value;
                       setEditJobNo(val);
@@ -1529,7 +1529,7 @@ export default function OrderingSystemView({
                     type="text"
                     disabled
                     className="w-full px-2 py-0.5 bg-slate-100 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] text-slate-600 font-medium"
-                    value={editJobName}
+                    value={editJobName || ''}
                     onChange={(e) => setEditJobName(e.target.value)}
                     placeholder="จะเลือกตามหมายเลขงานอัตโนมัติ"
                   />
@@ -1540,7 +1540,7 @@ export default function OrderingSystemView({
                   <label className="font-bold text-slate-500">ผูกสินค้าคลัง</label>
                   <select
                     className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
-                    value={editSelectedProductId}
+                    value={editSelectedProductId || ''}
                     onChange={(e) => setEditSelectedProductId(e.target.value)}
                   >
                     <option value="">-- ไม่ระบุ (พัสดุภายนอก) --</option>
@@ -1559,7 +1559,7 @@ export default function OrderingSystemView({
                     type="text"
                     required
                     className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
-                    value={editOrderTitle}
+                    value={editOrderTitle || ''}
                     onChange={(e) => setEditOrderTitle(e.target.value)}
                     disabled={!!editSelectedProductId}
                   />
@@ -1585,7 +1585,7 @@ export default function OrderingSystemView({
                     type="text"
                     disabled={!!editSelectedProductId}
                     className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
-                    value={editUnit}
+                    value={editUnit || ''}
                     onChange={(e) => setEditUnit(e.target.value)}
                   />
                 </div>
@@ -1608,7 +1608,7 @@ export default function OrderingSystemView({
                   <input
                     type="text"
                     className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
-                    value={editRemark}
+                    value={editRemark || ''}
                     onChange={(e) => setEditRemark(e.target.value)}
                   />
                 </div>
@@ -1670,7 +1670,7 @@ export default function OrderingSystemView({
                     <input
                       type="text"
                       className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-mono font-bold text-slate-800"
-                      value={stepQuotationNo}
+                      value={stepQuotationNo || ''}
                       onChange={(e) => setStepQuotationNo(e.target.value)}
                       placeholder="เช่น QT-2026-044"
                     />
@@ -1680,7 +1680,7 @@ export default function OrderingSystemView({
                     <input
                       type="text"
                       className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs text-slate-800"
-                      value={stepSupplier}
+                      value={stepSupplier || ''}
                       onChange={(e) => setStepSupplier(e.target.value)}
                       placeholder="ระบุบริษัท/ร้านค้า"
                     />
@@ -1695,7 +1695,7 @@ export default function OrderingSystemView({
                     <input
                       type="text"
                       className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-mono font-bold text-slate-800"
-                      value={stepPrNo}
+                      value={stepPrNo || ''}
                       onChange={(e) => setStepPrNo(e.target.value)}
                     />
                   </div>
@@ -1704,7 +1704,7 @@ export default function OrderingSystemView({
                     <input
                       type="text"
                       className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-mono font-bold text-slate-800"
-                      value={stepPoNo}
+                      value={stepPoNo || ''}
                       onChange={(e) => setStepPoNo(e.target.value)}
                       placeholder="เช่น PO-2026-0001"
                     />
@@ -1714,7 +1714,7 @@ export default function OrderingSystemView({
                     <input
                       type="text"
                       className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs text-slate-800"
-                      value={stepSupplier}
+                      value={stepSupplier || ''}
                       onChange={(e) => setStepSupplier(e.target.value)}
                     />
                   </div>
@@ -1729,7 +1729,7 @@ export default function OrderingSystemView({
                       type="text"
                       required
                       className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-bold text-slate-800"
-                      value={stepApproverName}
+                      value={stepApproverName || ''}
                       onChange={(e) => setStepApproverName(e.target.value)}
                     />
                   </div>
@@ -1743,7 +1743,7 @@ export default function OrderingSystemView({
                     <input
                       type="text"
                       className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-mono text-slate-800"
-                      value={stepPaymentRef}
+                      value={stepPaymentRef || ''}
                       onChange={(e) => setStepPaymentRef(e.target.value)}
                       placeholder="เช่น ธนาคารกสิกรไทย / โอนแล้ว"
                     />

@@ -316,7 +316,7 @@ export default function ShoppingCartView({
       text += `📦 รายการพัสดุ (${itemsInGroup.length} รายการ):\n`;
 
       itemsInGroup.forEach((item, index) => {
-        text += `  ${index + 1}. ${item.product.name}\n`;
+        text += `  ${index + 1}. ${item.product?.name || 'พัสดุ'}\n`;
         text += `     • จำนวน: ${item.quantity} ${item.unit || 'ชิ้น'} (@${(item.pricePerUnit || 0).toLocaleString('th-TH')} ฿)\n`;
         if (item.requesterName) text += `     • ผู้ขอจัดซื้อ: ${item.requesterName}\n`;
         if (item.remark) text += `     • หมายเหตุ: ${item.remark}\n`;
@@ -325,7 +325,7 @@ export default function ShoppingCartView({
     });
 
     text += '=================================\n';
-    text += `💰 ราคารวมโดยประมาณ: ฿${totalCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`;
+    text += `💰 ราคารวมโดยประมาณ: ฿${(totalCost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`;
     text += 'ส่งจากระบบคลังสินค้า Stock Manager 🚀';
     return text;
   };
@@ -409,7 +409,7 @@ export default function ShoppingCartView({
           <div className="flex items-center gap-2.5 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 shrink-0">
             <span className="text-[10.5px] font-black text-slate-500 dark:text-slate-400 font-sans">ราคากลางรวมทั้งหมด:</span>
             <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 font-sans">
-              ฿{totalCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ฿{(totalCost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
         )}
@@ -770,7 +770,7 @@ export default function ShoppingCartView({
                               </div>
                               <button
                                 type="button"
-                                onClick={() => removeItem(item.product.id)}
+                                onClick={() => removeItem(item.product?.id)}
                                 className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded transition-all cursor-pointer flex items-center justify-center"
                                 title="ลบพัสดุนี้ออกจากตะกร้า"
                               >
@@ -809,7 +809,7 @@ export default function ShoppingCartView({
                 <div className="flex justify-between">
                   <span>ราคากลางประมาณการรวม:</span>
                   <span className="font-bold text-slate-800 dark:text-slate-100">
-                    ฿{totalCost.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ฿{(totalCost || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>

@@ -64,7 +64,7 @@ export default function UserManagementView({
   // Filter users based on search
   const filteredUsers = useMemo(() => {
     return userRoles.filter(user => {
-      const emailMatch = user.email.toLowerCase().includes(searchQuery.toLowerCase());
+      const emailMatch = (user.email || '').toLowerCase().includes(searchQuery.toLowerCase());
       const nameMatch = user.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) || false;
       return emailMatch || nameMatch;
     });
@@ -86,7 +86,7 @@ export default function UserManagementView({
     }
 
     // Check if email already exists
-    const exists = userRoles.some(u => u.email.toLowerCase() === addEmail.trim().toLowerCase());
+    const exists = userRoles.some(u => (u.email || '').toLowerCase() === addEmail.trim().toLowerCase());
     if (exists) {
       addToast('warning', 'อีเมลนี้มีในระบบแล้ว', 'บัญชีผู้ใช้หรืออีเมลนี้ได้รับการลงทะเบียนสิทธิ์เรียบร้อยแล้ว');
       return;
@@ -153,7 +153,7 @@ export default function UserManagementView({
     }
 
     // Check if email already exists in OTHER users
-    const exists = userRoles.some(u => u.uid !== editingUser.uid && u.email.toLowerCase() === editEmail.trim().toLowerCase());
+    const exists = userRoles.some(u => u.uid !== editingUser.uid && (u.email || '').toLowerCase() === editEmail.trim().toLowerCase());
     if (exists) {
       addToast('warning', 'อีเมลนี้ถูกใช้งานแล้ว', 'มีอีเมลอื่นในระบบที่ใช้ที่อยู่อีเมลนี้อยู่แล้ว');
       return;

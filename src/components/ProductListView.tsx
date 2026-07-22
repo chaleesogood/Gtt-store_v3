@@ -253,7 +253,7 @@ export default function ProductListView({
   const handleAutoFormatOrder = async () => {
     // Natural alphanumeric sorting of products
     const sortedByName = [...products].sort((a, b) => 
-      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+      (a?.name || '').localeCompare(b?.name || '', undefined, { numeric: true, sensitivity: 'base' })
     );
 
     const finalUpdates = sortedByName.map((p, idx) => ({
@@ -305,8 +305,8 @@ export default function ProductListView({
   // Filtered Products
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchTerm.toLowerCase());
+      (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.sku || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
 
     let matchesStatus = true;
@@ -337,7 +337,7 @@ export default function ProductListView({
       }
     });
     // Sort alphabetically and numerically ascending (natural sorting)
-    list.sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true, sensitivity: 'base' }));
+    list.sort((a, b) => (a?.name || '').localeCompare(b?.name || '', 'th', { numeric: true, sensitivity: 'base' }));
     return list;
   }, [categories, products]);
 

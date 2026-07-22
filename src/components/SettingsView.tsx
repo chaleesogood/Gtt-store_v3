@@ -93,7 +93,7 @@ function ProjectModulesManager({
       if (!isNaN(numA) && !isNaN(numB)) {
         if (numA !== numB) return numA - numB;
       }
-      return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+      return (a?.code || '').localeCompare(b?.code || '', undefined, { numeric: true, sensitivity: 'base' });
     });
   }, [modules]);
 
@@ -487,6 +487,9 @@ interface SettingsViewProps {
 
   onDownloadBackup?: () => void;
   onRestoreBackup?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onSaveAllToDatabase?: () => Promise<void>;
+  isSavingAllToDb?: boolean;
+  lastDbSyncTime?: string;
   activities?: any[];
   onRollbackDatabase?: (targetTimeStr: string) => Promise<void>;
   onRestoreCacheGroup?: (groupData: Record<string, any[]>) => Promise<void>;
@@ -518,6 +521,9 @@ export default function SettingsView({
   onDeleteBrand,
   onDownloadBackup,
   onRestoreBackup,
+  onSaveAllToDatabase,
+  isSavingAllToDb = false,
+  lastDbSyncTime,
   activities = [],
   onRollbackDatabase,
   onRestoreCacheGroup,
@@ -716,9 +722,9 @@ export default function SettingsView({
       if (projSearch) {
         const search = projSearch.toLowerCase();
         return (
-          p.jobNo.toLowerCase().includes(search) ||
-          p.customer.toLowerCase().includes(search) ||
-          p.projectName.toLowerCase().includes(search)
+          (p.jobNo || '').toLowerCase().includes(search) ||
+          (p.customer || '').toLowerCase().includes(search) ||
+          (p.projectName || '').toLowerCase().includes(search)
         );
       }
       return true;
@@ -726,15 +732,15 @@ export default function SettingsView({
 
     // Sort by the first 5 digits of jobNo (ascending - smaller first)
     return [...filtered].sort((a, b) => {
-      const aPrefix = a.jobNo.slice(0, 5).replace(/\D/g, '');
-      const bPrefix = b.jobNo.slice(0, 5).replace(/\D/g, '');
+      const aPrefix = (a?.jobNo || '').slice(0, 5).replace(/\D/g, '');
+      const bPrefix = (b?.jobNo || '').slice(0, 5).replace(/\D/g, '');
       const aNum = parseInt(aPrefix, 10);
       const bNum = parseInt(bPrefix, 10);
       
       if (!isNaN(aNum) && !isNaN(bNum)) {
          return aNum - bNum;
       }
-      return a.jobNo.localeCompare(b.jobNo, undefined, { numeric: true, sensitivity: 'base' });
+      return (a?.jobNo || '').localeCompare(b?.jobNo || '', undefined, { numeric: true, sensitivity: 'base' });
     });
   }, [jobProjects, selectedYear, projSearch]);
 
@@ -755,9 +761,9 @@ export default function SettingsView({
       if (selectedYear !== 'all' && p.year !== selectedYear) return false;
       const search = projSearch.toLowerCase();
       return (
-        p.jobNo.toLowerCase().includes(search) ||
-        p.customer.toLowerCase().includes(search) ||
-        p.projectName.toLowerCase().includes(search) ||
+        (p.jobNo || '').toLowerCase().includes(search) ||
+        (p.customer || '').toLowerCase().includes(search) ||
+        (p.projectName || '').toLowerCase().includes(search) ||
         (p.year || '').includes(search)
       );
     });
@@ -768,7 +774,7 @@ export default function SettingsView({
     return employees.filter(e => {
       const search = empSearch.toLowerCase().trim();
       return (
-        e.name.toLowerCase().includes(search) ||
+        (e.name || '').toLowerCase().includes(search) ||
         (e.nickname || '').toLowerCase().includes(search) ||
         (e.email || '').toLowerCase().includes(search) ||
         (e.role || '').toLowerCase().includes(search) ||
@@ -782,7 +788,7 @@ export default function SettingsView({
   const filteredBrands = useMemo(() => {
     return brands.filter(b => {
       const search = brandSearch.toLowerCase().trim();
-      return b.name.toLowerCase().includes(search);
+      return (b.name || '').toLowerCase().includes(search);
     });
   }, [brands, brandSearch]);
 
@@ -3282,6 +3288,27 @@ export default function SettingsView({
                   </p>
                 </div>
               </div>
+
+              {onSaveAllToDatabase && (
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={onSaveAllToDatabase}
+                    disabled={isSavingAllToDb}
+                    className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 active:scale-98 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    id="btn-settings-save-all-to-db"
+                  >
+                    <CloudUpload className={`h-4 w-4 ${isSavingAllToDb ? 'animate-spin' : ''}`} />
+                    <span>{isSavingAllToDb ? 'กำลังบันทึก...' : 'บันทึกข้อมูลทั้งหมดลง Database หลัก'}</span>
+                  </button>
+                  {lastDbSyncTime && (
+                    <div className="text-[11px] font-medium text-emerald-200/90 flex items-center gap-1.5 mt-0.5 bg-slate-900/40 px-2.5 py-1 rounded-md border border-emerald-500/20">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                      <span>อัปเดตข้อมูลล่าสุด: <strong className="text-white font-mono">{lastDbSyncTime}</strong></span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Grid of collections records count */}
@@ -3331,7 +3358,7 @@ export default function SettingsView({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* Box 2: Manual Backup / Restore */}
+            {/* Box 2: Restore / Upload to Main Database */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs">
               <div className="flex items-start gap-3">
                 <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
@@ -3339,10 +3366,10 @@ export default function SettingsView({
                 </div>
                 <div>
                   <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 font-sans">
-                    สำรองข้อมูลและจัดการกู้คืนด้วยตนเอง (Manual Backup & Import)
+                    อัปโหลดเพื่อกู้คืนไฟล์ข้อมูล เข้า Database หลัก
                   </h4>
                   <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                    คุณสามารถดาวน์โหลดรายการสินค้าที่ปรับแต่งทั้งหมดเก็บไว้เป็นไฟล์สำรองข้อมูลส่วนตัว (.json) และนำกลับมาอัปโหลดเพื่อกู้คืนได้ทุกเมื่อบนอุปกรณ์อื่นๆ
+                    คุณสามารถอัปโหลดไฟล์ข้อมูล (.json) เพื่อบันทึกและกู้คืนเข้าสู่ Database หลักกลางของระบบ ทุก ID อ่านเขียนข้อมูลบน Database เดียวกัน
                   </p>
                 </div>
               </div>
@@ -3361,7 +3388,7 @@ export default function SettingsView({
                   className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-600/10"
                 >
                   <Upload className="h-3.5 w-3.5" />
-                  อัปโหลดเพื่อกู้คืนไฟล์ข้อมูล
+                  อัปโหลดเพื่อกู้คืนไฟล์ข้อมูล เข้า Database หลัก
                   <input
                     type="file"
                     accept=".json"
@@ -3377,167 +3404,25 @@ export default function SettingsView({
 
 
 
-            {/* Box 5: Browser Local Storage Diagnostics & Recovery Center */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-3xs col-span-1 md:col-span-2 font-sans">
+            {/* Box 5: Online Only Notice (Offline mode disabled) */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 shadow-3xs col-span-1 md:col-span-2 font-sans text-white">
               <div className="flex items-start gap-3">
-                <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 rounded-xl">
-                  <Sparkles className="h-5 w-5" />
+                <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30 shrink-0">
+                  <CheckCircle2 className="h-5 w-5 animate-pulse" />
                 </div>
                 <div className="flex-1 text-left">
-                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                    ศูนย์สำรองและกู้คืนข้อมูลเบราว์เซอร์อัตโนมัติ (Browser Local Cache Recovery Center)
-                    <span className="bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 text-[9px] px-1.5 py-0.5 rounded-full">อัจฉริยะ</span>
-                  </h4>
-                  <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                    ระบบจะสแกนและค้นหาฐานข้อมูลสำรองทุกส่วนที่เคยบันทึกไว้ในเบราว์เซอร์เครื่องนี้ (รวมถึงข้อมูลก่อนเข้าสู่ระบบ ข้อมูลผู้เข้าชม และบัญชีอื่นๆ) หากคุณพบปัญหาข้อมูลสูญหายหลังจากการอัปเกรดหรือสลับบัญชี คุณสามารถเลือกกู้คืนหรือรวมกลุ่มข้อมูลเหล่านี้กลับคืนมาในปัจจุบันได้ทันที
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      ระบบทำงานในรูปแบบออนไลน์ Real-time 100% (Online Only System)
+                    </h4>
+                    <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-black px-2 py-0.5 rounded-full">
+                      ● เชื่อมต่อคลาวด์แล้ว
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
+                    ปิดการใช้งานระบบแคชออฟไลน์ในเครื่อง (Offline Mode Disabled) ทุกการบันทึก ทำรายการ หรือแก้ไขข้อมูล จะถูกส่งตรงไปยังฐานข้อมูลกลางออนไลน์ (Real-time Cloud Database) ทันที ทุกบัญชีผู้ใช้งานจะมองเห็นและใช้ข้อมูลเดียวกันทั้งหมด
                   </p>
                 </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-800/60 space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-500">แคชข้อมูลที่ตรวจพบบนเครื่องนี้:</span>
-                  <button
-                    type="button"
-                    onClick={performCacheScan}
-                    className="px-2.5 py-1 bg-slate-150 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-[9px] font-bold rounded-lg cursor-pointer transition-all"
-                  >
-                    สแกนใหม่อีกครั้ง (Rescan)
-                  </button>
-                </div>
-
-                {Object.keys(scannedGroups).length === 0 ? (
-                  <div className="py-8 text-center text-xs text-slate-400">
-                    ไม่พบแคชข้อมูลกลุ่มอื่นในเบราว์เซอร์นี้
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {Object.entries(scannedGroups).map(([suffix, rawCollections]) => {
-                      const collections = rawCollections as Record<string, any[]>;
-                      const totalItems = Object.values(collections).reduce((sum, list) => sum + (list as any[]).length, 0);
-                      if (totalItems === 0) return null;
-
-                      let name = `กลุ่มแคชบัญชี: ${suffix}`;
-                      let badgeText = suffix;
-                      let badgeColor = 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
-                      
-                      const matchedUser = userRoles?.find(u => u.uid === suffix);
-                      if (matchedUser) {
-                        name = `กลุ่มแคชบัญชี: ${matchedUser.email}`;
-                        badgeText = matchedUser.email;
-                      } else if (suffix.includes('@')) {
-                        name = `กลุ่มแคชบัญชี: ${suffix}`;
-                        badgeText = suffix;
-                      }
-                      
-                      if (suffix === 'global') {
-                        name = 'ข้อมูลเดิมบนเครื่อง (ก่อนระบบล็อกอิน / Legacy Cache)';
-                        badgeText = 'global';
-                        badgeColor = 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400';
-                      } else if (suffix === 'guest' || suffix === 'demo-user') {
-                        name = 'ข้อมูลผู้เข้าชมออฟไลน์ (Guest / Demo Offline Cache)';
-                        badgeText = 'guest';
-                        badgeColor = 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400';
-                      }
-
-                      return (
-                        <div key={suffix} className="border border-slate-100 dark:border-slate-800 p-4 rounded-xl space-y-3 bg-slate-50/50 dark:bg-slate-900/40 flex flex-col justify-between text-left">
-                          <div>
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="text-[11px] font-bold text-slate-800 dark:text-slate-100 leading-normal">
-                                {name}
-                              </span>
-                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0 max-w-[150px] truncate ${badgeColor}`} title={badgeText}>
-                                {badgeText}
-                              </span>
-                            </div>
-                            
-                            {/* Collection details list */}
-                            <div className="mt-2.5 space-y-1 text-[10px] text-slate-500">
-                              {collections['stock_manager_products'] && (
-                                <div className="flex items-center justify-between">
-                                  <span>📦 สินค้าในคลัง (Products):</span>
-                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_products'].length} ชิ้น</span>
-                                </div>
-                              )}
-                              {collections['stock_manager_categories'] && (
-                                <div className="flex items-center justify-between">
-                                  <span>🏷️ หมวดหมู่สินค้า (Categories):</span>
-                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_categories'].length} รายการ</span>
-                                </div>
-                              )}
-                              {collections['stock_manager_activities'] && (
-                                <div className="flex items-center justify-between">
-                                  <span>📝 ประวัติสต็อกสินค้า (Activities):</span>
-                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_activities'].length} รายการ</span>
-                                </div>
-                              )}
-                              {collections['stock_manager_projects_list'] && (
-                                <div className="flex items-center justify-between">
-                                  <span>🏗️ ข้อมูลโครงการพัฒนา (Projects):</span>
-                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_projects_list'].length} รายการ</span>
-                                </div>
-                              )}
-                              {collections['stock_manager_employees_list'] && (
-                                <div className="flex items-center justify-between">
-                                  <span>👥 ข้อมูลรายชื่อพนักงาน (Employees):</span>
-                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_employees_list'].length} คน</span>
-                                </div>
-                              )}
-                              {collections['stock_manager_brands_list'] && (
-                                <div className="flex items-center justify-between">
-                                  <span>🔖 ข้อมูลแบรนด์/ยี่ห้อ (Brands):</span>
-                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_brands_list'].length} รายการ</span>
-                                </div>
-                              )}
-                              {collections['stock_manager_boms'] && (
-                                <div className="flex items-center justify-between">
-                                  <span>📐 สูตรการผลิต (BOMs):</span>
-                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_boms'].length} ชุด</span>
-                                </div>
-                              )}
-                              {collections['stock_manager_jobs_list'] && (
-                                <div className="flex items-center justify-between">
-                                  <span>🛠️ ใบส่งมอบสินค้า (Jobs):</span>
-                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_jobs_list'].length} รายการ</span>
-                                </div>
-                              )}
-                              {collections['stock_manager_job_projects_list'] && (
-                                <div className="flex items-center justify-between">
-                                  <span>📋 งานประกอบโครงการ (Job Projects):</span>
-                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_job_projects_list'].length} รายการ</span>
-                                </div>
-                              )}
-                              {collections['stock_manager_daily_reports_list'] && (
-                                <div className="flex items-center justify-between">
-                                  <span>📈 รายงานประจำวัน (Daily Reports):</span>
-                                  <span className="font-bold text-slate-700 dark:text-slate-300">{collections['stock_manager_daily_reports_list'].length} รายการ</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/40 flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() => handleRestoreClick(suffix, collections)}
-                              className={`px-3 py-1.5 font-bold text-[9px] rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                                confirmingSuffix === suffix
-                                  ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse'
-                                  : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                              }`}
-                            >
-                              <RotateCcw className="h-3 w-3" />
-                              {confirmingSuffix === suffix
-                                ? '⚠️ คลิกอีกครั้งเพื่อยืนยันการอับเดดข้อมูล!'
-                                : 'อับเดดข้อมูล'}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             </div>
 

@@ -196,10 +196,10 @@ export default function JobAssignmentView({
   // Tasks Filter
   const filteredTasks = jobs.filter(task => {
     const matchesSearch = 
-      task.jobNo.toLowerCase().includes(taskSearch.toLowerCase()) ||
-      task.module.toLowerCase().includes(taskSearch.toLowerCase()) ||
-      task.assignee.toLowerCase().includes(taskSearch.toLowerCase()) ||
-      task.description.toLowerCase().includes(taskSearch.toLowerCase());
+      (task.jobNo || '').toLowerCase().includes(taskSearch.toLowerCase()) ||
+      (task.module || '').toLowerCase().includes(taskSearch.toLowerCase()) ||
+      (task.assignee || '').toLowerCase().includes(taskSearch.toLowerCase()) ||
+      (task.description || '').toLowerCase().includes(taskSearch.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
     const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter;
@@ -916,14 +916,14 @@ export default function JobAssignmentView({
                       const currentProjModules = normalizeModules(currentProj?.modules || []);
                       
                       const sortedProjModules = [...currentProjModules].sort((a, b) => {
-                        const cleanA = a.code.replace(/^\D+/g, '');
-                        const cleanB = b.code.replace(/^\D+/g, '');
+                        const cleanA = (a?.code || '').replace(/^\D+/g, '');
+                        const cleanB = (b?.code || '').replace(/^\D+/g, '');
                         const numA = parseInt(cleanA, 10);
                         const numB = parseInt(cleanB, 10);
                         if (!isNaN(numA) && !isNaN(numB)) {
                           if (numA !== numB) return numA - numB;
                         }
-                        return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+                        return (a?.code || '').localeCompare(b?.code || '', undefined, { numeric: true, sensitivity: 'base' });
                       });
 
                       const relatedBoms = boms ? boms.filter(bom => bom.jobNo === taskJobNo) : [];
@@ -1206,14 +1206,14 @@ export default function JobAssignmentView({
                     const currentProjModules = normalizeModules(currentProj?.modules || []);
                     
                     const sortedProjModules = [...currentProjModules].sort((a, b) => {
-                      const cleanA = a.code.replace(/^\D+/g, '');
-                      const cleanB = b.code.replace(/^\D+/g, '');
+                      const cleanA = (a?.code || '').replace(/^\D+/g, '');
+                      const cleanB = (b?.code || '').replace(/^\D+/g, '');
                       const numA = parseInt(cleanA, 10);
                       const numB = parseInt(cleanB, 10);
                       if (!isNaN(numA) && !isNaN(numB)) {
                         if (numA !== numB) return numA - numB;
                       }
-                      return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+                      return (a?.code || '').localeCompare(b?.code || '', undefined, { numeric: true, sensitivity: 'base' });
                     });
 
                     const relatedBoms = boms ? boms.filter(bom => bom.jobNo === taskJobNo) : [];

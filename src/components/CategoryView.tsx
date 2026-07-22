@@ -382,7 +382,7 @@ export default function CategoryView({
       {/* Categories Cards Grid - Horizontal layout and super compact to reduce vertical space */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {[...categories]
-          .sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true, sensitivity: 'base' }))
+          .sort((a, b) => (a?.name || '').localeCompare(b?.name || '', 'th', { numeric: true, sensitivity: 'base' }))
           .map((cat) => {
             const productCount = getProductCount(cat.id);
             const totalStock = getStockCount(cat.id);

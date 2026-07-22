@@ -137,7 +137,7 @@ function GroupedProductSelect({ products, categories, selectedValue, onChange, p
     
     const term = search.toLowerCase();
     return (
-      p.name.toLowerCase().includes(term) ||
+      (p.name || '').toLowerCase().includes(term) ||
       (p.sku && p.sku.toLowerCase().includes(term)) ||
       (p.brand && p.brand.toLowerCase().includes(term))
     );
@@ -282,7 +282,7 @@ function ProjectModulesManager({ proj, onEditJobProject, addToast }: ProjectModu
 
   const sortedModules = useMemo(() => {
     return [...modules].sort((a, b) => {
-      return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+      return (a?.code || '').localeCompare(b?.code || '', undefined, { numeric: true, sensitivity: 'base' });
     });
   }, [modules]);
 
@@ -704,9 +704,9 @@ export default function ProjectBomView({
     return jobProjects.filter(p => {
       const q = projSearch.toLowerCase();
       return (
-        p.jobNo.toLowerCase().includes(q) ||
-        p.projectName.toLowerCase().includes(q) ||
-        p.customer.toLowerCase().includes(q)
+        (p.jobNo || '').toLowerCase().includes(q) ||
+        (p.projectName || '').toLowerCase().includes(q) ||
+        (p.customer || '').toLowerCase().includes(q)
       );
     });
   }, [jobProjects, projSearch]);
@@ -717,7 +717,7 @@ export default function ProjectBomView({
       addToast('warning', 'กรอกข้อมูลไม่ครบ', 'กรุณากรอกข้อมูลโครงการให้ครบถ้วน');
       return;
     }
-    if (jobProjects.some(p => p.jobNo.toLowerCase() === projJobNo.trim().toLowerCase())) {
+    if (jobProjects.some(p => (p.jobNo || '').toLowerCase() === projJobNo.trim().toLowerCase())) {
       addToast('warning', 'รหัส Job ซ้ำ', 'หมายเลข Job นี้ได้รับการจดทะเบียนแล้ว');
       return;
     }
@@ -1286,7 +1286,7 @@ export default function ProjectBomView({
 
   // Filter BOMs
   const filteredBoms = boms.filter(b => {
-    const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch = (b.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
                           (b.jobNo && b.jobNo.toLowerCase().includes(searchQuery.toLowerCase())) ||
                           (b.description && b.description.toLowerCase().includes(searchQuery.toLowerCase()));
     
@@ -1455,7 +1455,7 @@ export default function ProjectBomView({
                       {bom.jobNo || 'NO JOB'}
                     </span>
                     <span className="truncate max-w-[120px]">{bom.name}</span>
-                    <span className="text-[9.5px] font-mono font-black text-indigo-600">฿{financials.totalCost.toLocaleString('th-TH')}</span>
+                    <span className="text-[9.5px] font-mono font-black text-indigo-600">฿{(financials?.totalCost || 0).toLocaleString('th-TH')}</span>
                   </button>
                 );
               })
@@ -1554,8 +1554,8 @@ export default function ProjectBomView({
                   return (
                     <div className="flex flex-wrap items-center gap-4 pt-1.5 border-t border-slate-100 text-[10px]">
                       <div>วัสดุในสูตร: <strong className="text-slate-700">{activeBom.items.length} ชิ้นส่วน</strong></div>
-                      <div>ต้นทุนประกอบต่อชุด: <strong className="text-indigo-600">฿{fin.totalCost.toLocaleString('th-TH')}</strong></div>
-                      <div>ต้นทุนสุทธิรวม ({multiplier} ชุด): <strong className="text-indigo-950 text-xs">฿{(fin.totalCost * multiplier).toLocaleString('th-TH')}</strong></div>
+                      <div>ต้นทุนประกอบต่อชุด: <strong className="text-indigo-600">฿{(fin?.totalCost || 0).toLocaleString('th-TH')}</strong></div>
+                      <div>ต้นทุนสุทธิรวม ({multiplier} ชุด): <strong className="text-indigo-950 text-xs">฿{((fin?.totalCost || 0) * multiplier).toLocaleString('th-TH')}</strong></div>
                     </div>
                   );
                 })()}
@@ -1715,7 +1715,7 @@ export default function ProjectBomView({
                     const groups = Object.keys(itemsByGroup).sort((a, b) => {
                       if (a === 'โมดูลทั่วไป') return 1;
                       if (b === 'โมดูลทั่วไป') return -1;
-                      return a.localeCompare(b);
+                      return (a || '').localeCompare(b || '');
                     });
 
                     return (
@@ -1884,7 +1884,7 @@ export default function ProjectBomView({
 
                                         {/* Cost */}
                                         <td className="py-1 px-1.5 text-right font-bold text-slate-700 font-mono text-[13px]">
-                                          ฿{costTotal.toLocaleString('th-TH')}
+                                          ฿{(costTotal || 0).toLocaleString('th-TH')}
                                         </td>
 
                                         {/* Group selector */}
@@ -2254,7 +2254,7 @@ export default function ProjectBomView({
                     disabled
                     placeholder="จะเลือกตามหมายเลขงานอัตโนมัติ"
                     className="w-full px-2.5 py-1.5 bg-slate-100 border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs text-slate-600 font-medium"
-                    value={reqJobName}
+                    value={reqJobName || ''}
                   />
                 </div>
 
@@ -2263,7 +2263,7 @@ export default function ProjectBomView({
                   <label className="font-bold text-slate-600">เชื่อมโยงสินค้าที่มีอยู่ในคลังสต็อก</label>
                   <select
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer"
-                    value={reqSelectedProductId}
+                    value={reqSelectedProductId || ''}
                     onChange={(e) => setReqSelectedProductId(e.target.value)}
                   >
                     <option value="">-- เป็นสินค้าพัสดุภายนอก (ไม่ได้เก็บสต็อก) --</option>
@@ -2284,7 +2284,7 @@ export default function ProjectBomView({
                     disabled={!!reqSelectedProductId}
                     placeholder="ระบุชื่อพัสดุ อุปกรณ์ หรืออะไหล่"
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
-                    value={reqOrderTitle}
+                    value={reqOrderTitle || ''}
                     onChange={(e) => setReqOrderTitle(e.target.value)}
                   />
                 </div>
@@ -2310,7 +2310,7 @@ export default function ProjectBomView({
                     disabled={!!reqSelectedProductId}
                     placeholder="ชิ้น, ตัว, ม้วน"
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
-                    value={reqUnit}
+                    value={reqUnit || ''}
                     onChange={(e) => setReqUnit(e.target.value)}
                   />
                 </div>
@@ -2336,7 +2336,7 @@ export default function ProjectBomView({
                     required
                     placeholder="ระบุเลขที่ใบเสนอซื้อ PR"
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-mono font-bold"
-                    value={reqPrNo}
+                    value={reqPrNo || ''}
                     onChange={(e) => setReqPrNo(e.target.value)}
                   />
                 </div>
@@ -2348,7 +2348,7 @@ export default function ProjectBomView({
                     type="text"
                     placeholder="ระบุรายละเอียดแนบเพิ่มเติม หรือลิงก์เสนอซื้อ"
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
-                    value={reqRemark}
+                    value={reqRemark || ''}
                     onChange={(e) => setReqRemark(e.target.value)}
                   />
                 </div>
@@ -2358,7 +2358,7 @@ export default function ProjectBomView({
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
                 {reqPriceUnit > 0 && (
                   <span className="text-xs text-slate-500 font-bold mr-auto self-center font-sans">
-                    ประมาณราคารวม: <strong className="text-indigo-600 font-mono">฿{(reqPriceUnit * reqQty).toLocaleString('th-TH')}</strong>
+                    ประมาณราคารวม: <strong className="text-indigo-600 font-mono">฿{((reqPriceUnit || 0) * (reqQty || 0)).toLocaleString('th-TH')}</strong>
                   </span>
                 )}
                 <button
@@ -2427,7 +2427,7 @@ export default function ProjectBomView({
                 <label className="font-bold text-slate-600">หมายเลข Job (Job No.)</label>
                 {jobProjects && jobProjects.length > 0 ? (
                   <select
-                    value={assignJobNo}
+                    value={assignJobNo || ''}
                     onChange={(e) => setAssignJobNo(e.target.value)}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                   >
@@ -2440,7 +2440,7 @@ export default function ProjectBomView({
                 ) : (
                   <input
                     type="text"
-                    value={assignJobNo}
+                    value={assignJobNo || ''}
                     onChange={(e) => setAssignJobNo(e.target.value)}
                     placeholder="ระบุหมายเลข Job No..."
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-mono font-bold text-slate-700"
@@ -2453,7 +2453,7 @@ export default function ProjectBomView({
                 <input
                   type="text"
                   required
-                  value={assignModuleName}
+                  value={assignModuleName || ''}
                   onChange={(e) => setAssignModuleName(e.target.value)}
                   placeholder="เช่น ออกแบบ PLC logic, เชื่อมโครงฐานล่าง..."
                   className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -2472,7 +2472,7 @@ export default function ProjectBomView({
                     if (!isNaN(numA) && !isNaN(numB)) {
                       if (numA !== numB) return numA - numB;
                     }
-                    return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+                    return (a?.code || '').localeCompare(b?.code || '', undefined, { numeric: true, sensitivity: 'base' });
                   });
 
                   const relatedBoms = boms ? boms.filter(bom => bom.jobNo === assignJobNo) : [];
@@ -2546,7 +2546,7 @@ export default function ProjectBomView({
                 <label className="font-bold text-slate-600">ผู้รับผิดชอบประกอบสินค้า *</label>
                 <select
                   required
-                  value={assignAssignee}
+                  value={assignAssignee || ''}
                   onChange={(e) => setAssignAssignee(e.target.value)}
                   className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                 >
@@ -2563,7 +2563,7 @@ export default function ProjectBomView({
                 <label className="font-bold text-slate-600">รายละเอียดคำสั่งงาน</label>
                 <textarea
                   rows={2}
-                  value={assignDescription}
+                  value={assignDescription || ''}
                   onChange={(e) => setAssignDescription(e.target.value)}
                   className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   placeholder="รายละเอียด หรือคำสั่งงานเพิ่มเติมสำหรับการประกอบชิ้นงาน"
@@ -2574,7 +2574,7 @@ export default function ProjectBomView({
                 <div className="space-y-1">
                   <label className="font-bold text-slate-600">ความสำคัญ</label>
                   <select
-                    value={assignPriority}
+                    value={assignPriority || 'medium'}
                     onChange={(e) => setAssignPriority(e.target.value as 'low' | 'medium' | 'high')}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs text-slate-800 focus:outline-none cursor-pointer"
                   >
@@ -2588,7 +2588,7 @@ export default function ProjectBomView({
                   <label className="font-bold text-slate-600">กำหนดเสร็จงาน</label>
                   <input
                     type="date"
-                    value={assignTargetDate}
+                    value={assignTargetDate || ''}
                     onChange={(e) => setAssignTargetDate(e.target.value)}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-mono font-bold focus:outline-none"
                   />

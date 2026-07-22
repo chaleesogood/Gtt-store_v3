@@ -14,8 +14,8 @@ import Logo from './components/Logo';
 import SettingsView from './components/SettingsView';
 import { CatalogView } from './components/CatalogView';
 import UserManagementView from './components/UserManagementView';
-import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles } from 'lucide-react';
-import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs } from 'firebase/firestore';
+import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles, Database, CloudUpload, RefreshCw } from 'lucide-react';
+import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs, getDocsFromServer } from 'firebase/firestore';
 import { db, cleanUndefined, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from './firebase';
 import { UserRole } from './types';
 
@@ -48,60 +48,382 @@ export default function App() {
   // Delegate to global window.localStorage which is patched for QuotaExceededError and multi-account cache isolation
   const localStorage = window.localStorage;
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [products, setProducts] = useState<Product[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_products');
+    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+  });
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_categories');
+    return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
+  });
   const recentlyDeletedCategories = useRef<Set<string>>(new Set());
-  const [activities, setActivities] = useState<StockActivity[]>([]);
-  const [boms, setBoms] = useState<Bom[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [jobProjects, setJobProjects] = useState<JobProject[]>([]);
-  const [dailyReports, setDailyReports] = useState<DailyReport[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
+  const [activities, setActivities] = useState<StockActivity[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_activities');
+    return saved ? JSON.parse(saved) : INITIAL_ACTIVITIES;
+  });
+  const [boms, setBoms] = useState<Bom[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_boms');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [projects, setProjects] = useState<Project[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_projects_list');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [jobs, setJobs] = useState<Job[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_jobs_list');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_employees_list');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [jobProjects, setJobProjects] = useState<JobProject[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_job_projects_list');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [dailyReports, setDailyReports] = useState<DailyReport[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_daily_reports_list');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [brands, setBrands] = useState<Brand[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_brands_list');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [isSyncComplete, setIsSyncComplete] = useState<boolean>(true);
+  const [isSavingAllToDb, setIsSavingAllToDb] = useState<boolean>(false);
+  const [isPullingFreshDb, setIsPullingFreshDb] = useState<boolean>(false);
+  const [lastDbSyncTime, setLastDbSyncTime] = useState<string>(() => {
+    return localStorage.getItem('last_db_sync_time') || new Date().toLocaleString('th-TH', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  });
 
-  // Helper to upload list in 500-item chunks using Firestore batches
+  const updateLastSyncTimestamp = () => {
+    const formatted = new Date().toLocaleString('th-TH', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    setLastDbSyncTime(formatted);
+    try {
+      localStorage.setItem('last_db_sync_time', formatted);
+    } catch (e) {
+      console.warn("Could not save last_db_sync_time:", e);
+    }
+  };
+
+  // Safety wrapper to prevent Firestore promises from hanging indefinitely in sandboxed environment
+  const withTimeout = <T,>(promise: Promise<T>, ms: number = 6000): Promise<T | null> => {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        console.warn(`Firestore operation timed out after ${ms}ms - proceeding with local cache.`);
+        resolve(null);
+      }, ms);
+      promise
+        .then((res) => {
+          clearTimeout(timer);
+          resolve(res);
+        })
+        .catch((err) => {
+          clearTimeout(timer);
+          console.warn("Firestore operation error:", err);
+          resolve(null);
+        });
+    });
+  };
+
+  // Helper to upload list in chunks using Firestore batches with safety timeouts
   const uploadListToFirestoreInBatches = async (collectionName: string, list: any[]) => {
     if (!list || list.length === 0) return;
-    const chunkSize = 500;
+    const chunkSize = 200;
     for (let i = 0; i < list.length; i += chunkSize) {
       const chunk = list.slice(i, i + chunkSize);
       const batch = writeBatch(db);
+      let count = 0;
       chunk.forEach((item) => {
         if (item && item.id !== undefined && item.id !== null) {
-          const { id, ...data } = item;
-          const docId = String(id).trim();
+          const docId = String(item.id).trim();
           if (docId) {
-            batch.set(doc(db, collectionName, docId), cleanUndefined(data), { merge: true });
+            batch.set(doc(db, collectionName, docId), cleanUndefined(item));
+            count++;
           }
         }
       });
-      await batch.commit();
+      if (count > 0) {
+        await withTimeout(batch.commit(), 5000);
+      }
     }
+  };
+
+  // Function to save all collections to main Cloud Firestore database
+  const handleSaveAllToDatabase = async () => {
+    if (!currentUser) {
+      addToast('warning', 'จำเป็นต้องเข้าสู่ระบบ', 'กรุณาเข้าสู่ระบบก่อนทำการบันทึกข้อมูลลง Database หลัก');
+      return;
+    }
+
+    setIsSavingAllToDb(true);
+    addToast('info', 'กำลังบันทึกข้อมูล...', 'กำลังบันทึกและซิงค์ข้อมูลทั้งหมดลงใน Database หลัก (Cloud Firestore)...');
+
+    try {
+      // 1. Immediately save to LocalStorage as persistent local backup
+      try {
+        localStorage.setItem('stock_manager_products', JSON.stringify(products));
+        localStorage.setItem('stock_manager_categories', JSON.stringify(categories));
+        localStorage.setItem('stock_manager_activities', JSON.stringify(activities));
+        localStorage.setItem('stock_manager_boms', JSON.stringify(boms));
+        localStorage.setItem('stock_manager_projects_list', JSON.stringify(projects));
+        localStorage.setItem('stock_manager_jobs_list', JSON.stringify(jobs));
+        localStorage.setItem('stock_manager_employees_list', JSON.stringify(employees));
+        localStorage.setItem('stock_manager_brands_list', JSON.stringify(brands));
+        localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(jobProjects));
+        localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(dailyReports));
+      } catch (e) {
+        console.warn("Error caching state to local storage:", e);
+      }
+
+      // 2. Sync all collections in parallel with Firestore with safety timeout
+      const collectionsToSync = [
+        { name: 'products', data: products },
+        { name: 'categories', data: categories },
+        { name: 'activities', data: activities },
+        { name: 'boms', data: boms },
+        { name: 'projects', data: projects },
+        { name: 'jobs', data: jobs },
+        { name: 'employees', data: employees },
+        { name: 'brands', data: brands },
+        { name: 'jobProjects', data: jobProjects },
+        { name: 'dailyReports', data: dailyReports },
+      ];
+
+      const syncTasks = collectionsToSync.map(item => {
+        if (item.data && item.data.length > 0) {
+          return uploadListToFirestoreInBatches(item.name, item.data);
+        }
+        return Promise.resolve();
+      });
+
+      await withTimeout(Promise.allSettled(syncTasks), 8000);
+
+      updateLastSyncTimestamp();
+      addToast('success', 'บันทึกข้อมูลสำเร็จ', 'บันทึกและอัปเดตข้อมูลทั้งหมดลงใน Database หลัก (Cloud Firestore) เรียบร้อยแล้ว');
+    } catch (err: any) {
+      console.error("Error saving all data to Firestore:", err);
+      addToast('error', 'เกิดข้อผิดพลาดในการบันทึก', `ไม่สามารถบันทึกข้อมูลลง Database หลักได้: ${err.message || 'โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ต'}`);
+    } finally {
+      setIsSavingAllToDb(false);
+    }
+  };
+
+  // Force fetch fresh data directly from Firestore server for all collections
+  const handlePullFreshFromDatabase = async (showSuccessToast = true) => {
+    if (!auth.currentUser) return;
+    setIsPullingFreshDb(true);
+    try {
+      const fetchColFresh = async <T,>(colName: string): Promise<T[]> => {
+        try {
+          const q = query(collection(db, colName));
+          let snapshot;
+          try {
+            snapshot = await getDocsFromServer(q);
+          } catch (sErr) {
+            snapshot = await getDocs(q);
+          }
+          const list: T[] = [];
+          snapshot.forEach((document) => {
+            list.push({ id: document.id, ...document.data() } as T);
+          });
+          return list;
+        } catch (e) {
+          console.error(`Error fetching fresh ${colName}:`, e);
+          return [];
+        }
+      };
+
+      const [
+        freshProducts,
+        freshCategories,
+        freshActivities,
+        freshBoms,
+        freshProjects,
+        freshJobs,
+        freshEmployees,
+        freshBrands,
+        freshJobProjects,
+        freshDailyReports
+      ] = await Promise.all([
+        fetchColFresh<Product>('products'),
+        fetchColFresh<Category>('categories'),
+        fetchColFresh<StockActivity>('activities'),
+        fetchColFresh<Bom>('boms'),
+        fetchColFresh<Project>('projects'),
+        fetchColFresh<Job>('jobs'),
+        fetchColFresh<Employee>('employees'),
+        fetchColFresh<Brand>('brands'),
+        fetchColFresh<JobProject>('jobProjects'),
+        fetchColFresh<DailyReport>('dailyReports')
+      ]);
+
+      // Always update state & localStorage from central Firestore database so all accounts see identical data
+      const sortedProds = sortProducts(freshProducts);
+      setProducts(sortedProds);
+      localStorage.setItem('stock_manager_products', JSON.stringify(sortedProds));
+
+      setCategories(freshCategories);
+      localStorage.setItem('stock_manager_categories', JSON.stringify(freshCategories));
+
+      freshActivities.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+      setActivities(freshActivities);
+      localStorage.setItem('stock_manager_activities', JSON.stringify(freshActivities));
+
+      freshBoms.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      setBoms(freshBoms);
+      localStorage.setItem('stock_manager_boms', JSON.stringify(freshBoms));
+
+      freshProjects.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      setProjects(freshProjects);
+      localStorage.setItem('stock_manager_projects_list', JSON.stringify(freshProjects));
+
+      freshJobs.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
+      setJobs(freshJobs);
+      localStorage.setItem('stock_manager_jobs_list', JSON.stringify(freshJobs));
+
+      freshEmployees.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+      setEmployees(freshEmployees);
+      localStorage.setItem('stock_manager_employees_list', JSON.stringify(freshEmployees));
+
+      freshBrands.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+      setBrands(freshBrands);
+      localStorage.setItem('stock_manager_brands_list', JSON.stringify(freshBrands));
+
+      freshJobProjects.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
+      setJobProjects(freshJobProjects);
+      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(freshJobProjects));
+
+      freshDailyReports.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      setDailyReports(freshDailyReports);
+      localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(freshDailyReports));
+
+      updateLastSyncTimestamp();
+
+      if (showSuccessToast) {
+        addToast('success', 'รีเฟรชข้อมูลสำเร็จ', 'ดึงข้อมูลล่าสุดจาก Database หลักเรียบร้อยแล้ว');
+      }
+    } catch (err: any) {
+      console.warn("Error pulling fresh data from DB:", err);
+      if (showSuccessToast) {
+        addToast('error', 'ข้อผิดพลาดการดึงข้อมูล', 'ไม่สามารถเชื่อมต่อกับ Database ได้ในขณะนี้');
+      }
+    } finally {
+      setIsPullingFreshDb(false);
+    }
+  };
+
+  // Heuristic to detect what canonical array type a list of items belongs to
+  const detectArrayType = (arr: any[]): string | null => {
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    
+    const samples = arr.filter(item => item && typeof item === 'object').slice(0, 10);
+    if (samples.length === 0) return null;
+
+    let prodScore = 0;
+    let catScore = 0;
+    let actScore = 0;
+    let bomScore = 0;
+    let projScore = 0;
+    let jobScore = 0;
+    let empScore = 0;
+    let brandScore = 0;
+    let jpScore = 0;
+    let drScore = 0;
+
+    for (const item of samples) {
+      if ('sku' in item || 'price' in item || 'barcode' in item || 'quantity' in item || 'minQuantity' in item || 'cost' in item || 'productName' in item || 'itemName' in item) {
+        prodScore += 3;
+      }
+      if ('color' in item || 'subSeries' in item || 'series' in item) {
+        catScore += 3;
+      }
+      if ('quantityChange' in item || 'oldQuantity' in item || 'actionType' in item) {
+        actScore += 3;
+      }
+      if ('requiredQuantity' in item || 'stockDeducted' in item || ('bomId' in item && 'items' in item)) {
+        bomScore += 3;
+      }
+      if (('projectName' in item || 'projectNo' in item) && !('jobNo' in item)) {
+        projScore += 3;
+      }
+      if ('jobNo' in item && !('customer' in item) && !('customerName' in item) && !('projectName' in item)) {
+        jobScore += 3;
+      }
+      if ('employeeName' in item || 'nickname' in item || 'department' in item || 'position' in item || 'orgLevel' in item || ('name' in item && ('role' in item || 'phone' in item || 'email' in item))) {
+        empScore += 3;
+      }
+      if ('brandName' in item || ('name' in item && !('color' in item) && !('sku' in item) && !('price' in item) && !('nickname' in item) && !('department' in item) && !('phone' in item) && !('jobNo' in item) && !('bomId' in item) && !('employeeName' in item) && !('quantity' in item))) {
+        brandScore += 1;
+      }
+      if (('customer' in item || 'customerName' in item || 'projectName' in item) && 'jobNo' in item) {
+        jpScore += 3;
+      }
+      if ('employeeName' in item && 'tasks' in item) {
+        drScore += 3;
+      }
+      if ('name' in item && !('color' in item) && !('nickname' in item) && !('department' in item) && !('jobNo' in item) && !('bomId' in item) && !('employeeName' in item) && !('tasks' in item)) {
+        prodScore += 1;
+      }
+    }
+
+    const scores: [string, number][] = [
+      ['stock_manager_products', prodScore],
+      ['stock_manager_categories', catScore],
+      ['stock_manager_activities', actScore],
+      ['stock_manager_boms', bomScore],
+      ['stock_manager_projects_list', projScore],
+      ['stock_manager_jobs_list', jobScore],
+      ['stock_manager_employees_list', empScore],
+      ['stock_manager_brands_list', brandScore],
+      ['stock_manager_job_projects_list', jpScore],
+      ['stock_manager_daily_reports_list', drScore]
+    ];
+
+    scores.sort((a, b) => b[1] - a[1]);
+    if (scores[0][1] > 0) {
+      return scores[0][0];
+    }
+    return null;
   };
 
   // Helper to synchronize a collection completely to a backup list (including deleting obsolete docs)
   const syncCollectionToBackup = async (collectionName: string, backupList: any[]) => {
-    if (!currentUser || currentUser.uid === 'demo-user') return;
+    if (!currentUser) return;
     try {
       // 1. Query all existing documents in Firestore for this collection
       const q = query(collection(db, collectionName));
       const snapshot = await getDocs(q);
       
       const backupIds = new Set(backupList.map(item => String(item.id).trim()));
-      const batch = writeBatch(db);
-      let hasDeletes = false;
+      const docsToDelete: string[] = [];
 
       snapshot.forEach((document) => {
         const docId = document.id.trim();
         if (!backupIds.has(docId)) {
-          batch.delete(doc(db, collectionName, document.id));
-          hasDeletes = true;
+          docsToDelete.push(document.id);
         }
       });
 
-      if (hasDeletes) {
+      // Delete obsolete documents in batches of 450
+      for (let i = 0; i < docsToDelete.length; i += 450) {
+        const chunk = docsToDelete.slice(i, i + 450);
+        const batch = writeBatch(db);
+        chunk.forEach(docId => batch.delete(doc(db, collectionName, docId)));
         await batch.commit();
       }
 
@@ -204,9 +526,9 @@ export default function App() {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false);
   const [forgotPasswordEmailInput, setForgotPasswordEmailInput] = useState('');
-  const [isDemoBypass, setIsDemoBypass] = useState(false);
   const [isOperationNotAllowed, setIsOperationNotAllowed] = useState(false);
   const [showPopupBlockedHelp, setShowPopupBlockedHelp] = useState(false);
+  const [isGoogleLoggingIn, setIsGoogleLoggingIn] = useState(false);
 
   // Firestore status / Quota state
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
@@ -313,64 +635,35 @@ export default function App() {
           setAuthLoading(false);
         });
       } else {
-        // If there is no real Firebase user, check if we previously selected offline/demo mode
-        const isOfflineSaved = window.localStorage.getItem('stock_manager_is_offline') === 'true';
-        if (isOfflineSaved) {
-          const guestUser = {
-            uid: 'demo-user',
-            email: 'guest@gtt2013.com',
-            displayName: 'ผู้เข้าชมทั่วไป (Demo/Offline)',
-            photoURL: null
-          };
-          (window as any).currentUserEmail = 'guest@gtt2013.com';
-          (window as any).currentUserUid = 'demo-user';
-          window.localStorage.setItem('admin_email', 'guest@gtt2013.com');
-          setCurrentUser(guestUser);
-          setCurrentUserRole('admin');
-          setIsDemoBypass(true);
-          
-          // Load data from localStorage
-          const savedProducts = window.localStorage.getItem('stock_manager_products');
-          const savedCategories = window.localStorage.getItem('stock_manager_categories');
-          const savedActivities = window.localStorage.getItem('stock_manager_activities');
-          const savedBoms = window.localStorage.getItem('stock_manager_boms');
-          const savedProjects = window.localStorage.getItem('stock_manager_projects_list');
-          const savedJobs = window.localStorage.getItem('stock_manager_jobs_list');
-          const savedEmployees = window.localStorage.getItem('stock_manager_employees_list');
-          const savedBrands = window.localStorage.getItem('stock_manager_brands_list');
-          const savedJobProjects = window.localStorage.getItem('stock_manager_job_projects_list');
-          const savedDailyReports = window.localStorage.getItem('stock_manager_daily_reports_list');
-          
-          setProducts(savedProducts ? JSON.parse(savedProducts) : INITIAL_PRODUCTS);
-          setCategories(savedCategories ? JSON.parse(savedCategories) : INITIAL_CATEGORIES);
-          setActivities(savedActivities ? JSON.parse(savedActivities) : INITIAL_ACTIVITIES);
-          setBoms(savedBoms ? JSON.parse(savedBoms) : []);
-          setProjects(savedProjects ? JSON.parse(savedProjects) : []);
-          setJobs(savedJobs ? JSON.parse(savedJobs) : []);
-          setEmployees(savedEmployees ? JSON.parse(savedEmployees) : []);
-          setBrands(savedBrands ? JSON.parse(savedBrands) : []);
-          setJobProjects(savedJobProjects ? JSON.parse(savedJobProjects) : []);
-          setDailyReports(savedDailyReports ? JSON.parse(savedDailyReports) : []);
-          
-          setAuthLoading(false);
-          return;
-        }
-
         (window as any).currentUserEmail = '';
         (window as any).currentUserUid = '';
         window.localStorage.removeItem('admin_email');
+        window.localStorage.removeItem('stock_manager_is_offline');
         setCurrentUser(null);
         setCurrentUserRole('user');
-        setProducts([]);
-        setCategories([]);
-        setActivities([]);
-        setBoms([]);
-        setProjects([]);
-        setJobs([]);
-        setEmployees([]);
-        setJobProjects([]);
-        setDailyReports([]);
-        setBrands([]);
+
+        const savedProducts = localStorage.getItem('stock_manager_products');
+        const savedCategories = localStorage.getItem('stock_manager_categories');
+        const savedActivities = localStorage.getItem('stock_manager_activities');
+        const savedBoms = localStorage.getItem('stock_manager_boms');
+        const savedProjects = localStorage.getItem('stock_manager_projects_list');
+        const savedJobs = localStorage.getItem('stock_manager_jobs_list');
+        const savedEmployees = localStorage.getItem('stock_manager_employees_list');
+        const savedBrands = localStorage.getItem('stock_manager_brands_list');
+        const savedJobProjects = localStorage.getItem('stock_manager_job_projects_list');
+        const savedDailyReports = localStorage.getItem('stock_manager_daily_reports_list');
+
+        setProducts(savedProducts ? JSON.parse(savedProducts) : INITIAL_PRODUCTS);
+        setCategories(savedCategories ? JSON.parse(savedCategories) : INITIAL_CATEGORIES);
+        setActivities(savedActivities ? JSON.parse(savedActivities) : INITIAL_ACTIVITIES);
+        setBoms(savedBoms ? JSON.parse(savedBoms) : []);
+        setProjects(savedProjects ? JSON.parse(savedProjects) : []);
+        setJobs(savedJobs ? JSON.parse(savedJobs) : []);
+        setEmployees(savedEmployees ? JSON.parse(savedEmployees) : []);
+        setBrands(savedBrands ? JSON.parse(savedBrands) : []);
+        setJobProjects(savedJobProjects ? JSON.parse(savedJobProjects) : []);
+        setDailyReports(savedDailyReports ? JSON.parse(savedDailyReports) : []);
+
         setAuthLoading(false);
       }
     });
@@ -403,7 +696,7 @@ export default function App() {
         });
 
         // Proactively auto-provision chalee@gtt2013.com if it's missing from Firestore user_roles
-        if (!hasChaleeGtt && !isDemoBypass) {
+        if (!hasChaleeGtt) {
           const tempUid = 'pre_chalee_gtt2013_com';
           const chaleeGttRecord: UserRole = {
             uid: tempUid,
@@ -421,7 +714,7 @@ export default function App() {
         }
 
         // Proactively auto-provision chaleesogood@gmail.com if it's missing from Firestore user_roles
-        if (!hasChaleeGood && !isDemoBypass) {
+        if (!hasChaleeGood) {
           const tempUid = currentUser.uid;
           const chaleeGoodRecord: UserRole = {
             uid: tempUid,
@@ -453,7 +746,7 @@ export default function App() {
     } else {
       setUserRoles([]);
     }
-  }, [currentUser, currentUserRole, isDemoBypass]);
+  }, [currentUser, currentUserRole]);
 
   const checkFirestoreQuotaError = (error: any) => {
     if (error) {
@@ -515,69 +808,58 @@ export default function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // Sync products from Firestore (no seeding)
+  // Sync products from Firestore (Central Shared Database)
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
+    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'products'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Product[] = [];
+      const firestoreList: Product[] = [];
       snapshot.forEach((document) => {
-        list.push({ id: document.id, ...document.data() } as Product);
+        firestoreList.push({ id: document.id, ...document.data() } as Product);
       });
-      if (list.length === 0) {
-        const saved = localStorage.getItem('stock_manager_products');
-        const localList = saved ? (JSON.parse(saved) as Product[]) : [];
-        if (localList.length > 0) {
-          console.log("Firestore products is empty, uploading local cache to Firestore");
-          uploadListToFirestoreInBatches('products', localList);
-          setProducts(localList);
-        } else {
-          setProducts([]);
-          localStorage.setItem('stock_manager_products', JSON.stringify([]));
-        }
-      } else {
-        const sorted = sortProducts(list);
+
+      if (firestoreList.length > 0) {
+        const sorted = sortProducts(firestoreList);
         setProducts(sorted);
         localStorage.setItem('stock_manager_products', JSON.stringify(sorted));
+      } else {
+        // Seed initial products to Firestore if collection is completely empty
+        const sorted = sortProducts(INITIAL_PRODUCTS);
+        setProducts(sorted);
+        localStorage.setItem('stock_manager_products', JSON.stringify(sorted));
+        uploadListToFirestoreInBatches('products', sorted);
       }
     }, (error) => {
       handleFirestoreError("Firestore products sync error", error);
-      addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อคลังสินค้า (Firestore)', `สลับไปใช้คลังสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_products');
-      setProducts(saved ? JSON.parse(saved) : []);
+      setProducts(saved ? JSON.parse(saved) : INITIAL_PRODUCTS);
     });
     return () => unsubscribe();
   }, [currentUser, isSyncComplete]);
 
-  // Sync categories from Firestore (no seeding)
+  // Sync categories from Firestore (Central Shared Database)
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
+    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'categories'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Category[] = [];
+      const firestoreList: Category[] = [];
       snapshot.forEach((document) => {
-        list.push({ id: document.id, ...document.data() } as Category);
+        firestoreList.push({ id: document.id, ...document.data() } as Category);
       });
-      if (list.length === 0) {
-        const saved = localStorage.getItem('stock_manager_categories');
-        const localList = saved ? (JSON.parse(saved) as Category[]) : [];
-        if (localList.length > 0) {
-          console.log("Firestore categories is empty, uploading local cache to Firestore");
-          uploadListToFirestoreInBatches('categories', localList);
-          setCategories(localList);
-        } else {
-          setCategories([]);
-          localStorage.setItem('stock_manager_categories', JSON.stringify([]));
-        }
+
+      if (firestoreList.length > 0) {
+        setCategories(firestoreList);
+        localStorage.setItem('stock_manager_categories', JSON.stringify(firestoreList));
       } else {
-        setCategories(list);
-        localStorage.setItem('stock_manager_categories', JSON.stringify(list));
+        // Seed initial categories to Firestore if collection is completely empty
+        setCategories(INITIAL_CATEGORIES);
+        localStorage.setItem('stock_manager_categories', JSON.stringify(INITIAL_CATEGORIES));
+        uploadListToFirestoreInBatches('categories', INITIAL_CATEGORIES);
       }
     }, (error) => {
       handleFirestoreError("Firestore categories sync error", error);
-      addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อคลังกลุ่มสินค้า (Firestore)', `สลับไปใช้คลังกลุ่มสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_categories');
-      setCategories(saved ? JSON.parse(saved) : []);
+      setCategories(saved ? JSON.parse(saved) : INITIAL_CATEGORIES);
     });
     return () => unsubscribe();
   }, [currentUser, isSyncComplete]);
@@ -615,70 +897,24 @@ export default function App() {
     }
   }, [currentUser, categories, products]);
 
-  // Bidirectional offline and online merge on login / boot
+  // Synchronize state on user auth change (fetch fresh data directly from database on every login)
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user') {
+    if (!currentUser) {
       setIsSyncComplete(true);
       return;
     }
 
-    const mergeOfflineAndOnline = async () => {
+    const prepareSync = async () => {
       try {
-        setIsSyncComplete(false);
-
-        // Fetch offline data from localStorage
-        const savedProducts = localStorage.getItem('stock_manager_products');
-        const savedCategories = localStorage.getItem('stock_manager_categories');
-        const savedActivities = localStorage.getItem('stock_manager_activities');
-        const savedBoms = localStorage.getItem('stock_manager_boms');
-        const savedProjects = localStorage.getItem('stock_manager_projects_list');
-        const savedJobs = localStorage.getItem('stock_manager_jobs_list');
-        const savedEmployees = localStorage.getItem('stock_manager_employees_list');
-        const savedBrands = localStorage.getItem('stock_manager_brands_list');
-        const savedJobProjects = localStorage.getItem('stock_manager_job_projects_list');
-        const savedDailyReports = localStorage.getItem('stock_manager_daily_reports_list');
-
-        const productsList = savedProducts ? (JSON.parse(savedProducts) as Product[]) : [];
-        const categoriesList = savedCategories ? (JSON.parse(savedCategories) as Category[]) : [];
-        const activitiesList = savedActivities ? (JSON.parse(savedActivities) as StockActivity[]) : [];
-        const bomsList = savedBoms ? (JSON.parse(savedBoms) as Bom[]) : [];
-        const projectsList = savedProjects ? (JSON.parse(savedProjects) as Project[]) : [];
-        const jobsList = savedJobs ? (JSON.parse(savedJobs) as Job[]) : [];
-        const employeesList = savedEmployees ? (JSON.parse(savedEmployees) as Employee[]) : [];
-        const brandsList = savedBrands ? (JSON.parse(savedBrands) as Brand[]) : [];
-        const jpList = savedJobProjects ? (JSON.parse(savedJobProjects) as JobProject[]) : [];
-        const drList = savedDailyReports ? (JSON.parse(savedDailyReports) as DailyReport[]) : [];
-
-        console.log("Loading cached local storage data into React states on startup.");
-        // Instantly load local storage to prevent blanks before snapshots load
-        setProducts(productsList);
-        setCategories(categoriesList);
-        setActivities(activitiesList);
-        setBoms(bomsList);
-        setProjects(projectsList);
-        setJobs(jobsList);
-        setEmployees(employeesList);
-        setBrands(brandsList);
-        setJobProjects(jpList);
-        setDailyReports(drList);
+        await handlePullFreshFromDatabase(false);
       } catch (err: any) {
-        console.warn("Offline-online bidirectional merge skipped or failed:", err);
-        // Fallback to load localStorage into states if we are empty
-        const localProducts = localStorage.getItem('stock_manager_products');
-        if (!localProducts || JSON.parse(localProducts).length === 0) {
-          setProducts(INITIAL_PRODUCTS);
-          setCategories(INITIAL_CATEGORIES);
-          setActivities(INITIAL_ACTIVITIES);
-          localStorage.setItem('stock_manager_products', JSON.stringify(INITIAL_PRODUCTS));
-          localStorage.setItem('stock_manager_categories', JSON.stringify(INITIAL_CATEGORIES));
-          localStorage.setItem('stock_manager_activities', JSON.stringify(INITIAL_ACTIVITIES));
-        }
+        console.warn("Prepare sync error:", err);
       } finally {
         setIsSyncComplete(true);
       }
     };
-    mergeOfflineAndOnline();
-  }, [currentUser]);
+    prepareSync();
+  }, [currentUser?.uid]);
 
   // Sync and heal database: Ensure any category referenced by any product is defined in the categories collection
   useEffect(() => {
@@ -719,63 +955,44 @@ export default function App() {
     });
   }, [products, categories]);
 
-  // Sync activities from Firestore (no seeding)
+  // Sync activities from Firestore (Central Shared Database)
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
+    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'activities'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: StockActivity[] = [];
+      const firestoreList: StockActivity[] = [];
       snapshot.forEach((document) => {
-        list.push({ id: document.id, ...document.data() } as StockActivity);
+        firestoreList.push({ id: document.id, ...document.data() } as StockActivity);
       });
-      if (list.length === 0) {
-        const saved = localStorage.getItem('stock_manager_activities');
-        const localList = saved ? (JSON.parse(saved) as StockActivity[]) : [];
-        if (localList.length > 0) {
-          console.log("Firestore activities is empty, uploading local cache to Firestore");
-          uploadListToFirestoreInBatches('activities', localList);
-          setActivities(localList);
-        } else {
-          setActivities([]);
-          localStorage.setItem('stock_manager_activities', JSON.stringify([]));
-        }
+
+      if (firestoreList.length > 0) {
+        setActivities(firestoreList);
+        localStorage.setItem('stock_manager_activities', JSON.stringify(firestoreList));
       } else {
-        setActivities(list);
-        localStorage.setItem('stock_manager_activities', JSON.stringify(list));
+        setActivities(INITIAL_ACTIVITIES);
+        localStorage.setItem('stock_manager_activities', JSON.stringify(INITIAL_ACTIVITIES));
+        uploadListToFirestoreInBatches('activities', INITIAL_ACTIVITIES);
       }
     }, (error) => {
       handleFirestoreError("Firestore activities sync error", error);
-      addToast('warning', 'เกิดข้อผิดพลาดในการเชื่อมต่อประวัติการทำงาน (Firestore)', `สลับไปใช้ประวัติสำรองในเบราว์เซอร์: ${error.message}`);
       const saved = localStorage.getItem('stock_manager_activities');
-      setActivities(saved ? JSON.parse(saved) : []);
+      setActivities(saved ? JSON.parse(saved) : INITIAL_ACTIVITIES);
     });
     return () => unsubscribe();
   }, [currentUser, isSyncComplete]);
 
   // Sync boms from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
+    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'boms'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Bom[] = [];
+      const firestoreList: Bom[] = [];
       snapshot.forEach((document) => {
-        list.push({ id: document.id, ...document.data() } as Bom);
+        firestoreList.push({ id: document.id, ...document.data() } as Bom);
       });
-      list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      if (list.length === 0) {
-        const saved = localStorage.getItem('stock_manager_boms');
-        const localList = saved ? (JSON.parse(saved) as Bom[]) : [];
-        if (localList.length > 0) {
-          uploadListToFirestoreInBatches('boms', localList);
-          setBoms(localList);
-        } else {
-          setBoms([]);
-          localStorage.setItem('stock_manager_boms', JSON.stringify([]));
-        }
-      } else {
-        setBoms(list);
-        localStorage.setItem('stock_manager_boms', JSON.stringify(list));
-      }
+      firestoreList.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      setBoms(firestoreList);
+      localStorage.setItem('stock_manager_boms', JSON.stringify(firestoreList));
     }, (error) => {
       handleFirestoreError("Firestore boms sync error", error);
       const saved = localStorage.getItem('stock_manager_boms');
@@ -786,28 +1003,16 @@ export default function App() {
 
   // Sync projects from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
+    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'projects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Project[] = [];
+      const firestoreList: Project[] = [];
       snapshot.forEach((document) => {
-        list.push({ id: document.id, ...document.data() } as Project);
+        firestoreList.push({ id: document.id, ...document.data() } as Project);
       });
-      list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      if (list.length === 0) {
-        const saved = localStorage.getItem('stock_manager_projects_list');
-        const localList = saved ? (JSON.parse(saved) as Project[]) : [];
-        if (localList.length > 0) {
-          uploadListToFirestoreInBatches('projects', localList);
-          setProjects(localList);
-        } else {
-          setProjects([]);
-          localStorage.setItem('stock_manager_projects_list', JSON.stringify([]));
-        }
-      } else {
-        setProjects(list);
-        localStorage.setItem('stock_manager_projects_list', JSON.stringify(list));
-      }
+      firestoreList.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      setProjects(firestoreList);
+      localStorage.setItem('stock_manager_projects_list', JSON.stringify(firestoreList));
     }, (error) => {
       handleFirestoreError("Firestore projects sync error", error);
       const saved = localStorage.getItem('stock_manager_projects_list');
@@ -818,28 +1023,16 @@ export default function App() {
 
   // Sync jobs from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
+    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'jobs'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Job[] = [];
+      const firestoreList: Job[] = [];
       snapshot.forEach((document) => {
-        list.push({ id: document.id, ...document.data() } as Job);
+        firestoreList.push({ id: document.id, ...document.data() } as Job);
       });
-      list.sort((a, b) => b.jobNo.localeCompare(a.jobNo));
-      if (list.length === 0) {
-        const saved = localStorage.getItem('stock_manager_jobs_list');
-        const localList = saved ? (JSON.parse(saved) as Job[]) : [];
-        if (localList.length > 0) {
-          uploadListToFirestoreInBatches('jobs', localList);
-          setJobs(localList);
-        } else {
-          setJobs([]);
-          localStorage.setItem('stock_manager_jobs_list', JSON.stringify([]));
-        }
-      } else {
-        setJobs(list);
-        localStorage.setItem('stock_manager_jobs_list', JSON.stringify(list));
-      }
+      firestoreList.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
+      setJobs(firestoreList);
+      localStorage.setItem('stock_manager_jobs_list', JSON.stringify(firestoreList));
     }, (error) => {
       handleFirestoreError("Firestore jobs sync error", error);
       const saved = localStorage.getItem('stock_manager_jobs_list');
@@ -850,28 +1043,16 @@ export default function App() {
 
   // Sync employees from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
+    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'employees'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Employee[] = [];
+      const firestoreList: Employee[] = [];
       snapshot.forEach((document) => {
-        list.push({ id: document.id, ...document.data() } as Employee);
+        firestoreList.push({ id: document.id, ...document.data() } as Employee);
       });
-      list.sort((a, b) => a.name.localeCompare(b.name, 'th'));
-      if (list.length === 0) {
-        const saved = localStorage.getItem('stock_manager_employees_list');
-        const localList = saved ? (JSON.parse(saved) as Employee[]) : [];
-        if (localList.length > 0) {
-          uploadListToFirestoreInBatches('employees', localList);
-          setEmployees(localList);
-        } else {
-          setEmployees([]);
-          localStorage.setItem('stock_manager_employees_list', JSON.stringify([]));
-        }
-      } else {
-        setEmployees(list);
-        localStorage.setItem('stock_manager_employees_list', JSON.stringify(list));
-      }
+      firestoreList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+      setEmployees(firestoreList);
+      localStorage.setItem('stock_manager_employees_list', JSON.stringify(firestoreList));
     }, (error) => {
       handleFirestoreError("Firestore employees sync error", error);
       const saved = localStorage.getItem('stock_manager_employees_list');
@@ -882,28 +1063,16 @@ export default function App() {
 
   // Sync brands from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
+    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'brands'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Brand[] = [];
+      const firestoreList: Brand[] = [];
       snapshot.forEach((document) => {
-        list.push({ id: document.id, ...document.data() } as Brand);
+        firestoreList.push({ id: document.id, ...document.data() } as Brand);
       });
-      list.sort((a, b) => a.name.localeCompare(b.name, 'th'));
-      if (list.length === 0) {
-        const saved = localStorage.getItem('stock_manager_brands_list');
-        const localList = saved ? (JSON.parse(saved) as Brand[]) : [];
-        if (localList.length > 0) {
-          uploadListToFirestoreInBatches('brands', localList);
-          setBrands(localList);
-        } else {
-          setBrands([]);
-          localStorage.setItem('stock_manager_brands_list', JSON.stringify([]));
-        }
-      } else {
-        setBrands(list);
-        localStorage.setItem('stock_manager_brands_list', JSON.stringify(list));
-      }
+      firestoreList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+      setBrands(firestoreList);
+      localStorage.setItem('stock_manager_brands_list', JSON.stringify(firestoreList));
     }, (error) => {
       handleFirestoreError("Firestore brands sync error", error);
       const saved = localStorage.getItem('stock_manager_brands_list');
@@ -914,28 +1083,16 @@ export default function App() {
 
   // Sync job projects from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
+    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'jobProjects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: JobProject[] = [];
+      const firestoreList: JobProject[] = [];
       snapshot.forEach((document) => {
-        list.push({ id: document.id, ...document.data() } as JobProject);
+        firestoreList.push({ id: document.id, ...document.data() } as JobProject);
       });
-      list.sort((a, b) => b.jobNo.localeCompare(a.jobNo));
-      if (list.length === 0) {
-        const saved = localStorage.getItem('stock_manager_job_projects_list');
-        const localList = saved ? (JSON.parse(saved) as JobProject[]) : [];
-        if (localList.length > 0) {
-          uploadListToFirestoreInBatches('jobProjects', localList);
-          setJobProjects(localList);
-        } else {
-          setJobProjects([]);
-          localStorage.setItem('stock_manager_job_projects_list', JSON.stringify([]));
-        }
-      } else {
-        setJobProjects(list);
-        localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(list));
-      }
+      firestoreList.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
+      setJobProjects(firestoreList);
+      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(firestoreList));
     }, (error) => {
       handleFirestoreError("Firestore jobProjects sync error", error);
       const saved = localStorage.getItem('stock_manager_job_projects_list');
@@ -946,28 +1103,16 @@ export default function App() {
 
   // Sync daily reports from Firestore
   useEffect(() => {
-    if (!currentUser || currentUser.uid === 'demo-user' || !isSyncComplete) return;
+    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'dailyReports'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: DailyReport[] = [];
+      const firestoreList: DailyReport[] = [];
       snapshot.forEach((document) => {
-        list.push({ id: document.id, ...document.data() } as DailyReport);
+        firestoreList.push({ id: document.id, ...document.data() } as DailyReport);
       });
-      list.sort((a, b) => b.date.localeCompare(a.date)); // Sort by date descending
-      if (list.length === 0) {
-        const saved = localStorage.getItem('stock_manager_daily_reports_list');
-        const localList = saved ? (JSON.parse(saved) as DailyReport[]) : [];
-        if (localList.length > 0) {
-          uploadListToFirestoreInBatches('dailyReports', localList);
-          setDailyReports(localList);
-        } else {
-          setDailyReports([]);
-          localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify([]));
-        }
-      } else {
-        setDailyReports(list);
-        localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(list));
-      }
+      firestoreList.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      setDailyReports(firestoreList);
+      localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(firestoreList));
     }, (error) => {
       handleFirestoreError("Firestore dailyReports sync error", error);
       const saved = localStorage.getItem('stock_manager_daily_reports_list');
@@ -1081,121 +1226,66 @@ export default function App() {
         }
 
         const keyMapping: Record<string, string[]> = {
-          'stock_manager_products': ['stock_manager_products', 'products', 'products_list', 'product', 'item', 'items'],
-          'stock_manager_categories': ['stock_manager_categories', 'categories', 'categories_list', 'category'],
-          'stock_manager_activities': ['stock_manager_activities', 'activities', 'activities_list', 'activity_logs', 'activity'],
-          'stock_manager_boms': ['stock_manager_boms', 'boms', 'boms_list', 'bom'],
+          'stock_manager_products': ['stock_manager_products', 'products', 'products_list', 'product', 'item', 'items', 'stock', 'stock_list', 'product_list', 'productsdata'],
+          'stock_manager_categories': ['stock_manager_categories', 'categories', 'categories_list', 'category', 'cats'],
+          'stock_manager_activities': ['stock_manager_activities', 'activities', 'activities_list', 'activity_logs', 'activity', 'logs'],
+          'stock_manager_boms': ['stock_manager_boms', 'boms', 'boms_list', 'bom', 'recipes'],
           'stock_manager_projects_list': ['stock_manager_projects_list', 'stock_manager_projects', 'projects', 'projects_list', 'project'],
           'stock_manager_jobs_list': ['stock_manager_jobs_list', 'stock_manager_jobs', 'jobs', 'jobs_list', 'job'],
-          'stock_manager_employees_list': ['stock_manager_employees_list', 'stock_manager_employees', 'employees', 'employees_list', 'employee'],
+          'stock_manager_employees_list': ['stock_manager_employees_list', 'stock_manager_employees', 'employees', 'employees_list', 'employee', 'staff'],
           'stock_manager_brands_list': ['stock_manager_brands_list', 'stock_manager_brands', 'brands', 'brands_list', 'brand'],
           'stock_manager_job_projects_list': ['stock_manager_job_projects_list', 'stock_manager_job_projects', 'jobProjects', 'job_projects', 'job_projects_list'],
           'stock_manager_daily_reports_list': ['stock_manager_daily_reports_list', 'stock_manager_daily_reports', 'dailyReports', 'daily_reports', 'daily_reports_list']
         };
 
         const foundArrays: Record<string, any[]> = {};
-        
-        // 1. Direct search by canonical keys and their known aliases in the root object
-        Object.entries(keyMapping).forEach(([canonicalKey, aliases]) => {
-          for (const key of Object.keys(backupData)) {
-            const normalizedKey = key.trim().toLowerCase().replace(/_/g, '').replace(/-/g, '');
-            const matched = aliases.some(alias => {
-              const normalizedAlias = alias.toLowerCase().replace(/_/g, '').replace(/-/g, '');
-              return normalizedKey === normalizedAlias;
-            });
-            if (matched && Array.isArray(backupData[key])) {
-              foundArrays[canonicalKey] = backupData[key];
-            }
-          }
-        });
 
-        // 2. Fall back to deepSearch heuristics ONLY if no direct keys were matched at the root level
-        if (Object.keys(foundArrays).length === 0) {
+        // 1. If backupData is directly an array
+        if (Array.isArray(backupData)) {
+          const detectedKey = detectArrayType(backupData);
+          if (detectedKey) {
+            foundArrays[detectedKey] = backupData;
+          }
+        } else if (backupData && typeof backupData === 'object') {
+          // 2. Traversal of object properties
           const deepSearch = (obj: any) => {
             if (!obj || typeof obj !== 'object') return;
-            
+
             if (Array.isArray(obj)) {
-              const firstItem = obj[0];
-              if (firstItem && typeof firstItem === 'object') {
-                if ('sku' in firstItem || 'price' in firstItem || 'barcode' in firstItem || 'quantity' in firstItem) {
-                  if (!foundArrays['stock_manager_products'] || obj.length > foundArrays['stock_manager_products'].length) {
-                    foundArrays['stock_manager_products'] = obj;
-                  }
-                } else if ('name' in firstItem && ('color' in firstItem || 'subSeries' in firstItem || 'series' in firstItem) && !('sku' in firstItem) && !('nickname' in firstItem) && !('department' in firstItem) && !('role' in firstItem)) {
-                  if (!foundArrays['stock_manager_categories'] || obj.length > foundArrays['stock_manager_categories'].length) {
-                    foundArrays['stock_manager_categories'] = obj;
-                  }
-                } else if ('quantityChange' in firstItem || 'oldQuantity' in firstItem || 'actionType' in firstItem) {
-                  if (!foundArrays['stock_manager_activities'] || obj.length > foundArrays['stock_manager_activities'].length) {
-                    foundArrays['stock_manager_activities'] = obj;
-                  }
-                } else if (('requiredQuantity' in firstItem && 'items' in firstItem) || ('stockDeducted' in firstItem && 'items' in firstItem)) {
-                  if (!foundArrays['stock_manager_boms'] || obj.length > foundArrays['stock_manager_boms'].length) {
-                    foundArrays['stock_manager_boms'] = obj;
-                  }
-                } else if ('bomId' in firstItem && 'status' in firstItem && !('tasks' in firstItem) && !('modules' in firstItem) && !('customer' in firstItem)) {
-                  if (!foundArrays['stock_manager_projects_list'] || obj.length > foundArrays['stock_manager_projects_list'].length) {
-                    foundArrays['stock_manager_projects_list'] = obj;
-                  }
-                } else if ('jobNo' in firstItem && 'assignee' in firstItem && !('customerName' in firstItem) && !('customer' in firstItem) && !('projectName' in firstItem)) {
-                  if (!foundArrays['stock_manager_jobs_list'] || obj.length > foundArrays['stock_manager_jobs_list'].length) {
-                    foundArrays['stock_manager_jobs_list'] = obj;
-                  }
-                } else if ('employeeName' in firstItem && 'tasks' in firstItem) {
-                  if (!foundArrays['stock_manager_daily_reports_list'] || obj.length > foundArrays['stock_manager_daily_reports_list'].length) {
-                    foundArrays['stock_manager_daily_reports_list'] = obj;
-                  }
-                } else if (('customer' in firstItem || 'customerName' in firstItem || 'projectName' in firstItem) && 'jobNo' in firstItem) {
-                  if (!foundArrays['stock_manager_job_projects_list'] || obj.length > foundArrays['stock_manager_job_projects_list'].length) {
-                    foundArrays['stock_manager_job_projects_list'] = obj;
-                  }
-                } else if ('name' in firstItem && ('nickname' in firstItem || 'department' in firstItem || 'orgLevel' in firstItem || 'role' in firstItem || 'phone' in firstItem || 'position' in firstItem || 'email' in firstItem) && !('sku' in firstItem) && !('price' in firstItem) && !('color' in firstItem) && !('jobNo' in firstItem) && !('bomId' in firstItem)) {
-                  if (!foundArrays['stock_manager_employees_list'] || obj.length > foundArrays['stock_manager_employees_list'].length) {
-                    foundArrays['stock_manager_employees_list'] = obj;
-                  }
-                } else if ('name' in firstItem && 
-                           !('color' in firstItem) && 
-                           !('sku' in firstItem) && 
-                           !('price' in firstItem) && 
-                           !('nickname' in firstItem) && 
-                           !('department' in firstItem) && 
-                           !('orgLevel' in firstItem) && 
-                           !('role' in firstItem) && 
-                           !('phone' in firstItem) && 
-                           !('position' in firstItem) && 
-                           !('jobNo' in firstItem) && 
-                           !('bomId' in firstItem) && 
-                           !('items' in firstItem) && 
-                           !('employeeName' in firstItem) && 
-                           !('projectName' in firstItem) && 
-                           !('customer' in firstItem) && 
-                           !('email' in firstItem)) {
-                  if (!foundArrays['stock_manager_brands_list'] || obj.length > foundArrays['stock_manager_brands_list'].length) {
-                    foundArrays['stock_manager_brands_list'] = obj;
-                  }
+              const detected = detectArrayType(obj);
+              if (detected) {
+                if (!foundArrays[detected] || obj.length > foundArrays[detected].length) {
+                  foundArrays[detected] = obj;
                 }
               }
               return;
             }
 
-            // Traverse object keys
             for (const [key, val] of Object.entries(obj)) {
-              const normalizedKey = key.trim().toLowerCase().replace(/_/g, '').replace(/-/g, '');
+              const normalizedKey = (key || '').trim().toLowerCase().replace(/_/g, '').replace(/-/g, '');
+              
+              // Check exact/partial key matches
               Object.entries(keyMapping).forEach(([canonicalKey, aliases]) => {
                 const matchedAlias = aliases.some(alias => {
-                  const normalizedAlias = alias.toLowerCase().replace(/_/g, '').replace(/-/g, '');
-                  return normalizedKey === normalizedAlias || normalizedKey.includes(normalizedAlias) || normalizedAlias.includes(normalizedKey);
+                  const normalizedAlias = (alias || '').toLowerCase().replace(/_/g, '').replace(/-/g, '');
+                  return normalizedKey === normalizedAlias;
                 });
 
-                if (matchedAlias && Array.isArray(val) && val.length > 0) {
-                  if (!foundArrays[canonicalKey] || val.length > foundArrays[canonicalKey].length) {
+                if (matchedAlias && Array.isArray(val)) {
+                  if (!foundArrays[canonicalKey] || val.length >= foundArrays[canonicalKey].length) {
                     foundArrays[canonicalKey] = val;
                   }
                 }
               });
 
-              // Recurse into nested objects
-              if (val && typeof val === 'object') {
+              if (Array.isArray(val)) {
+                const detected = detectArrayType(val);
+                if (detected) {
+                  if (!foundArrays[detected] || val.length > foundArrays[detected].length) {
+                    foundArrays[detected] = val;
+                  }
+                }
+              } else if (val && typeof val === 'object') {
                 deepSearch(val);
               }
             }
@@ -1207,7 +1297,7 @@ export default function App() {
         let restoredCount = 0;
         const normalizedData: Record<string, any[]> = {};
 
-        Object.entries(keyMapping).forEach(([canonicalKey, aliases]) => {
+        Object.entries(keyMapping).forEach(([canonicalKey]) => {
           const foundValue = foundArrays[canonicalKey];
 
           if (foundValue && Array.isArray(foundValue)) {
@@ -1229,7 +1319,6 @@ export default function App() {
               return item;
             });
 
-            // Replace instead of merge for manual restores to ensure perfect data fidelity
             normalizedData[canonicalKey] = updatedList;
             localStorage.setItem(canonicalKey, JSON.stringify(updatedList));
             restoredCount++;
@@ -1240,9 +1329,40 @@ export default function App() {
           throw new Error('ไม่พบข้อมูลสต็อกสินค้า โครงการ หรือสูตร BOM ที่สามารถอ่านได้ในไฟล์นี้ กรุณาตรวจสอบรูปแบบไฟล์ JSON ของคุณ');
         }
 
+        // Directly reload React states from normalizedData / localStorage
+        const prodVal = normalizedData['stock_manager_products'] || (localStorage.getItem('stock_manager_products') ? JSON.parse(localStorage.getItem('stock_manager_products')!) : []);
+        setProducts(sortProducts(prodVal));
+
+        const catVal = normalizedData['stock_manager_categories'] || (localStorage.getItem('stock_manager_categories') ? JSON.parse(localStorage.getItem('stock_manager_categories')!) : []);
+        setCategories(catVal);
+
+        const actVal = normalizedData['stock_manager_activities'] || (localStorage.getItem('stock_manager_activities') ? JSON.parse(localStorage.getItem('stock_manager_activities')!) : []);
+        setActivities(actVal);
+
+        const bomVal = normalizedData['stock_manager_boms'] || (localStorage.getItem('stock_manager_boms') ? JSON.parse(localStorage.getItem('stock_manager_boms')!) : []);
+        setBoms(bomVal);
+
+        const projVal = normalizedData['stock_manager_projects_list'] || (localStorage.getItem('stock_manager_projects_list') ? JSON.parse(localStorage.getItem('stock_manager_projects_list')!) : []);
+        setProjects(projVal);
+
+        const jobsVal = normalizedData['stock_manager_jobs_list'] || (localStorage.getItem('stock_manager_jobs_list') ? JSON.parse(localStorage.getItem('stock_manager_jobs_list')!) : []);
+        setJobs(jobsVal);
+
+        const empVal = normalizedData['stock_manager_employees_list'] || (localStorage.getItem('stock_manager_employees_list') ? JSON.parse(localStorage.getItem('stock_manager_employees_list')!) : []);
+        setEmployees(empVal);
+
+        const brandVal = normalizedData['stock_manager_brands_list'] || (localStorage.getItem('stock_manager_brands_list') ? JSON.parse(localStorage.getItem('stock_manager_brands_list')!) : []);
+        setBrands(brandVal);
+
+        const jpVal = normalizedData['stock_manager_job_projects_list'] || (localStorage.getItem('stock_manager_job_projects_list') ? JSON.parse(localStorage.getItem('stock_manager_job_projects_list')!) : []);
+        setJobProjects(jpVal);
+
+        const drVal = normalizedData['stock_manager_daily_reports_list'] || (localStorage.getItem('stock_manager_daily_reports_list') ? JSON.parse(localStorage.getItem('stock_manager_daily_reports_list')!) : []);
+        setDailyReports(drVal);
+
         // Upload to Firestore if logged in
-        if (currentUser && currentUser.uid !== 'demo-user') {
-          addToast('info', 'กำลังกู้คืนข้อมูลขึ้นคลาวด์...', 'กำลังซิงค์และลบข้อมูลที่ไม่มีในไฟล์สำรองออกจากระบบคลาวด์...');
+        if (currentUser) {
+          addToast('info', 'กำลังอัปโหลดข้อมูล...', 'กำลังซิงค์และบันทึกข้อมูลไฟล์สำรองเข้าสู่ Database หลักกลาง...');
           
           const keyToCollection: Record<string, string> = {
             'stock_manager_products': 'products',
@@ -1261,7 +1381,6 @@ export default function App() {
             for (const [key, list] of Object.entries(normalizedData)) {
               const colName = keyToCollection[key];
               if (colName && Array.isArray(list)) {
-                // Completely sync this collection with the backup data, removing obsolete records
                 await syncCollectionToBackup(colName, list);
               }
             }
@@ -1271,38 +1390,7 @@ export default function App() {
           }
         }
 
-        // Reload data to local states
-        const prodVal = localStorage.getItem('stock_manager_products');
-        setProducts(prodVal ? JSON.parse(prodVal) : []);
-
-        const catVal = localStorage.getItem('stock_manager_categories');
-        setCategories(catVal ? JSON.parse(catVal) : []);
-
-        const actVal = localStorage.getItem('stock_manager_activities');
-        setActivities(actVal ? JSON.parse(actVal) : []);
-
-        const bomVal = localStorage.getItem('stock_manager_boms');
-        setBoms(bomVal ? JSON.parse(bomVal) : []);
-
-        const projVal = localStorage.getItem('stock_manager_projects_list');
-        setProjects(projVal ? JSON.parse(projVal) : []);
-
-        const jobsVal = localStorage.getItem('stock_manager_jobs_list');
-        setJobs(jobsVal ? JSON.parse(jobsVal) : []);
-
-        const empVal = localStorage.getItem('stock_manager_employees_list');
-        setEmployees(empVal ? JSON.parse(empVal) : []);
-
-        const brandVal = localStorage.getItem('stock_manager_brands_list');
-        setBrands(brandVal ? JSON.parse(brandVal) : []);
-
-        const jpVal = localStorage.getItem('stock_manager_job_projects_list');
-        setJobProjects(jpVal ? JSON.parse(jpVal) : []);
-
-        const drVal = localStorage.getItem('stock_manager_daily_reports_list');
-        setDailyReports(drVal ? JSON.parse(drVal) : []);
-
-        addToast('success', 'กู้คืนข้อมูลสำเร็จ!', 'ระบบได้ทำการกู้คืนและเขียนทับข้อมูลทั้งหมดตามไฟล์สำรองข้อมูลเรียบร้อยแล้วครับ');
+        addToast('success', 'อัปโหลด เสร็จสิ้น', 'นำเข้าและอัปโหลดไฟล์ข้อมูลเข้า Database หลักเรียบร้อยแล้ว ทุก ID อ่านและเขียนข้อมูลบน Database เดียวกัน');
       } catch (err: any) {
         console.error(err);
         addToast('warning', 'กู้คืนข้อมูลล้มเหลว', `ไฟล์ไม่ถูกต้องหรือเกิดข้อผิดพลาด: ${err.message}`);
@@ -1345,7 +1433,7 @@ export default function App() {
       if (mergedData['stock_manager_daily_reports_list']) setDailyReports(mergedData['stock_manager_daily_reports_list']);
 
       // Upload to Firestore if logged in
-      if (currentUser && currentUser.uid !== 'demo-user') {
+      if (currentUser) {
         addToast('info', 'กำลังบันทึกข้อมูลและอัปเดตระบบคลาวด์...', 'ซิงค์ข้อมูลชุดที่รวมกันเรียบร้อยแล้วขึ้นฐานข้อมูลออนไลน์ เพื่อความปลอดภัยถาวร...');
         
         const keyToCollection: Record<string, string> = {
@@ -1385,8 +1473,8 @@ export default function App() {
   };
 
   const handleUploadLocalStorageToCloud = async () => {
-    if (!currentUser || currentUser.uid === 'demo-user') {
-      addToast('warning', 'จำเป็นต้องลงชื่อเข้าใช้', 'กรุณาลงชื่อเข้าใช้ด้วยบัญชีจริง (ไม่ใช่โหมดออฟไลน์) เพื่อนำเข้าประวัติขึ้นระบบคลาวด์');
+    if (!currentUser) {
+      addToast('warning', 'จำเป็นต้องลงชื่อเข้าใช้', 'กรุณาเปิดระบบเพื่อนำเข้าประวัติขึ้นระบบคลาวด์');
       return;
     }
 
@@ -1505,7 +1593,7 @@ export default function App() {
         return actTime > targetTime;
       });
 
-      activitiesAfterTarget.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      activitiesAfterTarget.sort((a, b) => (b?.timestamp || '').localeCompare(a?.timestamp || ''));
 
       for (const act of activitiesAfterTarget) {
         const prod = revertedProducts.find(p => p.id === act.productId);
@@ -1555,7 +1643,7 @@ export default function App() {
       setDailyReports(filteredDailyReports);
 
       // Sync to Firebase Firestore if logged in
-      if (currentUser && currentUser.uid !== 'demo-user') {
+      if (currentUser) {
         const batch = writeBatch(db);
 
         const productsToDelete = products.filter(p => !filteredProducts.some(fp => fp.id === p.id));
@@ -1591,7 +1679,7 @@ export default function App() {
         await uploadListToFirestoreInBatches('dailyReports', filteredDailyReports);
       }
 
-      addToast('success', 'ย้อนเวลาข้อมูลคลังพัสดุสำเร็จ!', `ดึงประวัติย้อนเวลากลับไป ณ ${targetTime.toLocaleString('th-TH')} เรียบร้อย สต็อกทุกอย่างกลับคืนสภาพสมบูรณ์`);
+      addToast('success', 'ย้อนเวลาข้อมูลคลังพัสดุสำเร็จ!', `ดึงประวัติย้อนเวลากลับไป ณ ${targetTime ? targetTime.toLocaleString('th-TH') : ''} เรียบร้อย สต็อกทุกอย่างกลับคืนสภาพสมบูรณ์`);
     } catch (err: any) {
       console.error(err);
       addToast('warning', 'ย้อนเวลากู้ข้อมูลล้มเหลว', `เกิดข้อผิดพลาด: ${err.message}`);
@@ -2466,6 +2554,9 @@ export default function App() {
             onDeleteBrand={handleDeleteBrand}
             onDownloadBackup={handleDownloadBackup}
             onRestoreBackup={handleRestoreBackup}
+            onSaveAllToDatabase={handleSaveAllToDatabase}
+            isSavingAllToDb={isSavingAllToDb}
+            lastDbSyncTime={lastDbSyncTime}
             activities={activities}
             onRollbackDatabase={handleRollbackDatabase}
             onRestoreCacheGroup={handleRestoreCacheGroup}
@@ -2541,7 +2632,10 @@ export default function App() {
   };
 
   const handleGoogleLogin = async () => {
+    if (isGoogleLoggingIn) return;
+    setIsGoogleLoggingIn(true);
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
     try {
       setIsOperationNotAllowed(false);
       setShowPopupBlockedHelp(false);
@@ -2549,62 +2643,30 @@ export default function App() {
       const user = result.user;
       addToast('success', 'เข้าสู่ระบบสำเร็จ', `ยินดีต้อนรับคุณ ${user.email} เข้าสู่ระบบควบคุมคลังสินค้า`);
     } catch (error: any) {
-      console.error("Google login error:", error);
-      const isPopupBlocked = error.code === 'auth/popup-blocked' || 
-                             error.message?.toLowerCase().includes('popup-blocked') || 
-                             error.message?.toLowerCase().includes('popup blocked') || 
-                             error.message?.toLowerCase().includes('cancelled-popup-request');
-      
-      if (isPopupBlocked) {
-        setShowPopupBlockedHelp(true);
-        addToast('warning', 'ป๊อปอัปเข้าสู่ระบบถูกบล็อก', 'เบราว์เซอร์หรือกรอบพรีวิวบล็อกป๊อปอัปเข้าสู่ระบบของ Google โปรดดูวิธีแก้ไขที่แสดงขึ้นมาใหม่ด้านล่าง');
-      } else if (error.code === 'auth/operation-not-allowed' || error.message?.includes('operation-not-allowed')) {
-        setIsOperationNotAllowed(true);
-        addToast('error', 'ระบบยังไม่เปิดใช้', 'ผู้ให้บริการ Google Login ยังไม่ได้เปิดใช้ใน Firebase Console');
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        addToast('warning', 'ยกเลิกการล็อกอิน', 'คุณได้ยกเลิกหรือปิดหน้าต่างป๊อปอัปเข้าสู่ระบบ Google');
+      if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+        console.info("Google login popup closed or cancelled by user:", error.code);
+        addToast('info', 'ยกเลิกการเข้าสู่ระบบ', 'คุณได้ปิดหน้าต่างเข้าสู่ระบบ Google');
       } else {
-        addToast('error', 'ข้อผิดพลาดการเข้าสู่ระบบ', `ไม่สามารถเข้าสู่ระบบด้วย Google: ${error.message}`);
+        console.error("Google login error:", error);
+        if (
+          error.code === 'auth/popup-blocked' ||
+          error.message?.toLowerCase().includes('popup-blocked') ||
+          error.message?.toLowerCase().includes('popup blocked')
+        ) {
+          setShowPopupBlockedHelp(true);
+          addToast('warning', 'ป๊อปอัปเข้าสู่ระบบถูกบล็อก', 'เบราว์เซอร์หรือกรอบพรีวิวบล็อกป๊อปอัปเข้าสู่ระบบของ Google โปรดดูวิธีแก้ไขที่แสดงขึ้นมาใหม่ด้านล่าง');
+        } else if (error.code === 'auth/internal-error' || error.message?.includes('internal-error')) {
+          addToast('warning', 'ข้อผิดพลาดระบบล็อกอิน Google', 'เกิดข้อผิดพลาดภายใน (Internal error) โปรดลองกดเข้าสู่ระบบอีกครั้ง หรือลองเปิดแอปในหน้าต่างใหม่ (Open in new tab) หรือเข้าสู่ระบบด้วยอีเมล/รหัสผ่าน');
+        } else if (error.code === 'auth/operation-not-allowed' || error.message?.includes('operation-not-allowed')) {
+          setIsOperationNotAllowed(true);
+          addToast('error', 'ระบบยังไม่เปิดใช้', 'ผู้ให้บริการ Google Login ยังไม่ได้เปิดใช้ใน Firebase Console');
+        } else {
+          addToast('error', 'ข้อผิดพลาดการเข้าสู่ระบบ', `ไม่สามารถเข้าสู่ระบบด้วย Google: ${error.message}`);
+        }
       }
+    } finally {
+      setIsGoogleLoggingIn(false);
     }
-  };
-
-  const handleGuestBypass = () => {
-    const guestUser = {
-      uid: 'demo-user',
-      email: 'guest@gtt2013.com',
-      displayName: 'ผู้เข้าชมทั่วไป (Demo/Offline)',
-      photoURL: null
-    };
-    setCurrentUser(guestUser);
-    setCurrentUserRole('admin');
-    setIsDemoBypass(true);
-    window.localStorage.setItem('stock_manager_is_offline', 'true');
-    
-    // Load data from localStorage
-    const savedProducts = localStorage.getItem('stock_manager_products');
-    const savedCategories = localStorage.getItem('stock_manager_categories');
-    const savedActivities = localStorage.getItem('stock_manager_activities');
-    const savedBoms = localStorage.getItem('stock_manager_boms');
-    const savedProjects = localStorage.getItem('stock_manager_projects_list');
-    const savedJobs = localStorage.getItem('stock_manager_jobs_list');
-    const savedEmployees = localStorage.getItem('stock_manager_employees_list');
-    const savedBrands = localStorage.getItem('stock_manager_brands_list');
-    const savedJobProjects = localStorage.getItem('stock_manager_job_projects_list');
-    const savedDailyReports = localStorage.getItem('stock_manager_daily_reports_list');
-    
-    setProducts(savedProducts ? JSON.parse(savedProducts) : INITIAL_PRODUCTS);
-    setCategories(savedCategories ? JSON.parse(savedCategories) : INITIAL_CATEGORIES);
-    setActivities(savedActivities ? JSON.parse(savedActivities) : INITIAL_ACTIVITIES);
-    setBoms(savedBoms ? JSON.parse(savedBoms) : []);
-    setProjects(savedProjects ? JSON.parse(savedProjects) : []);
-    setJobs(savedJobs ? JSON.parse(savedJobs) : []);
-    setEmployees(savedEmployees ? JSON.parse(savedEmployees) : []);
-    setBrands(savedBrands ? JSON.parse(savedBrands) : []);
-    setJobProjects(savedJobProjects ? JSON.parse(savedJobProjects) : []);
-    setDailyReports(savedDailyReports ? JSON.parse(savedDailyReports) : []);
-    
-    addToast('success', 'สลับเข้าใช้งานโหมดออฟไลน์สำเร็จ', 'ข้อมูลสต็อกสินค้าก่อนหน้านี้บนเบราว์เซอร์ของคุณได้รับการโหลดขึ้นมาแสดงผลครบถ้วนแล้วครับ');
   };
 
   const handleEmailPasswordLogin = async (e: React.FormEvent) => {
@@ -2717,7 +2779,6 @@ export default function App() {
 
   const handleSignOut = async () => {
     try {
-      setIsDemoBypass(false);
       window.localStorage.removeItem('stock_manager_is_offline');
       
       // Clear central keys on logout to prevent cross-account pollution
@@ -2847,7 +2908,7 @@ export default function App() {
                   <input
                     type="email"
                     required
-                    value={forgotPasswordEmailInput}
+                    value={forgotPasswordEmailInput || ''}
                     onChange={(e) => setForgotPasswordEmailInput(e.target.value)}
                     placeholder="name@example.com"
                     className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
@@ -2898,7 +2959,7 @@ export default function App() {
                     <label className="text-xs font-bold text-slate-400 font-sans block">ชื่อผู้ใช้งาน / Display Name</label>
                     <input
                       type="text"
-                      value={registerDisplayNameInput}
+                      value={registerDisplayNameInput || ''}
                       onChange={(e) => setRegisterDisplayNameInput(e.target.value)}
                       placeholder="ชื่อของคุณ..."
                       className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
@@ -2911,7 +2972,7 @@ export default function App() {
                   <input
                     type="email"
                     required
-                    value={loginEmailInput}
+                    value={loginEmailInput || ''}
                     onChange={(e) => setLoginEmailInput(e.target.value)}
                     placeholder="name@example.com"
                     className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
@@ -2937,7 +2998,7 @@ export default function App() {
                   <input
                     type="password"
                     required
-                    value={loginPasswordInput}
+                    value={loginPasswordInput || ''}
                     onChange={(e) => setLoginPasswordInput(e.target.value)}
                     placeholder="••••••••"
                     className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm font-sans text-slate-100 placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
@@ -2963,28 +3024,23 @@ export default function App() {
           {/* Google login option */}
           <button
             onClick={handleGoogleLogin}
+            disabled={isGoogleLoggingIn}
             type="button"
-            className="w-full py-3 px-4 bg-slate-950 hover:bg-slate-800 active:bg-slate-900 border border-slate-800 hover:border-slate-700 text-white font-bold rounded-xl text-xs font-sans tracking-wide transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+            className="w-full py-3 px-4 bg-slate-950 hover:bg-slate-800 active:bg-slate-900 border border-slate-800 hover:border-slate-700 text-white font-bold rounded-xl text-xs font-sans tracking-wide transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none">
-              <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114-3.463 0-6.27-2.808-6.27-6.27s2.807-6.27 6.27-6.27c1.633 0 3.124.628 4.254 1.652l3.125-3.124C19.294 2.723 15.984 1.5 12.24 1.5c-5.799 0-10.5 4.701-10.5 10.5s4.701 10.5 10.5 10.5c5.342 0 10.026-3.834 10.026-10.5 0-.585-.054-1.15-.152-1.715H12.24Z" />
-            </svg>
-            <span>เข้าใช้ด้วยบัญชี Google (Gmail)</span>
-          </button>
-
-          {/* Guest/Demo Bypass option */}
-          <div className="relative flex items-center justify-center py-2">
-            <div className="absolute inset-x-0 border-t border-slate-800/60"></div>
-            <span className="relative px-3 bg-slate-900 text-[10px] font-bold text-slate-500 font-sans">หรือ</span>
-          </div>
-
-          <button
-            onClick={handleGuestBypass}
-            type="button"
-            className="w-full py-3 px-4 bg-slate-950 hover:bg-slate-800 active:bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 font-bold rounded-xl text-xs font-sans tracking-wide transition-all flex items-center justify-center gap-2.5 cursor-pointer"
-          >
-            <Play className="h-4 w-4 shrink-0 text-indigo-400" />
-            <span>ใช้งานออฟไลน์ (Local Storage)</span>
+            {isGoogleLoggingIn ? (
+              <span className="flex items-center gap-2">
+                <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                <span>กำลังเชื่อมต่อ Google...</span>
+              </span>
+            ) : (
+              <>
+                <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none">
+                  <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114-3.463 0-6.27-2.808-6.27-6.27s2.807-6.27 6.27-6.27c1.633 0 3.124.628 4.254 1.652l3.125-3.124C19.294 2.723 15.984 1.5 12.24 1.5c-5.799 0-10.5 4.701-10.5 10.5s4.701 10.5 10.5 10.5c5.342 0 10.026-3.834 10.026-10.5 0-.585-.054-1.15-.152-1.715H12.24Z" />
+                </svg>
+                <span>เข้าใช้ด้วยบัญชี Google (Gmail)</span>
+              </>
+            )}
           </button>
 
           <p className="text-[10px] text-slate-500 text-center font-mono leading-relaxed mt-2">
@@ -3127,7 +3183,7 @@ export default function App() {
           <Logo className="h-8 w-8 flex-shrink-0" size={32} />
           <div>
             <span className="font-bold text-xs tracking-wide text-white block leading-none mb-0.5">GTT EE STORE</span>
-            {currentUser && currentUser.uid !== 'demo-user' ? (
+            {currentUser ? (
               <span className="inline-flex items-center gap-1 text-[8px] font-black text-emerald-400 font-sans uppercase tracking-wider">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
                 เรียลไทม์ (ทุกบัญชี)
@@ -3142,6 +3198,17 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Mobile Save All to Database Button */}
+          <button
+            onClick={handleSaveAllToDatabase}
+            disabled={isSavingAllToDb}
+            className="p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-50"
+            title="บันทึกข้อมูลทั้งหมดลง Database หลัก"
+            id="btn-mobile-save-all-to-db"
+          >
+            <Database className={`h-4.5 w-4.5 ${isSavingAllToDb ? 'animate-spin' : ''}`} />
+          </button>
+
           {/* Mobile Theme Toggle Button */}
           <button
             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
@@ -3187,6 +3254,23 @@ export default function App() {
             >
               <LayoutDashboard className="h-4.5 w-4.5" />
               ภาพรวมระบบ (Dashboard)
+            </button>
+
+            {/* Quick Save All to Database button in mobile drawer */}
+            <button
+              onClick={() => {
+                handleSaveAllToDatabase();
+                setIsMobileMenuOpen(false);
+              }}
+              disabled={isSavingAllToDb}
+              className="w-full flex items-center justify-between px-4 py-3 bg-emerald-950/60 border border-emerald-800/60 hover:bg-emerald-900/60 text-emerald-300 rounded-xl text-xs font-black transition-all cursor-pointer my-1 shadow-xs disabled:opacity-50"
+              id="btn-drawer-save-all-to-db"
+            >
+              <div className="flex items-center gap-3">
+                <CloudUpload className={`h-4.5 w-4.5 text-emerald-400 ${isSavingAllToDb ? 'animate-spin' : ''}`} />
+                <span>บันทึกข้อมูลทั้งหมดลง Database หลัก</span>
+              </div>
+              {isSavingAllToDb && <span className="text-[10px] text-amber-300 font-mono">กำลังบันทึก...</span>}
             </button>
             <button
               onClick={() => { setCurrentTab('products'); setStatusFilter('all'); setIsMobileMenuOpen(false); }}
@@ -3347,9 +3431,41 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3 relative">
-            
+            {/* Save All Data to Central Database Button & Timestamp */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSaveAllToDatabase}
+                disabled={isSavingAllToDb}
+                className="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white text-xs font-black rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                title="บันทึกและซิงค์ข้อมูลทั้งหมดลงใน Database หลัก (Cloud Firestore)"
+                id="btn-header-save-all-to-db"
+              >
+                <Database className={`h-4 w-4 ${isSavingAllToDb ? 'animate-spin' : ''}`} />
+                <span>{isSavingAllToDb ? 'กำลังบันทึก...' : 'บันทึกข้อมูลลง Database หลัก'}</span>
+              </button>
+              <button
+                onClick={() => handlePullFreshFromDatabase(true)}
+                disabled={isPullingFreshDb}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                title="ดึงข้อมูลล่าสุดจาก Database หลักใหม่ทุกครั้ง"
+                id="btn-header-pull-fresh-db"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isPullingFreshDb ? 'animate-spin text-indigo-500' : 'text-slate-500 dark:text-slate-400'}`} />
+                <span>{isPullingFreshDb ? 'กำลังดึงข้อมูล...' : 'รีเฟรชข้อมูล'}</span>
+              </button>
+              {lastDbSyncTime && (
+                <div 
+                  className="hidden xl:flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl text-[11px] text-slate-600 dark:text-slate-300 font-medium select-none"
+                  title="เวลาที่มีการบันทึกข้อมูลเข้า Database หลักล่าสุด"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>อัปเดตล่าสุด: <strong className="font-mono font-bold text-slate-800 dark:text-slate-100">{lastDbSyncTime}</strong></span>
+                </div>
+              )}
+            </div>
+
             {/* Real-time shared sync indicator badge */}
-            {currentUser && currentUser.uid !== 'demo-user' ? (
+            {currentUser ? (
               <div 
                 className="hidden lg:flex items-center gap-2 px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/55 dark:border-emerald-800/40 rounded-xl shadow-2xs select-none"
                 title="ระบบฐานข้อมูลซิงค์ตรงกันกับทุกเครื่องที่ใช้งานแบบเรียลไทม์สองทิศทาง"

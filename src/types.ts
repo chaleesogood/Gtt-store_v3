@@ -229,7 +229,7 @@ export function sortProducts(list: Product[]): Product[] {
     } else if (b.sortOrder !== undefined) {
       return 1;
     }
-    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    return (a?.name || '').localeCompare(b?.name || '', undefined, { numeric: true, sensitivity: 'base' });
   });
 }
 
