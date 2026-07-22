@@ -14,7 +14,8 @@ import Logo from './components/Logo';
 import SettingsView from './components/SettingsView';
 import { CatalogView } from './components/CatalogView';
 import UserManagementView from './components/UserManagementView';
-import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles, Database, CloudUpload, RefreshCw } from 'lucide-react';
+import { GoogleSheetsView } from './components/GoogleSheetsView';
+import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles, Database, CloudUpload, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs, getDocsFromServer } from 'firebase/firestore';
 import { db, cleanUndefined, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from './firebase';
 import { UserRole } from './types';
@@ -2616,6 +2617,51 @@ export default function App() {
           />
         );
 
+      case 'google_sheets':
+        return (
+          <GoogleSheetsView
+            appData={{
+              products,
+              categories,
+              boms,
+              projects,
+              jobs,
+              employees,
+              brands,
+              dailyReports,
+              activities,
+              userRoles
+            }}
+            onUpdateAllData={async (newData) => {
+              if (newData.products) setProducts(sortProducts(newData.products));
+              if (newData.categories) setCategories(newData.categories);
+              if (newData.boms) setBoms(newData.boms);
+              if (newData.projects) setProjects(newData.projects);
+              if (newData.jobs) setJobs(newData.jobs);
+              if (newData.employees) setEmployees(newData.employees);
+              if (newData.brands) setBrands(newData.brands);
+              if (newData.dailyReports) setDailyReports(newData.dailyReports);
+              if (newData.activities) setActivities(newData.activities);
+              if (newData.userRoles) setUserRoles(newData.userRoles);
+
+              // Sync updated lists to Firestore in batches
+              await Promise.all([
+                uploadListToFirestoreInBatches('products', newData.products),
+                uploadListToFirestoreInBatches('categories', newData.categories),
+                uploadListToFirestoreInBatches('boms', newData.boms),
+                uploadListToFirestoreInBatches('projects', newData.projects),
+                uploadListToFirestoreInBatches('jobs', newData.jobs),
+                uploadListToFirestoreInBatches('employees', newData.employees),
+                uploadListToFirestoreInBatches('brands', newData.brands),
+                uploadListToFirestoreInBatches('dailyReports', newData.dailyReports),
+                uploadListToFirestoreInBatches('activities', newData.activities),
+                uploadListToFirestoreInBatches('user_roles', newData.userRoles)
+              ]);
+            }}
+            addToast={addToast}
+          />
+        );
+
       default:
         return null;
     }
@@ -3130,6 +3176,19 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => setCurrentTab('google_sheets')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+              currentTab === 'google_sheets'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/10'
+                : 'hover:bg-slate-800/60 hover:text-emerald-300 text-emerald-400'
+            }`}
+            id="sidebar-google-sheets-tab"
+          >
+            <FileSpreadsheet className="h-4.5 w-4.5 flex-shrink-0 text-emerald-400" />
+            <span>Google Sheets (เชื่อมสเปรดชีต)</span>
+          </button>
+
+          <button
             onClick={() => setCurrentTab('settings')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
               currentTab === 'settings'
@@ -3453,6 +3512,15 @@ export default function App() {
                 <RefreshCw className={`h-3.5 w-3.5 ${isPullingFreshDb ? 'animate-spin text-indigo-500' : 'text-slate-500 dark:text-slate-400'}`} />
                 <span>{isPullingFreshDb ? 'กำลังดึงข้อมูล...' : 'รีเฟรชข้อมูล'}</span>
               </button>
+              <button
+                onClick={() => setCurrentTab('google_sheets')}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-black rounded-xl transition-all cursor-pointer shrink-0"
+                title="จัดการส่งออกและซิงค์ข้อมูลผ่าน Google Sheets"
+                id="btn-header-google-sheets"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Google Sheets</span>
+              </button>
               {lastDbSyncTime && (
                 <div 
                   className="hidden xl:flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl text-[11px] text-slate-600 dark:text-slate-300 font-medium select-none"
@@ -3464,28 +3532,7 @@ export default function App() {
               )}
             </div>
 
-            {/* Real-time shared sync indicator badge */}
-            {currentUser ? (
-              <div 
-                className="hidden lg:flex items-center gap-2 px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/55 dark:border-emerald-800/40 rounded-xl shadow-2xs select-none"
-                title="ระบบฐานข้อมูลซิงค์ตรงกันกับทุกเครื่องที่ใช้งานแบบเรียลไทม์สองทิศทาง"
-              >
-                <span className="relative flex h-2 w-2 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 font-sans tracking-wide">
-                  เชื่อมต่อเรียลไทม์ (แชร์ทุกบัญชี)
-                </span>
-              </div>
-            ) : (
-              <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/30 rounded-xl">
-                <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0"></span>
-                <span className="text-[10px] font-black text-amber-700 dark:text-amber-400 font-sans">
-                  โหมดสำรองจำลองในเครื่อง
-                </span>
-              </div>
-            )}
+
 
             {/* Theme Toggle Button */}
             <button

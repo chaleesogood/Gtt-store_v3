@@ -1,0 +1,352 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  FileSpreadsheet, 
+  ExternalLink, 
+  RefreshCw, 
+  Upload, 
+  Download, 
+  CheckCircle2, 
+  AlertCircle, 
+  Database, 
+  Package, 
+  FolderTree, 
+  Wrench, 
+  Briefcase, 
+  ClipboardList, 
+  Users, 
+  Tag, 
+  FileText, 
+  History, 
+  Shield, 
+  LogIn, 
+  Key, 
+  ArrowRight
+} from 'lucide-react';
+import { 
+  authenticateGoogleSheets, 
+  exportToGoogleSheets, 
+  importFromGoogleSheets, 
+  getGoogleSheetsAccessToken, 
+  AllAppData 
+} from '../services/googleSheetsService';
+
+interface GoogleSheetsViewProps {
+  appData: AllAppData;
+  onUpdateAllData: (newData: AllAppData) => Promise<void>;
+  addToast: (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => void;
+}
+
+export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
+  appData,
+  onUpdateAllData,
+  addToast
+}) => {
+  const [spreadsheetId, setSpreadsheetId] = useState<string>(() => {
+    return localStorage.getItem('google_sheets_spreadsheet_id') || '';
+  });
+  const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>(() => {
+    const id = localStorage.getItem('google_sheets_spreadsheet_id');
+    return id ? `https://docs.google.com/spreadsheets/d/${id}/edit` : '';
+  });
+  const [lastSync, setLastSync] = useState<string>(() => {
+    return localStorage.getItem('google_sheets_last_sync') || '';
+  });
+
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isConnected, setIsConnected] = useState<boolean>(!!getGoogleSheetsAccessToken());
+
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  useEffect(() => {
+    if (getGoogleSheetsAccessToken()) {
+      setIsConnected(true);
+    }
+  }, []);
+
+  const handleConnectGoogle = async () => {
+    setIsConnecting(true);
+    try {
+      const token = await authenticateGoogleSheets();
+      if (token) {
+        setIsConnected(true);
+        addToast('success', 'เชื่อมต่อ Google สำเร็จ', 'เปิดสิทธิ์ Google Sheets & Drive เรียบร้อยแล้ว');
+      }
+    } catch (err: any) {
+      console.error('Connection error:', err);
+      addToast('error', 'เชื่อมต่อล้มเหลว', err.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ Google');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      let token = getGoogleSheetsAccessToken();
+      if (!token) {
+        token = await authenticateGoogleSheets();
+        setIsConnected(true);
+      }
+
+      const result = await exportToGoogleSheets(token, appData, spreadsheetId);
+      
+      setSpreadsheetId(result.spreadsheetId);
+      setSpreadsheetUrl(result.url);
+      localStorage.setItem('google_sheets_spreadsheet_id', result.spreadsheetId);
+
+      const nowStr = new Date().toLocaleString('th-TH');
+      setLastSync(nowStr);
+      localStorage.setItem('google_sheets_last_sync', nowStr);
+
+      addToast('success', 'ส่งออกข้อมูลสำเร็จ', 'อัปเดตข้อมูลทั้ง 10 แท็บลง Google Sheets เรียบร้อยแล้ว');
+    } catch (err: any) {
+      console.error('Export error:', err);
+      addToast('error', 'ส่งออกข้อมูลล้มเหลว', err.message || 'ไม่สามารถส่งออกข้อมูลไปยัง Google Sheets ได้');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportClick = () => {
+    if (!spreadsheetId) {
+      addToast('warning', 'ยังไม่มีไฟล์ Google Sheets', 'โปรดทำการส่งออกข้อมูลเพื่อสร้างไฟล์หลักก่อน หรือระบุ Spreadsheet ID');
+      return;
+    }
+    setShowConfirmModal(true);
+  };
+
+  const confirmImport = async () => {
+    setShowConfirmModal(false);
+    setIsImporting(true);
+    try {
+      let token = getGoogleSheetsAccessToken();
+      if (!token) {
+        token = await authenticateGoogleSheets();
+        setIsConnected(true);
+      }
+
+      const importedData = await importFromGoogleSheets(token, spreadsheetId, appData);
+      await onUpdateAllData(importedData);
+
+      const nowStr = new Date().toLocaleString('th-TH');
+      setLastSync(nowStr);
+      localStorage.setItem('google_sheets_last_sync', nowStr);
+
+      addToast('success', 'ซิงค์ข้อมูลสำเร็จ', 'ดึงข้อมูลที่แก้ไขจาก Google Sheets กลับเข้าสู่ระบบเรียบร้อยแล้ว');
+    } catch (err: any) {
+      console.error('Import error:', err);
+      addToast('error', 'ดึงข้อมูลล้มเหลว', err.message || 'ไม่สามารถอ่านข้อมูลจาก Google Sheets ได้');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const collectionStats = [
+    { icon: Package, title: '📦 สินค้าในคลัง (Products)', count: appData.products.length, color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/40 border-blue-200' },
+    { icon: FolderTree, title: '📁 หมวดหมู่ (Categories)', count: appData.categories.length, color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/40 border-amber-200' },
+    { icon: Wrench, title: '🛠️ สูตร BOM (BOMs)', count: appData.boms.length, color: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200' },
+    { icon: Briefcase, title: '🏗️ โครงการ (Projects)', count: appData.projects.length, color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200' },
+    { icon: ClipboardList, title: '📋 ใบสั่งงาน (Jobs)', count: appData.jobs.length, color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/40 border-violet-200' },
+    { icon: Users, title: '👥 พนักงาน (Employees)', count: appData.employees.length, color: 'text-sky-600 bg-sky-50 dark:bg-sky-950/40 border-sky-200' },
+    { icon: Tag, title: '🏷️ แบรนด์ (Brands)', count: appData.brands.length, color: 'text-rose-600 bg-rose-50 dark:bg-rose-950/40 border-rose-200' },
+    { icon: FileText, title: '📝 รายงานวัน (Daily Reports)', count: appData.dailyReports.length, color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/40 border-teal-200' },
+    { icon: History, title: '📜 ประวัติสต็อก (Activities)', count: appData.activities.length, color: 'text-orange-600 bg-orange-50 dark:bg-orange-950/40 border-orange-200' },
+    { icon: Shield, title: '🛡️ บัญชีผู้ใช้ (User Roles)', count: appData.userRoles.length, color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/40 border-purple-200' },
+  ];
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Header Banner */}
+      <div className="bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-900 rounded-3xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden">
+        <div className="absolute right-0 top-0 bottom-0 opacity-10 pointer-events-none flex items-center pr-8">
+          <FileSpreadsheet className="w-64 h-64 text-white" />
+        </div>
+
+        <div className="relative z-10 max-w-3xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/15 backdrop-blur-md rounded-full text-xs font-bold tracking-wide uppercase mb-3">
+            <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
+            <span>Google Sheets Master Integration</span>
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl font-black font-sans tracking-tight mb-2">
+            เชื่อมต่อ & แก้ไขข้อมูลผ่าน Google Sheets
+          </h2>
+          <p className="text-emerald-100 text-sm leading-relaxed mb-6 font-sans">
+            ส่งออกข้อมูลทั้ง 10 ตารางเข้าระบบ Google Sheets เพื่อเปิดดู, แก้ไขเพิ่มเติมด้วยตนเอง (Manual Edit) และซิงค์กลับเข้าสู่ระบบแบบอัตโนมัติ
+          </p>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {!isConnected ? (
+              <button
+                onClick={handleConnectGoogle}
+                disabled={isConnecting}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-emerald-900 hover:bg-emerald-50 text-xs font-black rounded-2xl shadow-md transition-all active:scale-95 cursor-pointer"
+                id="btn-sheets-connect"
+              >
+                {isConnecting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4 text-emerald-700" />}
+                <span>{isConnecting ? 'กำลังเชื่อมต่อ...' : 'ลงชื่อเข้าใช้ Google เพื่อเชื่อมสเปรดชีต'}</span>
+              </button>
+            ) : (
+              <div className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-900/60 border border-emerald-400/40 rounded-2xl text-xs font-bold text-emerald-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>เชื่อมต่อ Google OAuth เรียบร้อยแล้ว</span>
+              </div>
+            )}
+
+            {spreadsheetUrl && (
+              <a
+                href={spreadsheetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-500/30 hover:bg-emerald-500/50 text-white text-xs font-bold rounded-2xl border border-emerald-300/40 transition-all cursor-pointer"
+                id="btn-sheets-open-external"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>เปิดแก้ไขใน Google Sheets</span>
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Control Actions Bar */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-6 border-b border-slate-100 dark:border-slate-800">
+          <div>
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 font-sans flex items-center gap-2">
+              <Database className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              จัดการการซิงค์ข้อมูล (Export / Import)
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              {lastSync ? `อัปเดตล่าสุดเมื่อ: ${lastSync}` : 'ยังไม่มีประวัติการส่งออกไฟล์ Google Sheets'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+            <button
+              onClick={handleExport}
+              disabled={isExporting}
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white text-xs font-bold rounded-2xl shadow-sm transition-all cursor-pointer disabled:opacity-50"
+              id="btn-sheets-export"
+            >
+              <Upload className={`w-4 h-4 ${isExporting ? 'animate-spin' : ''}`} />
+              <span>{isExporting ? 'กำลังส่งออกข้อมูล...' : 'ส่งออกข้อมูลไป Google Sheets'}</span>
+            </button>
+
+            <button
+              onClick={handleImportClick}
+              disabled={isImporting || !spreadsheetId}
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold rounded-2xl shadow-sm transition-all cursor-pointer disabled:opacity-50"
+              id="btn-sheets-import"
+            >
+              <Download className={`w-4 h-4 ${isImporting ? 'animate-spin' : ''}`} />
+              <span>{isImporting ? 'กำลังดึงข้อมูล...' : 'ดึงข้อมูลจาก Sheet กลับเข้าสู่ระบบ'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Spreadsheet Details */}
+        <div className="pt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+            <span className="font-bold text-slate-700 dark:text-slate-300">Spreadsheet ID:</span>
+            <input
+              type="text"
+              value={spreadsheetId}
+              onChange={(e) => {
+                setSpreadsheetId(e.target.value);
+                localStorage.setItem('google_sheets_spreadsheet_id', e.target.value);
+                setSpreadsheetUrl(e.target.value ? `https://docs.google.com/spreadsheets/d/${e.target.value}/edit` : '');
+              }}
+              placeholder="กรอก Google Spreadsheet ID เพื่อระบุไฟล์เดิม"
+              className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-xs w-full sm:w-80 text-slate-800 dark:text-slate-200 focus:outline-hidden focus:border-emerald-500"
+            />
+          </div>
+
+          {spreadsheetUrl && (
+            <a
+              href={spreadsheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold inline-flex items-center gap-1"
+            >
+              <span>เปิดลิงก์สเปรดชีตเต็ม</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* 10 Collections Overview Grid */}
+      <div>
+        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3 font-sans px-1">
+          📊 รายการทั้ง 10 แท็บที่ได้รับการจัดเก็บใน Google Sheets
+        </h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
+          {collectionStats.map((item, idx) => {
+            const IconComp = item.icon;
+            return (
+              <div 
+                key={idx}
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 transition-all hover:shadow-md"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className={`p-2 rounded-xl border ${item.color}`}>
+                    <IconComp className="w-4 h-4" />
+                  </div>
+                  <span className="text-lg font-black font-mono text-slate-800 dark:text-slate-100">
+                    {item.count.toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-xs font-bold text-slate-700 dark:text-slate-300 font-sans">
+                  {item.title}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">
+                  แท็บ: {item.title.split(' ')[1]?.replace('(', '')?.replace(')', '') || 'Sheet'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Confirmation Modal for Destructive/Overwrite Import Operation */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center gap-3 text-amber-600 dark:text-amber-400 mb-4">
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/50 rounded-2xl border border-amber-200 dark:border-amber-800">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-slate-800 dark:text-slate-100 font-sans">ยืนยันการดึงข้อมูลจาก Sheet?</h4>
+                <p className="text-xs text-slate-500 font-sans">การกระทำนี้จะเขียนทับข้อมูลในระบบ</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 font-sans leading-relaxed mb-6 bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
+              ระบบจะทำการอ่านข้อมูลจากตาราง <strong>Google Sheets</strong> (ทั้ง 10 แท็บ) แล้วนำมาอัปเดตแทนที่ข้อมูลปัจจุบันในฐานข้อมูลหลักและ local state โปรดตรวจสอบว่าข้อมูลในสเปรดชีตถูกต้องแล้ว
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={confirmImport}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer"
+              >
+                ยืนยันดึงข้อมูลซิงค์กลับ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
