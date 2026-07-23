@@ -661,9 +661,39 @@ export default function App() {
         unsubscribeRole = onSnapshot(userRoleRef, async (docSnap) => {
           const userEmailClean = (user.email || '').trim().toLowerCase();
           const isDeveloper = ['chaleesogood@gmail.com', 'chalee@gtt2013.com'].includes(userEmailClean);
+          const isGoogleUser = user.providerData?.some(p => p.providerId === 'google.com') || false;
+          const authProvider = isGoogleUser ? 'google' : 'password';
+
           if (docSnap.exists()) {
             const data = docSnap.data() as UserRole;
             setCurrentUserRole(isDeveloper ? 'admin' : (data.role || 'user'));
+
+            // Auto-sync Google Sign-in metadata (displayName, photoURL, provider) if missing or updated
+            if (isGoogleUser || user.displayName || user.photoURL) {
+              const updatedData: Partial<UserRole> = {};
+              let hasChanges = false;
+
+              if (user.displayName && data.displayName !== user.displayName) {
+                updatedData.displayName = user.displayName;
+                hasChanges = true;
+              }
+              if (user.photoURL && data.photoURL !== user.photoURL) {
+                updatedData.photoURL = user.photoURL;
+                hasChanges = true;
+              }
+              if (isGoogleUser && data.provider !== 'google') {
+                updatedData.provider = 'google';
+                hasChanges = true;
+              }
+
+              if (hasChanges) {
+                try {
+                  await setDoc(userRoleRef, cleanUndefined({ ...data, ...updatedData }), { merge: true });
+                } catch (syncErr) {
+                  console.warn("Could not auto-sync Google user profile details:", syncErr);
+                }
+              }
+            }
           } else {
             // Document doesn't exist, let's check if there is an existing role record with the same email!
             try {
@@ -686,6 +716,8 @@ export default function App() {
                   uid: user.uid,
                   email: user.email || '',
                   displayName: user.displayName || (existingRoleRecord as UserRole).displayName || user.email?.split('@')[0] || 'Unknown User',
+                  photoURL: user.photoURL || (existingRoleRecord as UserRole).photoURL || '',
+                  provider: authProvider,
                   role: isDeveloper ? 'admin' : ((existingRoleRecord as UserRole).role || 'user'),
                   createdAt: (existingRoleRecord as UserRole).createdAt || new Date().toISOString()
                 };
@@ -706,6 +738,8 @@ export default function App() {
                   uid: user.uid,
                   email: user.email || '',
                   displayName: user.displayName || user.email?.split('@')[0] || 'Unknown User',
+                  photoURL: user.photoURL || '',
+                  provider: authProvider,
                   role: defaultRole,
                   createdAt: new Date().toISOString()
                 };
@@ -722,6 +756,8 @@ export default function App() {
                 uid: user.uid,
                 email: user.email || '',
                 displayName: user.displayName || user.email?.split('@')[0] || 'Unknown User',
+                photoURL: user.photoURL || '',
+                provider: authProvider,
                 role: defaultRole,
                 createdAt: new Date().toISOString()
               };

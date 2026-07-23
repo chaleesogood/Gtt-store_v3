@@ -237,6 +237,8 @@ export interface UserRole {
   uid: string;
   email: string;
   displayName?: string;
+  photoURL?: string;
+  provider?: string; // e.g. 'google', 'password', 'pre-registered'
   role: 'admin' | 'editor' | 'user'; // admin = Full Control; editor = Add, Edit, View; user = View, Add, Edit but CANNOT delete
   createdAt: string;
   lastSeen?: string;
