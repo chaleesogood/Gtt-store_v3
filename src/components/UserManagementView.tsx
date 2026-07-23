@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { UserRole, Employee } from '../types';
+import { auth } from '../firebase';
 import { 
   Users, 
   Shield, 
@@ -24,7 +25,9 @@ import {
   Activity,
   Copy,
   Fingerprint,
-  Hash
+  Hash,
+  Download,
+  RefreshCw
 } from 'lucide-react';
 
 interface UserManagementViewProps {
@@ -205,6 +208,72 @@ export default function UserManagementView({
         );
       }
     }, 800);
+  };
+
+  // Handle Pull/Sync UID from Firebase Auth directly into the system
+  const handlePullFirebaseUid = async () => {
+    try {
+      setIsScanning(true);
+      const currentAuthUser = auth.currentUser;
+      const activeUid = currentAuthUser?.uid || (window as any).currentUserUid;
+      const activeEmail = currentAuthUser?.email || currentUserEmail || (window as any).currentUserEmail;
+      
+      if (!activeUid && !activeEmail) {
+        addToast('warning', 'ไม่พบข้อมูล Firebase Authentication', 'โปรดตรวจสอบสถานะการล็อกอิน Firebase Authentication');
+        return;
+      }
+
+      // Check if UID is already in system
+      const existingUidRecord = userRoles.find(u => u.uid === activeUid);
+      const existingEmailRecord = userRoles.find(u => (u.email || '').toLowerCase() === (activeEmail || '').toLowerCase());
+
+      if (existingUidRecord) {
+        addToast('info', 'เชื่อมโยง UID เรียบร้อยแล้ว', `บัญชี (${activeEmail}) มี UID: ${activeUid} บันทึกในระบบเรียบร้อยแล้ว`);
+      } else if (existingEmailRecord) {
+        // Upgrade pre-registered email doc to real Firebase Auth UID
+        await onAddUserRole({
+          uid: activeUid,
+          email: activeEmail,
+          displayName: currentAuthUser?.displayName || existingEmailRecord.displayName || activeEmail?.split('@')[0],
+          role: existingEmailRecord.role,
+          status: 'active'
+        });
+        addToast('success', 'ดึงและซิงค์ UID Firebase สำเร็จ!', `ดึงรหัส UID (${activeUid}) เข้าสู่ระบบ และอัปเดตสิทธิ์ผู้ใช้เรียบร้อยแล้ว`);
+      } else {
+        // Create new admin/user record with real Firebase Auth UID
+        await onAddUserRole({
+          uid: activeUid,
+          email: activeEmail,
+          displayName: currentAuthUser?.displayName || activeEmail?.split('@')[0] || 'User',
+          role: 'admin',
+          status: 'active'
+        });
+        addToast('success', 'ดึง UID Firebase ใหม่สำเร็จ!', `นำเข้ารหัส UID (${activeUid}) สำหรับ ${activeEmail} เข้าสู่ระบบเรียบร้อยแล้ว`);
+      }
+    } catch (err) {
+      console.error("Error pulling Firebase UID:", err);
+      addToast('error', 'ดึง UID ล้มเหลว', 'เกิดข้อผิดพลาดในการดึงข้อมูล UID จาก Firebase Authentication');
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  // Auto-fill active Firebase Auth UID into Add User Modal
+  const handlePullCurrentUidToAddModal = () => {
+    const currentAuthUser = auth.currentUser;
+    const activeUid = currentAuthUser?.uid || (window as any).currentUserUid;
+    const activeEmail = currentAuthUser?.email || currentUserEmail || (window as any).currentUserEmail;
+    
+    if (activeUid) {
+      setAddUid(activeUid);
+      if (!addEmail && activeEmail) setAddEmail(activeEmail);
+      if (!addDisplayName && (currentAuthUser?.displayName || activeEmail)) {
+        setAddDisplayName(currentAuthUser?.displayName || activeEmail.split('@')[0]);
+      }
+      addToast('info', 'ดึง UID Firebase สำเร็จ', `นำใส่รหัส UID (${activeUid}) เรียบร้อยแล้ว`);
+    } else {
+      addToast('warning', 'ไม่พบ UID ในเซสชัน', 'ไม่พบข้อมูล Firebase UID ที่ล็อกอินในขณะนี้');
+    }
   };
 
   // Handle Add User / Pre-register role
@@ -696,6 +765,16 @@ export default function UserManagementView({
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+                  <button
+                    onClick={handlePullFirebaseUid}
+                    disabled={isScanning}
+                    className="w-full sm:w-auto bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer border border-indigo-200/80 dark:border-indigo-800 transition-all font-sans shadow-2xs"
+                    title="ดึงข้อมูลรหัส UID จาก Firebase Authentication เข้าสู่ระบบ"
+                  >
+                    <Download className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>ดึง UID จาก Firebase Auth</span>
+                  </button>
+
                   <button
                     onClick={handleDeepScan}
                     disabled={isScanning}
@@ -1459,16 +1538,25 @@ export default function UserManagementView({
                     type="text"
                     value={addUid}
                     onChange={(e) => setAddUid(e.target.value)}
-                    placeholder="เช่น pre_user123 (หรือปล่อยว่างอัตโนมัติ)"
+                    placeholder="เช่น pre_user123 หรือดึงจาก Firebase"
                     className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-mono text-xs focus:outline-hidden focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 text-slate-800 dark:text-slate-100"
                   />
+                  <button
+                    type="button"
+                    onClick={handlePullCurrentUidToAddModal}
+                    className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold text-xs transition-all cursor-pointer shrink-0 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1"
+                    title="ดึง UID จากบัญชี Firebase Authentication ที่ล็อกอินอยู่"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>ดึง UID Firebase</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setAddUid(`pre_${Math.random().toString(36).substring(2, 10)}_${Date.now().toString().slice(-4)}`)}
                     className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all cursor-pointer shrink-0 border border-slate-200 dark:border-slate-700"
                     title="สุ่มรหัส UID ล่วงหน้า"
                   >
-                    สุ่ม UID
+                    สุ่ม
                   </button>
                 </div>
               </div>
@@ -1622,6 +1710,25 @@ export default function UserManagementView({
                     value={editingUser?.uid || ''}
                     className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl font-mono text-slate-700 dark:text-slate-300 text-xs font-bold select-all"
                   />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const activeUid = auth.currentUser?.uid || (window as any).currentUserUid;
+                      if (activeUid) {
+                        if (editingUser) {
+                          setEditingUser({ ...editingUser, uid: activeUid });
+                        }
+                        addToast('info', 'ดึง UID Firebase แล้ว', `สลับรหัส UID เป็น ${activeUid}`);
+                      } else {
+                        addToast('warning', 'ไม่พบ UID', 'ไม่พบ UID ในเซสชัน Firebase ปัจจุบัน');
+                      }
+                    }}
+                    className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 font-bold text-xs transition-all flex items-center gap-1 cursor-pointer border border-emerald-200 dark:border-emerald-800/60 shrink-0"
+                    title="ดึง UID จาก Firebase Auth บัญชีที่ล็อกอินอยู่"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>ดึง UID</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => {

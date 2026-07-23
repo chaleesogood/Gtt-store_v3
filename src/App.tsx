@@ -830,10 +830,10 @@ export default function App() {
           }
         });
 
-        // Ensure current user record exists in list
+        // Ensure current user record exists in list with real Firebase Auth UID
         if (currentUser.email) {
-          const userExistsInList = list.some(r => r.email?.toLowerCase() === currentUser.email?.toLowerCase() || r.uid === currentUser.uid);
-          if (!userExistsInList) {
+          const matchingRecord = list.find(r => r.email?.toLowerCase() === currentUser.email?.toLowerCase() || r.uid === currentUser.uid);
+          if (!matchingRecord) {
             const currentRecord: UserRole = {
               uid: currentUser.uid,
               email: currentUser.email,
@@ -846,6 +846,22 @@ export default function App() {
               await setDoc(doc(db, 'user_roles', currentUser.uid), cleanUndefined(currentRecord));
             } catch (e) {
               console.error('Failed to create user_role record for current user:', e);
+            }
+          } else if (matchingRecord.uid !== currentUser.uid) {
+            // Transfer/Sync from temp UID to real Firebase Auth UID
+            const updatedRecord: UserRole = {
+              ...matchingRecord,
+              uid: currentUser.uid,
+              email: currentUser.email,
+              displayName: currentUser.displayName || matchingRecord.displayName || currentUser.email.split('@')[0]
+            };
+            try {
+              await setDoc(doc(db, 'user_roles', currentUser.uid), cleanUndefined(updatedRecord));
+              if (matchingRecord.uid && matchingRecord.uid.startsWith('pre_')) {
+                await deleteDoc(doc(db, 'user_roles', matchingRecord.uid));
+              }
+            } catch (e) {
+              console.error('Failed to upgrade user_role temp UID to real Firebase UID:', e);
             }
           }
         }

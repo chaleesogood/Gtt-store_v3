@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, HardDrive, CheckCircle2, RefreshCw, Cloud, Laptop, Server, ShieldCheck, Activity } from 'lucide-react';
+import { Database, HardDrive, CheckCircle2, RefreshCw, Cloud, Laptop, CloudUpload, Download, ArrowDownCircle, ArrowUpCircle, BookOpen } from 'lucide-react';
 
 interface DatabaseStatusBarProps {
   isQuotaExceeded?: boolean;
@@ -40,9 +40,9 @@ export default function DatabaseStatusBar({
   const isDatabaseConnected = isOnline && !isQuotaExceeded && !isOfflineMode;
 
   return (
-    <div className="mb-5 space-y-2">
+    <div className="mb-5 space-y-2.5">
       {/* 3-Part Status Ribbon Header: Localhost / Dev Database / Production Database */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs font-sans">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs font-sans">
         {/* 1. Localhost / Runtime Host Status */}
         <div className={`p-2.5 px-3 rounded-xl border flex items-center justify-between transition-all ${
           isLocalhostHost 
@@ -120,7 +120,7 @@ export default function DatabaseStatusBar({
                 <span className="font-extrabold text-[11px] uppercase tracking-wider">Production Database</span>
                 <span className={`w-2 h-2 rounded-full shrink-0 ${isDatabaseConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
               </div>
-              <p className="text-[10.5px] opacity-80 font-mono truncate">
+              <p className="text-[10.5px] opacity-90 font-mono font-bold text-emerald-800 dark:text-emerald-300 truncate">
                 Cloud Firestore (store-gtt)
               </p>
             </div>
@@ -135,80 +135,83 @@ export default function DatabaseStatusBar({
         </div>
       </div>
 
-      {/* Main Connection Bar & Actions */}
-      <div className={`p-2.5 px-3.5 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 transition-all ${
+      {/* Main Connection Bar & Dedicated Read / Write Action Buttons for Production Database */}
+      <div className={`p-3 px-4 rounded-2xl border flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 transition-all ${
         isDatabaseConnected 
-          ? 'bg-emerald-50/90 dark:bg-emerald-950/30 border-emerald-200/90 dark:border-emerald-800/60 text-emerald-950 dark:text-emerald-100' 
-          : 'bg-amber-50/90 dark:bg-amber-950/30 border-amber-200/90 dark:border-amber-800/60 text-amber-950 dark:text-amber-100'
+          ? 'bg-emerald-50/90 dark:bg-emerald-950/30 border-emerald-300/80 dark:border-emerald-800/80 text-emerald-950 dark:text-emerald-100 shadow-2xs' 
+          : 'bg-amber-50/90 dark:bg-amber-950/30 border-amber-300/80 dark:border-amber-800/80 text-amber-950 dark:text-amber-100 shadow-2xs'
       }`}>
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className={`p-2 rounded-lg shrink-0 ${
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`p-2.5 rounded-xl shrink-0 ${
             isDatabaseConnected 
               ? 'bg-emerald-600 text-white ring-2 ring-emerald-200 dark:ring-emerald-900 shadow-xs' 
               : 'bg-amber-600 text-white ring-2 ring-amber-200 dark:ring-amber-900 shadow-xs'
           }`}>
             {isDatabaseConnected ? (
-              <Database className="h-4 w-4" />
+              <Database className="h-5 w-5" />
             ) : (
-              <HardDrive className="h-4 w-4" />
+              <HardDrive className="h-5 w-5" />
             )}
           </div>
           
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-bold ${
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-extrabold ${
                 isDatabaseConnected 
-                  ? 'bg-emerald-100/90 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300/60 dark:border-emerald-700/60' 
-                  : 'bg-amber-100/90 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 border border-amber-300/60 dark:border-amber-700/60'
+                  ? 'bg-emerald-100 dark:bg-emerald-900/80 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700' 
+                  : 'bg-amber-100 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700'
               }`}>
                 <span className={`w-2 h-2 rounded-full ${isDatabaseConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                {isDatabaseConnected ? 'Production Database Connected (Live)' : 'Dev Database / Local Mode'}
+                {isDatabaseConnected ? 'Production Database (store-gtt) พร้อมอ่าน-เขียน' : 'Dev Database Local Fallback Mode'}
               </span>
               {isDatabaseConnected && (
-                <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-300 font-semibold">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Cloud Firestore Realtime Active
+                <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-300 font-bold bg-white/60 dark:bg-slate-900/60 px-2 py-0.5 rounded-md border border-emerald-200/60 dark:border-emerald-800">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Cloud Firestore Live
                 </span>
               )}
             </div>
 
-            <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium mt-0.5 truncate">
+            <p className="text-xs text-slate-700 dark:text-slate-200 font-medium mt-1 truncate">
               {isDatabaseConnected ? (
-                <>เชื่อมต่อกับฐานข้อมูลคลาวด์ Production (store-gtt) {lastDbSyncTime ? `• ซิงค์ล่าสุด: ${lastDbSyncTime}` : '• พร้อมเรียลไทม์'}</>
+                <>เชื่อมต่อ Production Database Cloud Firestore (<span className="font-mono font-bold text-emerald-800 dark:text-emerald-300">store-gtt</span>) แล้ว {lastDbSyncTime ? `• ซิงค์ล่าสุด: ${lastDbSyncTime}` : '• พร้อมซิงค์เรียลไทม์'}</>
               ) : (
-                <>ขณะนี้ระบบทำงานและบันทึกข้อมูลไว้ในเครื่อง (Dev DB LocalStorage) ปลอดภัย ซิงค์กลับ Production DB ได้ตลอดเวลา</>
+                <>ขณะนี้ระบบทำงานและบันทึกข้อมูลไว้ในเครื่อง (Dev LocalStorage) ปลอดภัย ซิงค์กลับ Production DB ได้ตลอดเวลา</>
               )}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end pt-1.5 sm:pt-0 border-t sm:border-t-0 border-slate-200/60 dark:border-slate-800">
+        {/* Action Buttons for Read & Write on Production Database Cloud Firestore (store-gtt) */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0 w-full lg:w-auto justify-end pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-200/80 dark:border-slate-800">
+          {/* Read Button */}
           {onPullFreshFromDatabase && (
             <button
               type="button"
               onClick={onPullFreshFromDatabase}
               disabled={isPullingFreshDb}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
-              title="ดึงข้อมูลล่าสุดจาก Cloud Firestore"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700/80 hover:bg-indigo-50/80 dark:hover:bg-slate-700/90 transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
+              title="อ่านและดึงข้อมูลล่าสุดจาก Production Database Cloud Firestore (store-gtt)"
             >
-              <RefreshCw className={`h-3 w-3 text-indigo-600 dark:text-indigo-400 ${isPullingFreshDb ? 'animate-spin' : ''}`} />
-              <span>{isPullingFreshDb ? 'กำลังดึง...' : 'ดึงข้อมูลคลาวด์'}</span>
+              <RefreshCw className={`h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 ${isPullingFreshDb ? 'animate-spin' : ''}`} />
+              <span>{isPullingFreshDb ? 'กำลังอ่านข้อมูล...' : 'อ่าน/ดึงข้อมูล Production DB (store-gtt)'}</span>
             </button>
           )}
 
+          {/* Write / Save Button */}
           {onSaveAllToDatabase && (
             <button
               type="button"
               onClick={onSaveAllToDatabase}
               disabled={isSavingAllToDb}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-white shadow-2xs transition-all disabled:opacity-50 cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white shadow-2xs transition-all disabled:opacity-50 cursor-pointer ${
                 isDatabaseConnected 
-                  ? 'bg-emerald-600 hover:bg-emerald-700' 
-                  : 'bg-amber-600 hover:bg-amber-700'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 ring-2 ring-emerald-500/20' 
+                  : 'bg-amber-600 hover:bg-amber-700 ring-2 ring-amber-500/20'
               }`}
-              title="บันทึกข้อมูลทั้งหมดลงใน Production Database"
+              title="บันทึกข้อมูลทั้งหมดลงใน Production Database Cloud Firestore (store-gtt)"
             >
-              <Cloud className={`h-3 w-3 ${isSavingAllToDb ? 'animate-spin' : ''}`} />
-              <span>{isSavingAllToDb ? 'กำลังซิงค์...' : 'บันทึกลง Database'}</span>
+              <CloudUpload className={`h-3.5 w-3.5 ${isSavingAllToDb ? 'animate-spin' : ''}`} />
+              <span>{isSavingAllToDb ? 'กำลังบันทึก...' : 'บันทึกข้อมูล Production DB (store-gtt)'}</span>
             </button>
           )}
         </div>
@@ -216,4 +219,5 @@ export default function DatabaseStatusBar({
     </div>
   );
 }
+
 
