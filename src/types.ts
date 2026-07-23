@@ -239,6 +239,8 @@ export interface UserRole {
   displayName?: string;
   role: 'admin' | 'editor' | 'user'; // admin = Full Control; editor = Add, Edit, View; user = View, Add, Edit but CANNOT delete
   createdAt: string;
+  lastSeen?: string;
+  isOnline?: boolean;
 }
 
 

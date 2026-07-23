@@ -881,6 +881,47 @@ export default function App() {
     }
   }, [currentUser, currentUserRole]);
 
+  // Online Presence Heartbeat
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+
+    const userUid = currentUser.uid;
+    const userEmail = currentUser.email || '';
+    const userDisplayName = currentUser.displayName || userEmail.split('@')[0] || 'Unknown';
+
+    const updatePresence = async (onlineStatus: boolean) => {
+      try {
+        const userRef = doc(db, 'user_roles', userUid);
+        await setDoc(userRef, cleanUndefined({
+          uid: userUid,
+          email: userEmail,
+          displayName: userDisplayName,
+          isOnline: onlineStatus,
+          lastSeen: new Date().toISOString()
+        }), { merge: true });
+      } catch (err) {
+        console.warn("Failed to update presence:", err);
+      }
+    };
+
+    updatePresence(true);
+
+    const intervalId = setInterval(() => {
+      updatePresence(true);
+    }, 40000);
+
+    const handleBeforeUnload = () => {
+      updatePresence(false);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [currentUser?.uid, currentUser?.email, currentUser?.displayName]);
+
   const checkFirestoreQuotaError = (error: any) => {
     if (error) {
       const msg = error.message || String(error);
@@ -2837,10 +2878,10 @@ export default function App() {
             employees={employees}
             currentUserEmail={currentUser ? currentUser.email : null}
             onUpdateUserRole={async (uid, role) => {
-              await updateDoc(doc(db, 'user_roles', uid), { role });
+              await setDoc(doc(db, 'user_roles', uid), cleanUndefined({ role, uid }), { merge: true });
             }}
             onUpdateUser={async (uid, updatedData) => {
-              await updateDoc(doc(db, 'user_roles', uid), updatedData);
+              await setDoc(doc(db, 'user_roles', uid), cleanUndefined({ ...updatedData, uid }), { merge: true });
             }}
             onAddUserRole={async (userData) => {
               const tempUid = userData.uid || `pre_${Date.now()}`;
