@@ -1298,85 +1298,112 @@ export default function ProjectBomView({
     <div className="space-y-2 text-left font-sans">
       
       {/* Title Header Workspace (Unified Dark Banner - Compact) */}
-      <div className="flex flex-row items-center justify-between gap-3 bg-slate-900 text-slate-100 p-2 px-3.5 rounded-xl relative overflow-hidden">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-slate-100 p-3.5 px-5 rounded-2xl relative overflow-hidden border border-slate-800 shadow-lg">
         {/* Background Accent Gradients */}
-        <div className="absolute right-0 top-0 w-48 h-48 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none" />
-        <div className="absolute left-1/3 bottom-0 w-32 h-32 bg-emerald-600/5 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute right-0 top-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute left-1/3 bottom-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="z-10 text-left">
-          <div className="flex items-center gap-1.5 text-indigo-400 font-bold text-[8px] uppercase tracking-widest font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>BOM & Assembly Center</span>
+        <div className="z-10 text-left space-y-0.5">
+          <div className="flex items-center gap-2 text-indigo-400 font-bold text-[9px] uppercase tracking-widest font-mono">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>BOM & ASSEMBLY CENTER</span>
           </div>
-          <h2 className="text-sm font-black text-white font-sans flex items-center gap-1.5 mt-0.5">
-            <Boxes className="h-4 w-4 text-indigo-400" />
-            สูตรชิ้นส่วนประกอบพัสดุ (BOM & Assembly Workspace)
+          <h2 className="text-base sm:text-lg font-black text-white font-sans flex items-center gap-2 tracking-tight">
+            <Boxes className="h-5 w-5 text-indigo-400 shrink-0" />
+            <span>สูตรชิ้นส่วนประกอบพัสดุ & วางแผนผลิต (BOM & Planning)</span>
           </h2>
         </div>
 
+        <div className="z-10 flex items-center gap-2 text-[10px] font-mono font-bold text-slate-300 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 shrink-0">
+          <Layers className="h-3.5 w-3.5 text-indigo-400" />
+          <span>สูตรประกอบในระบบ: <strong className="text-white font-black text-xs">{boms.length}</strong> ชุด</span>
+        </div>
       </div>
 
       {/* Tabs Switcher for BOM & Planning */}
-      <div className="flex bg-slate-100 p-1 rounded-xl gap-1 shrink-0 z-10 text-[11px] font-sans font-bold text-slate-500 border border-slate-200">
+      <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-2xl gap-1 shrink-0 z-10 text-xs font-sans font-bold text-slate-500 border border-slate-200 dark:border-slate-800 shadow-inner">
         <button
           onClick={() => setActiveTab('bom')}
-          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+          className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer font-sans ${
             activeTab === 'bom'
-              ? 'bg-indigo-600 text-white shadow-sm font-black'
-              : 'hover:bg-slate-200 hover:text-slate-800'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-black'
+              : 'hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400'
           }`}
         >
-          <Boxes className="h-4.5 w-4.5" />
-          แผนประกอบวัตถุดิบ (BOM)
+          <Boxes className="h-4 w-4" />
+          <span>แผนประกอบวัตถุดิบ (BOM Workspace)</span>
         </button>
         <button
           onClick={() => setActiveTab('planning')}
-          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+          className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer font-sans ${
             activeTab === 'planning'
-              ? 'bg-indigo-600 text-white shadow-sm font-black'
-              : 'hover:bg-slate-200 hover:text-slate-800'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-black'
+              : 'hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400'
           }`}
         >
-          <Briefcase className="h-4.5 w-4.5" />
-          จ่ายงาน & รายงานประจำวัน (Planning)
+          <Briefcase className="h-4 w-4" />
+          <span>จ่ายงาน & รายงานประจำวัน (Job Assignment & Planning)</span>
         </button>
       </div>
 
       {activeTab === 'bom' ? (
-        <div className="space-y-3 animate-in fade-in duration-150">
+        <div className="space-y-4 animate-in fade-in duration-150">
           
-          {/* Bento Scoreboard Bar (Flat & Compact Metrics) */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
-            <div className="bg-slate-50/40 p-1.5 rounded-lg border border-slate-100 flex items-center justify-between">
-              <span className="text-[10px] text-slate-500">สูตรทั้งหมดสะสม:</span>
-              <span className="text-xs font-black text-slate-800 font-mono">{boms.length} รายการ</span>
+          {/* Bento Scoreboard Bar (Elevated Cards with Icons) */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+            <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-3xs flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">สูตรสะสมทั้งหมด</span>
+                <span className="text-sm font-black text-slate-800 dark:text-slate-100 font-mono">{boms.length} <span className="text-[10px] font-bold text-slate-400">รายการ</span></span>
+              </div>
+              <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 rounded-xl">
+                <Boxes className="h-4 w-4" />
+              </div>
             </div>
-            <div className="bg-slate-50/40 p-1.5 rounded-lg border border-slate-100 flex items-center justify-between">
-              <span className="text-[10px] text-slate-500">กำลังประกอบ (In Progress):</span>
-              <span className="text-xs font-black text-amber-700 font-mono">{boms.filter(b => b.status === 'in_progress').length} รายการ</span>
+
+            <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-3xs flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">กำลังประกอบ</span>
+                <span className="text-sm font-black text-amber-600 dark:text-amber-400 font-mono">{boms.filter(b => b.status === 'in_progress').length} <span className="text-[10px] font-bold text-slate-400">รายการ</span></span>
+              </div>
+              <div className="p-2 bg-amber-50 dark:bg-amber-950/40 text-amber-600 rounded-xl">
+                <Play className="h-4 w-4" />
+              </div>
             </div>
-            <div className="bg-slate-50/40 p-1.5 rounded-lg border border-slate-100 flex items-center justify-between">
-              <span className="text-[10px] text-slate-500">ประกอบผลิตเสร็จสิ้น:</span>
-              <span className="text-xs font-black text-emerald-700 font-mono">{boms.filter(b => b.status === 'completed').length} รายการ</span>
+
+            <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-3xs flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">ประกอบเสร็จสิ้น</span>
+                <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 font-mono">{boms.filter(b => b.status === 'completed').length} <span className="text-[10px] font-bold text-slate-400">รายการ</span></span>
+              </div>
+              <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 rounded-xl">
+                <CheckCircle2 className="h-4 w-4" />
+              </div>
             </div>
-            <div className="bg-slate-50/40 p-1.5 rounded-lg border border-slate-100 flex items-center justify-between">
-              <span className="text-[10px] text-slate-500">ทำรายการเบิกคลังประกอบแล้ว:</span>
-              <span className="text-xs font-black text-indigo-700 font-mono">{boms.filter(b => b.stockDeducted).length} รายการ</span>
+
+            <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-3xs flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">เบิกสต็อกพัสดุแล้ว</span>
+                <span className="text-sm font-black text-sky-600 dark:text-sky-400 font-mono">{boms.filter(b => b.stockDeducted).length} <span className="text-[10px] font-bold text-slate-400">รายการ</span></span>
+              </div>
+              <div className="p-2 bg-sky-50 dark:bg-sky-950/40 text-sky-600 rounded-xl">
+                <FileSpreadsheet className="h-4 w-4" />
+              </div>
             </div>
           </div>
 
           {/* BOM List Controls Bar (Inline horizontal filters & Search) */}
-          <div className="bg-slate-50 p-1 rounded-lg flex flex-col md:flex-row items-center justify-between gap-2 text-[11px]">
-            <div className="flex flex-col sm:flex-row items-center gap-1.5 w-full md:w-auto">
+          <div className="bg-white dark:bg-slate-900 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-3xs flex flex-col md:flex-row items-center justify-between gap-3 text-xs font-sans">
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
               {/* Search Bar */}
-              <div className="relative w-full sm:w-56">
-                <Search className="absolute left-2 top-2 h-3 w-3 text-slate-400" />
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="ค้นหาชื่องาน หรือรหัส Job No..."
-                  className="w-full pl-6 pr-2 py-0.5 bg-white border border-slate-200 rounded text-[11px] focus:outline-none"
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
 
@@ -1384,7 +1411,7 @@ export default function ProjectBomView({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-[11px] font-bold text-slate-600 focus:outline-none cursor-pointer"
+                className="w-full sm:w-auto bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer"
               >
                 <option value="all">กรองทุกสถานะ</option>
                 <option value="pending">รอดำเนินการ</option>
@@ -1395,29 +1422,32 @@ export default function ProjectBomView({
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
               <button
                 onClick={handleOpenNewAssignJob}
-                className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-black cursor-pointer flex items-center gap-0.5"
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black cursor-pointer flex items-center gap-1.5 transition-all active:scale-95 shadow-xs"
               >
-                <Plus className="h-3 w-3" />
+                <Plus className="h-3.5 w-3.5" />
                 <span>สร้างใบงาน</span>
               </button>
               <button
                 onClick={() => setIsCreateModalOpen(true)}
-                className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-black cursor-pointer flex items-center gap-0.5"
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black cursor-pointer flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-indigo-600/15"
               >
-                <Plus className="h-3 w-3" />
+                <Plus className="h-3.5 w-3.5" />
                 <span>สร้าง BOM ใหม่</span>
               </button>
             </div>
           </div>
 
           {/* Horizontal scrollable BOM Selector row */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider shrink-0 mr-1">เลือกใบงาน BOM:</span>
+          <div className="bg-slate-50/50 dark:bg-slate-900/50 p-2 rounded-2xl border border-slate-200/60 dark:border-slate-800 flex items-center gap-2 overflow-x-auto scrollbar-thin">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider shrink-0 px-2 font-sans flex items-center gap-1">
+              <Boxes className="h-3.5 w-3.5 text-indigo-500" />
+              <span>เลือกใบงาน BOM:</span>
+            </span>
             {filteredBoms.length === 0 ? (
-              <span className="text-[10px] text-slate-400 italic">ไม่พบรายการ BOM</span>
+              <span className="text-xs text-slate-400 italic px-2">ไม่พบรายการ BOM</span>
             ) : (
               filteredBoms.map(bom => {
                 const isActive = activeBom?.id === bom.id;
@@ -1427,35 +1457,37 @@ export default function ProjectBomView({
                   <button
                     key={bom.id}
                     onClick={() => setSelectedBom(bom)}
-                    className={`px-3 py-1.5 rounded-xl border text-[11px] font-sans font-bold shrink-0 transition-all cursor-pointer flex items-center gap-2 ${
+                    className={`px-3 py-2 rounded-xl border text-xs font-sans font-bold shrink-0 transition-all cursor-pointer flex items-center gap-2.5 ${
                       isActive 
-                        ? 'bg-white border-2 border-slate-500 text-black font-extrabold shadow-md scale-102' 
-                        : 'bg-slate-200 border-slate-300 hover:bg-slate-300 text-slate-800'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20 font-black' 
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-200'
                     }`}
                   >
                     {/* Brand Logo & Job Image */}
                     <div className="flex items-center gap-1 shrink-0">
-                      <Logo size={15} className="h-4 w-4 shrink-0" />
                       {matchingProject?.projectImageUrl ? (
                         <img 
                           src={matchingProject.projectImageUrl} 
                           alt={bom.jobNo} 
-                          className="w-6 h-6 object-cover rounded-md border border-slate-300 shrink-0 bg-white" 
+                          className="w-5 h-5 object-cover rounded-md border border-white/20 shrink-0 bg-white" 
                           referrerPolicy="no-referrer"
                         />
                       ) : (
-                        <div className="w-6 h-6 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
-                          <FolderGit2 className="h-3 w-3 text-slate-400" />
+                        <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${isActive ? 'bg-indigo-500/30' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                          <FolderGit2 className={`h-3 w-3 ${isActive ? 'text-white' : 'text-slate-400'}`} />
                         </div>
                       )}
                     </div>
                     
-                    {/* Increased Job No size */}
-                    <span className="font-mono text-[11px] font-black px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900 rounded text-indigo-700 dark:text-indigo-400 shrink-0">
+                    <span className={`font-mono text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400'
+                    }`}>
                       {bom.jobNo || 'NO JOB'}
                     </span>
-                    <span className="truncate max-w-[120px]">{bom.name}</span>
-                    <span className="text-[9.5px] font-mono font-black text-indigo-600">฿{(financials?.totalCost || 0).toLocaleString('th-TH')}</span>
+                    <span className="truncate max-w-[130px] font-sans">{bom.name}</span>
+                    <span className={`text-[10px] font-mono font-black ${isActive ? 'text-indigo-100' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                      ฿{(financials?.totalCost || 0).toLocaleString('th-TH')}
+                    </span>
                   </button>
                 );
               })

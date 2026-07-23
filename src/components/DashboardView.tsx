@@ -1,6 +1,7 @@
 import React from 'react';
 import { Product, Category, StockActivity } from '../types';
-import { Package, AlertTriangle, TrendingUp, DollarSign, Plus, ArrowRight, Cpu, HardDrive, RefreshCw, Users } from 'lucide-react';
+import { Package, AlertTriangle, TrendingUp, DollarSign, Plus, ArrowRight, Cpu, HardDrive, RefreshCw, Users, Database, CheckCircle2, Cloud } from 'lucide-react';
+import DatabaseStatusBar from './DatabaseStatusBar';
 
 interface DashboardViewProps {
   products: Product[];
@@ -10,6 +11,12 @@ interface DashboardViewProps {
   onNavigateToTab: (tab: string) => void;
   onSetStatusFilter: (filter: string) => void;
   userCount?: number;
+  isQuotaExceeded?: boolean;
+  lastDbSyncTime?: string;
+  onSaveAllToDatabase?: () => void;
+  onPullFreshFromDatabase?: () => void;
+  isSavingAllToDb?: boolean;
+  isPullingFreshDb?: boolean;
 }
 
 export default function DashboardView({
@@ -20,7 +27,28 @@ export default function DashboardView({
   onNavigateToTab,
   onSetStatusFilter,
   userCount = 0,
+  isQuotaExceeded = false,
+  lastDbSyncTime,
+  onSaveAllToDatabase,
+  onPullFreshFromDatabase,
+  isSavingAllToDb = false,
+  isPullingFreshDb = false,
 }: DashboardViewProps) {
+  const [isOnline, setIsOnline] = React.useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  React.useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const isOfflineMode = typeof window !== 'undefined' && window.localStorage.getItem('stock_manager_is_offline') === 'true';
+  const isDatabaseConnected = isOnline && !isQuotaExceeded && !isOfflineMode;
   // System memory dynamic telemetry state
   const [memoryInfo, setMemoryInfo] = React.useState<{
     total: number;
@@ -169,7 +197,7 @@ export default function DashboardView({
           </div>
           <h2 className="text-sm font-black text-white font-sans flex items-center gap-1.5 mt-0.5">
             <Package className="h-4 w-4 text-indigo-400" />
-            ภาพรวมระบบบริหารจัดการคลังสินค้า
+            ภาพรวมระบบบริหารจัดการคลังพัสดุ
           </h2>
         </div>
       </div>

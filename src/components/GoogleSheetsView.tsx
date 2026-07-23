@@ -19,8 +19,9 @@ import {
   History, 
   Shield, 
   LogIn, 
-  Key, 
-  ArrowRight
+  CheckSquare,
+  Square,
+  Sparkles
 } from 'lucide-react';
 import { 
   authenticateGoogleSheets, 
@@ -35,6 +36,19 @@ interface GoogleSheetsViewProps {
   onUpdateAllData: (newData: AllAppData) => Promise<void>;
   addToast: (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => void;
 }
+
+const ALL_TAB_IDS = [
+  'Products',
+  'Categories',
+  'BOMs',
+  'Projects',
+  'Jobs',
+  'Employees',
+  'Brands',
+  'DailyReports',
+  'Activities',
+  'UserRoles'
+];
 
 export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
   appData,
@@ -52,6 +66,8 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
     return localStorage.getItem('google_sheets_last_sync') || '';
   });
 
+  const [selectedTabs, setSelectedTabs] = useState<string[]>(ALL_TAB_IDS);
+
   const [isConnecting, setIsConnecting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -64,6 +80,17 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
       setIsConnected(true);
     }
   }, []);
+
+  const toggleTabSelection = (tabId: string) => {
+    if (selectedTabs.includes(tabId)) {
+      setSelectedTabs(selectedTabs.filter(id => id !== tabId));
+    } else {
+      setSelectedTabs([...selectedTabs, tabId]);
+    }
+  };
+
+  const handleSelectAll = () => setSelectedTabs(ALL_TAB_IDS);
+  const handleDeselectAll = () => setSelectedTabs([]);
 
   const handleConnectGoogle = async () => {
     setIsConnecting(true);
@@ -81,7 +108,13 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = async (overrideTabs?: string[]) => {
+    const tabsToExport = overrideTabs || selectedTabs;
+    if (tabsToExport.length === 0) {
+      addToast('warning', 'ยังไม่ได้เลือกรายการ', 'กรุณาเลือกอย่างน้อย 1 รายการ/แท็บ เพื่อส่งออกไปยัง Google Sheets');
+      return;
+    }
+
     setIsExporting(true);
     try {
       let token = getGoogleSheetsAccessToken();
@@ -90,7 +123,7 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
         setIsConnected(true);
       }
 
-      const result = await exportToGoogleSheets(token, appData, spreadsheetId);
+      const result = await exportToGoogleSheets(token, appData, spreadsheetId, tabsToExport);
       
       setSpreadsheetId(result.spreadsheetId);
       setSpreadsheetUrl(result.url);
@@ -100,7 +133,7 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
       setLastSync(nowStr);
       localStorage.setItem('google_sheets_last_sync', nowStr);
 
-      addToast('success', 'ส่งออกข้อมูลสำเร็จ', 'อัปเดตข้อมูลทั้ง 10 แท็บลง Google Sheets เรียบร้อยแล้ว');
+      addToast('success', 'ส่งออกข้อมูลสำเร็จ', `อัปเดตข้อมูลจำนวน ${tabsToExport.length} แท็บลง Google Sheets เรียบร้อยแล้ว`);
     } catch (err: any) {
       console.error('Export error:', err);
       addToast('error', 'ส่งออกข้อมูลล้มเหลว', err.message || 'ไม่สามารถส่งออกข้อมูลไปยัง Google Sheets ได้');
@@ -120,6 +153,8 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
   const confirmImport = async () => {
     setShowConfirmModal(false);
     setIsImporting(true);
+    addToast('info', 'กำลังดึงและบันทึกข้อมูล...', 'กำลังอ่านข้อมูลจาก Google Sheets และบันทึกลงฐานข้อมูล Database หลักโดยอัตโนมัติ');
+    
     try {
       let token = getGoogleSheetsAccessToken();
       if (!token) {
@@ -128,13 +163,15 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
       }
 
       const importedData = await importFromGoogleSheets(token, spreadsheetId, appData);
+      
+      // Auto-save & persist to Firestore + local state
       await onUpdateAllData(importedData);
 
       const nowStr = new Date().toLocaleString('th-TH');
       setLastSync(nowStr);
       localStorage.setItem('google_sheets_last_sync', nowStr);
 
-      addToast('success', 'ซิงค์ข้อมูลสำเร็จ', 'ดึงข้อมูลที่แก้ไขจาก Google Sheets กลับเข้าสู่ระบบเรียบร้อยแล้ว');
+      addToast('success', 'ซิงค์และบันทึกลง Database สำเร็จ', 'ดึงข้อมูลที่แก้ไขจาก Google Sheets และบันทึกลงใน Database หลักเรียบร้อยแล้ว');
     } catch (err: any) {
       console.error('Import error:', err);
       addToast('error', 'ดึงข้อมูลล้มเหลว', err.message || 'ไม่สามารถอ่านข้อมูลจาก Google Sheets ได้');
@@ -144,16 +181,16 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
   };
 
   const collectionStats = [
-    { icon: Package, title: '📦 สินค้าในคลัง (Products)', count: appData.products.length, color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/40 border-blue-200' },
-    { icon: FolderTree, title: '📁 หมวดหมู่ (Categories)', count: appData.categories.length, color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/40 border-amber-200' },
-    { icon: Wrench, title: '🛠️ สูตร BOM (BOMs)', count: appData.boms.length, color: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200' },
-    { icon: Briefcase, title: '🏗️ โครงการ (Projects)', count: appData.projects.length, color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200' },
-    { icon: ClipboardList, title: '📋 ใบสั่งงาน (Jobs)', count: appData.jobs.length, color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/40 border-violet-200' },
-    { icon: Users, title: '👥 พนักงาน (Employees)', count: appData.employees.length, color: 'text-sky-600 bg-sky-50 dark:bg-sky-950/40 border-sky-200' },
-    { icon: Tag, title: '🏷️ แบรนด์ (Brands)', count: appData.brands.length, color: 'text-rose-600 bg-rose-50 dark:bg-rose-950/40 border-rose-200' },
-    { icon: FileText, title: '📝 รายงานวัน (Daily Reports)', count: appData.dailyReports.length, color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/40 border-teal-200' },
-    { icon: History, title: '📜 ประวัติสต็อก (Activities)', count: appData.activities.length, color: 'text-orange-600 bg-orange-50 dark:bg-orange-950/40 border-orange-200' },
-    { icon: Shield, title: '🛡️ บัญชีผู้ใช้ (User Roles)', count: appData.userRoles.length, color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/40 border-purple-200' },
+    { id: 'Products', icon: Package, title: '📦 สินค้าในคลัง (Products)', count: appData.products.length, color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/40 border-blue-200' },
+    { id: 'Categories', icon: FolderTree, title: '📁 หมวดหมู่ (Categories)', count: appData.categories.length, color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/40 border-amber-200' },
+    { id: 'BOMs', icon: Wrench, title: '🛠️ สูตร BOM (BOMs)', count: appData.boms.length, color: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200' },
+    { id: 'Projects', icon: Briefcase, title: '🏗️ โครงการ (Projects)', count: appData.projects.length, color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200' },
+    { id: 'Jobs', icon: ClipboardList, title: '📋 ใบสั่งงาน (Jobs)', count: appData.jobs.length, color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/40 border-violet-200' },
+    { id: 'Employees', icon: Users, title: '👥 พนักงาน (Employees)', count: appData.employees.length, color: 'text-sky-600 bg-sky-50 dark:bg-sky-950/40 border-sky-200' },
+    { id: 'Brands', icon: Tag, title: '🏷️ แบรนด์ (Brands)', count: appData.brands.length, color: 'text-rose-600 bg-rose-50 dark:bg-rose-950/40 border-rose-200' },
+    { id: 'DailyReports', icon: FileText, title: '📝 รายงานวัน (Daily Reports)', count: appData.dailyReports.length, color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/40 border-teal-200' },
+    { id: 'Activities', icon: History, title: '📜 ประวัติสต็อก (Activities)', count: appData.activities.length, color: 'text-orange-600 bg-orange-50 dark:bg-orange-950/40 border-orange-200' },
+    { id: 'UserRoles', icon: Shield, title: '🛡️ บัญชีผู้ใช้ (User Roles)', count: appData.userRoles.length, color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/40 border-purple-200' },
   ];
 
   return (
@@ -174,7 +211,7 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
             เชื่อมต่อ & แก้ไขข้อมูลผ่าน Google Sheets
           </h2>
           <p className="text-emerald-100 text-sm leading-relaxed mb-6 font-sans">
-            ส่งออกข้อมูลทั้ง 10 ตารางเข้าระบบ Google Sheets เพื่อเปิดดู, แก้ไขเพิ่มเติมด้วยตนเอง (Manual Edit) และซิงค์กลับเข้าสู่ระบบแบบอัตโนมัติ
+            เลือกส่งออกเฉพาะรายการที่ต้องการ หรือทั้ง 10 ตารางเข้าระบบ Google Sheets เพื่อเปิดดู แก้ไขข้อมูล และซิงค์กลับเข้าฐานข้อมูล Database หลักโดยอัตโนมัติ
           </p>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -217,7 +254,7 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
           <div>
             <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 font-sans flex items-center gap-2">
               <Database className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              จัดการการซิงค์ข้อมูล (Export / Import)
+              จัดการการซิงค์ข้อมูล (Export / Import Auto Database)
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               {lastSync ? `อัปเดตล่าสุดเมื่อ: ${lastSync}` : 'ยังไม่มีประวัติการส่งออกไฟล์ Google Sheets'}
@@ -226,13 +263,17 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
 
           <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
             <button
-              onClick={handleExport}
-              disabled={isExporting}
+              onClick={() => handleExport()}
+              disabled={isExporting || selectedTabs.length === 0}
               className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white text-xs font-bold rounded-2xl shadow-sm transition-all cursor-pointer disabled:opacity-50"
               id="btn-sheets-export"
             >
               <Upload className={`w-4 h-4 ${isExporting ? 'animate-spin' : ''}`} />
-              <span>{isExporting ? 'กำลังส่งออกข้อมูล...' : 'ส่งออกข้อมูลไป Google Sheets'}</span>
+              <span>
+                {isExporting 
+                  ? 'กำลังส่งออกข้อมูล...' 
+                  : `ส่งออกข้อมูลที่เลือก (${selectedTabs.length}/${ALL_TAB_IDS.length})`}
+              </span>
             </button>
 
             <button
@@ -242,7 +283,7 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
               id="btn-sheets-import"
             >
               <Download className={`w-4 h-4 ${isImporting ? 'animate-spin' : ''}`} />
-              <span>{isImporting ? 'กำลังดึงข้อมูล...' : 'ดึงข้อมูลจาก Sheet กลับเข้าสู่ระบบ'}</span>
+              <span>{isImporting ? 'กำลังดึงและบันทึกลง DB...' : 'ดึงข้อมูลจาก Sheet กลับลง Database อัตโนมัติ'}</span>
             </button>
           </div>
         </div>
@@ -278,33 +319,93 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
         </div>
       </div>
 
-      {/* 10 Collections Overview Grid */}
+      {/* Selectable Collections Grid */}
       <div>
-        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3 font-sans px-1">
-          📊 รายการทั้ง 10 แท็บที่ได้รับการจัดเก็บใน Google Sheets
-        </h3>
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 font-sans flex items-center gap-2">
+            <span>📊 เลือกรายการ/แท็บที่จะทำการส่งออก (Selectable Tab Export)</span>
+            <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[11px] font-mono rounded-lg">
+              เลือกอยู่ {selectedTabs.length}/{ALL_TAB_IDS.length} แท็บ
+            </span>
+          </h3>
+
+          <div className="flex items-center gap-2 text-xs">
+            <button
+              onClick={handleSelectAll}
+              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg font-bold transition-all cursor-pointer"
+            >
+              เลือกทั้งหมด
+            </button>
+            <button
+              onClick={handleDeselectAll}
+              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-lg font-bold transition-all cursor-pointer"
+            >
+              ปลดทั้งหมด
+            </button>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
-          {collectionStats.map((item, idx) => {
+          {collectionStats.map((item) => {
             const IconComp = item.icon;
+            const isSelected = selectedTabs.includes(item.id);
+
             return (
               <div 
-                key={idx}
-                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 transition-all hover:shadow-md"
+                key={item.id}
+                onClick={() => toggleTabSelection(item.id)}
+                className={`border rounded-2xl p-4 transition-all cursor-pointer select-none relative group ${
+                  isSelected 
+                    ? 'bg-white dark:bg-slate-900 border-emerald-500/80 shadow-md ring-2 ring-emerald-500/20' 
+                    : 'bg-slate-50/50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-60 hover:opacity-100'
+                }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <div className={`p-2 rounded-xl border ${item.color}`}>
-                    <IconComp className="w-4 h-4" />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleTabSelection(item.id);
+                      }}
+                      className="text-emerald-600 dark:text-emerald-400 hover:scale-110 transition-transform"
+                    >
+                      {isSelected ? (
+                        <CheckSquare className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                      ) : (
+                        <Square className="w-5 h-5 text-slate-400 dark:text-slate-600" />
+                      )}
+                    </button>
+
+                    <div className={`p-2 rounded-xl border ${item.color}`}>
+                      <IconComp className="w-4 h-4" />
+                    </div>
                   </div>
+
                   <span className="text-lg font-black font-mono text-slate-800 dark:text-slate-100">
                     {item.count.toLocaleString()}
                   </span>
                 </div>
-                <div className="text-xs font-bold text-slate-700 dark:text-slate-300 font-sans">
+
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200 font-sans mt-2">
                   {item.title}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5">
-                  แท็บ: {item.title.split(' ')[1]?.replace('(', '')?.replace(')', '') || 'Sheet'}
+
+                <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px]">
+                  <span className="text-slate-400 font-mono">แท็บ: {item.id}</span>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleExport([item.id]);
+                    }}
+                    disabled={isExporting}
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 font-bold rounded-md transition-all cursor-pointer"
+                    title={`ส่งออกเฉพาะ ${item.id} ไปยัง Google Sheets`}
+                  >
+                    <Upload className="w-3 h-3" />
+                    <span>ส่งออกแท็บนี้</span>
+                  </button>
                 </div>
               </div>
             );
@@ -312,22 +413,22 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
         </div>
       </div>
 
-      {/* Confirmation Modal for Destructive/Overwrite Import Operation */}
+      {/* Confirmation Modal for Import Operation */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl">
-            <div className="flex items-center gap-3 text-amber-600 dark:text-amber-400 mb-4">
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/50 rounded-2xl border border-amber-200 dark:border-amber-800">
-                <AlertCircle className="w-6 h-6" />
+            <div className="flex items-center gap-3 text-emerald-600 dark:text-emerald-400 mb-4">
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 rounded-2xl border border-emerald-200 dark:border-emerald-800">
+                <Database className="w-6 h-6" />
               </div>
               <div>
-                <h4 className="text-base font-bold text-slate-800 dark:text-slate-100 font-sans">ยืนยันการดึงข้อมูลจาก Sheet?</h4>
-                <p className="text-xs text-slate-500 font-sans">การกระทำนี้จะเขียนทับข้อมูลในระบบ</p>
+                <h4 className="text-base font-bold text-slate-800 dark:text-slate-100 font-sans">ยืนยันดึงข้อมูลซิงค์ลง Database?</h4>
+                <p className="text-xs text-slate-500 font-sans">บันทึกอัตโนมัติลงใน Cloud Firestore & Storage</p>
               </div>
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 font-sans leading-relaxed mb-6 bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
-              ระบบจะทำการอ่านข้อมูลจากตาราง <strong>Google Sheets</strong> (ทั้ง 10 แท็บ) แล้วนำมาอัปเดตแทนที่ข้อมูลปัจจุบันในฐานข้อมูลหลักและ local state โปรดตรวจสอบว่าข้อมูลในสเปรดชีตถูกต้องแล้ว
+              ระบบจะอ่านข้อมูลจากตาราง <strong>Google Sheets</strong> (ทั้ง 10 แท็บ) และทำการ<strong>บันทึกลงใน Database หลัก (Cloud Firestore) โดยอัตโนมัติ</strong> เพื่อให้ทุกเครื่องและทุกบัญชีซิงค์ตรงกันทันที
             </p>
 
             <div className="flex items-center justify-end gap-2.5">
@@ -339,9 +440,10 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
               </button>
               <button
                 onClick={confirmImport}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
               >
-                ยืนยันดึงข้อมูลซิงค์กลับ
+                <Sparkles className="w-4 h-4" />
+                <span>ยืนยันดึงและบันทึกลง Database</span>
               </button>
             </div>
           </div>

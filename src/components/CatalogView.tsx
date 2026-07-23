@@ -299,25 +299,45 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ products, categories, 
     <div className="space-y-6 text-left pb-16 print:p-0">
       
       {/* -------------------- HEADER CARD (Hidden on Print) -------------------- */}
-      <div className="bg-gradient-to-r from-slate-900 to-indigo-950 dark:from-slate-950 dark:to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 print:hidden">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-400/20 text-indigo-300 text-xs font-bold font-sans">
-            <BookOpen className="h-3.5 w-3.5" />
-            แคตตาล็อกพัสดุ (Digital Catalog)
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 dark:from-slate-950 dark:via-indigo-950 dark:to-slate-950 text-white rounded-3xl p-6 sm:p-7 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 print:hidden relative overflow-hidden border border-slate-800/80">
+        <div className="absolute right-0 top-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute left-1/4 bottom-0 w-60 h-60 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="space-y-2.5 z-10">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-400/25 text-indigo-300 text-xs font-bold font-sans shadow-inner">
+            <BookOpen className="h-3.5 w-3.5 text-indigo-400" />
+            <span>แคตตาล็อกพัสดุ (Digital Catalog Workspace)</span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-black font-sans tracking-tight">
-            แคตตาล็อกสินค้า และพัสดุไฟฟ้าออนไลน์
+          <h2 className="text-xl sm:text-2xl font-black font-sans tracking-tight text-white flex items-center gap-2">
+            <span>แคตตาล็อกสินค้า และพัสดุไฟฟ้าออนไลน์</span>
           </h2>
-          <p className="text-xs sm:text-sm text-slate-300 max-w-2xl font-sans font-medium">
-            สืบค้นข้อมูลผลิตภัณฑ์อย่างเป็นระเบียบ แบ่งกลุ่มตาม Series ย่อย พร้อมรูปภาพประกอบ คุณสมบัติทางเทคนิค และยอดคงเหลือในคลัง เหมาะสำหรับเปิดใช้นำเสนอหน้างานหรือดาวน์โหลดพิมพ์เป็นเอกสาร
+          <p className="text-xs sm:text-sm text-slate-300 max-w-2xl font-sans font-medium leading-relaxed">
+            สืบค้นข้อมูลผลิตภัณฑ์อย่างเป็นระเบียบ แบ่งกลุ่มตาม Series ย่อย พร้อมรูปภาพประกอบ คุณสมบัติทางเทคนิค และยอดคงเหลือในคลัง เหมาะสำหรับเปิดใช้นำเสนอหน้างานหรือเลือกจัดชุด BOM
           </p>
+          {/* Quick Metrics Bar inside Header */}
+          <div className="flex items-center gap-3 pt-1 flex-wrap">
+            <div className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-xl text-[11px] font-bold text-slate-200 border border-white/10 flex items-center gap-1.5">
+              <Boxes className="h-3.5 w-3.5 text-indigo-400" />
+              <span>พัสดุในคลัง <strong className="text-white font-mono">{products.length}</strong> รายการ</span>
+            </div>
+            <div className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-xl text-[11px] font-bold text-slate-200 border border-white/10 flex items-center gap-1.5">
+              <Layers className="h-3.5 w-3.5 text-indigo-400" />
+              <span>หมวดหมู่หลัก <strong className="text-white font-mono">{categories.length}</strong> กลุ่ม</span>
+            </div>
+            {uniqueBrandNames.length > 0 && (
+              <div className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-xl text-[11px] font-bold text-slate-200 border border-white/10 flex items-center gap-1.5">
+                <Tag className="h-3.5 w-3.5 text-indigo-400" />
+                <span>แบรนด์ผู้ผลิต <strong className="text-white font-mono">{uniqueBrandNames.length}</strong> แบรนด์</span>
+              </div>
+            )}
+          </div>
         </div>
         <button
           onClick={handlePrintCatalog}
-          className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/80 text-slate-900 border border-slate-200 hover:border-slate-300 rounded-2xl text-xs font-black tracking-wide font-sans shadow-lg transition-all active:scale-95 flex items-center gap-2 shrink-0 cursor-pointer"
+          className="px-5 py-2.5 bg-white hover:bg-slate-100 text-slate-900 border border-slate-200 rounded-2xl text-xs font-black tracking-wide font-sans shadow-lg transition-all active:scale-95 flex items-center gap-2 shrink-0 cursor-pointer z-10"
         >
-          <Printer className="h-4 w-4 text-slate-700" />
-          พิมพ์เป็น PDF แคตตาล็อก
+          <Printer className="h-4 w-4 text-indigo-600" />
+          <span>พิมพ์เป็น PDF แคตตาล็อก</span>
         </button>
       </div>
 

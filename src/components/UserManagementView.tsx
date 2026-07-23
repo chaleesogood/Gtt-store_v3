@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { UserRole } from '../types';
+import { UserRole, Employee } from '../types';
 import { 
   Users, 
   Shield, 
@@ -22,6 +22,7 @@ import {
 
 interface UserManagementViewProps {
   userRoles: UserRole[];
+  employees?: Employee[];
   currentUserEmail: string | null;
   onUpdateUserRole: (uid: string, role: 'admin' | 'editor' | 'user') => Promise<void>;
   onUpdateUser: (uid: string, updatedData: { email: string; displayName: string; role: 'admin' | 'editor' | 'user' }) => Promise<void>;
@@ -33,6 +34,7 @@ interface UserManagementViewProps {
 
 export default function UserManagementView({
   userRoles,
+  employees = [],
   currentUserEmail,
   onUpdateUserRole,
   onUpdateUser,
@@ -43,6 +45,7 @@ export default function UserManagementView({
 }: UserManagementViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -69,6 +72,38 @@ export default function UserManagementView({
       return emailMatch || nameMatch;
     });
   }, [userRoles, searchQuery]);
+
+  // Find employees with valid email who don't have a user role record yet
+  const pendingEmployees = useMemo(() => {
+    if (!employees) return [];
+    return employees.filter(emp => {
+      if (!emp.email || !emp.email.trim()) return false;
+      const empEmailNormalized = emp.email.trim().toLowerCase();
+      const alreadyHasRole = userRoles.some(ur => (ur.email || '').toLowerCase() === empEmailNormalized);
+      return !alreadyHasRole;
+    });
+  }, [employees, userRoles]);
+
+  // Deep Scan simulation & action
+  const handleDeepScan = () => {
+    setIsScanning(true);
+    setTimeout(() => {
+      setIsScanning(false);
+      if (pendingEmployees.length > 0) {
+        addToast(
+          'info',
+          'ตรวจสอบระบบสำเร็จ',
+          `พบรายชื่อพนักงานใหม่ในระบบจำนวน ${pendingEmployees.length} ท่านที่ยังไม่ได้เปิดสิทธิ์การใช้งาน`
+        );
+      } else {
+        addToast(
+          'success',
+          'ตรวจสอบระบบสำเร็จ',
+          'ตรวจสอบระบบเรียบร้อย ไม่พบสมาชิกหรือพนักงานใหม่ตกค้าง ทุกคนได้รับการกำหนดสิทธิ์ในฐานข้อมูลแล้ว!'
+        );
+      }
+    }, 1000);
+  };
 
   // Handle Add User / Pre-register role
   const handleAddUserSubmit = async (e: React.FormEvent) => {
@@ -119,16 +154,6 @@ export default function UserManagementView({
 
   // Handle Start Edit User
   const handleStartEdit = (user: UserRole) => {
-    if (user.email === currentUserEmail) {
-      addToast('warning', 'ระงับการทำงาน', 'คุณไม่สามารถแก้ไขสิทธิ์และข้อมูลบัญชีของตนเองได้ เพื่อความปลอดภัย');
-      return;
-    }
-
-    if (user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com') {
-      addToast('warning', 'ระงับการทำงาน', `บัญชีผู้พัฒนาหลัก (${user.email}) ไม่สามารถถูกแก้ไขได้`);
-      return;
-    }
-
     setEditingUser(user);
     setEditEmail(user.email);
     setEditDisplayName(user.displayName || '');
@@ -293,6 +318,77 @@ export default function UserManagementView({
         </div>
       </div>
 
+      {/* Pending Employees Activation Area */}
+      {pendingEmployees.length > 0 && (
+        <div className="bg-amber-500/10 dark:bg-amber-500/5 rounded-3xl p-6 border border-amber-500/20 shadow-xs space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded-lg">
+              <Sparkles className="h-5 w-5 animate-bounce" />
+            </span>
+            <div>
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base font-sans">
+                ตรวจพบพนักงานใหม่ในระบบ ({pendingEmployees.length} ท่าน) ที่ยังไม่ได้กำหนดสิทธิ์เข้าใช้งาน
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-sans">
+                คุณสามารถกดมอบสิทธิ์แบบด่วน (Pre-register) ให้กับพนักงานเหล่านี้ได้ทันที เพื่อความสะดวกเมื่อพนักงานเข้าใช้งานระบบครั้งแรก
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {pendingEmployees.map(emp => (
+              <div 
+                key={emp.id} 
+                className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-xs"
+              >
+                <div className="space-y-1 min-w-0">
+                  <div className="font-bold text-slate-800 dark:text-slate-200 truncate text-xs sm:text-sm">
+                    {emp.name} {emp.nickname ? `(${emp.nickname})` : ''}
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-mono">
+                    {emp.email}
+                  </div>
+                  <div className="text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/20 py-0.5 px-2 rounded-md border border-indigo-100 dark:border-indigo-950 inline-block font-sans">
+                    แผนก: {emp.department || 'ไม่ระบุ'}
+                  </div>
+                </div>
+
+                <button
+                  onClick={async () => {
+                    try {
+                      setIsUpdating(emp.id);
+                      await onAddUserRole({
+                        email: emp.email || '',
+                        displayName: emp.name,
+                        role: 'user'
+                      });
+                      addToast(
+                        'success',
+                        'กำหนดสิทธิ์พนักงานสำเร็จ',
+                        `กำหนดสิทธิ์ล่วงหน้าให้พนักงาน "${emp.name}" (สิทธิ์ User) เรียบร้อยแล้ว`
+                      );
+                    } catch (err) {
+                      addToast('error', 'ข้อผิดพลาด', 'ไม่สามารถกำหนดสิทธิ์ให้พนักงานท่านนี้ได้');
+                    } finally {
+                      setIsUpdating(null);
+                    }
+                  }}
+                  disabled={isUpdating !== null}
+                  className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-slate-950 font-bold text-xs px-3 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                >
+                  {isUpdating === emp.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <UserPlus className="h-3.5 w-3.5" />
+                  )}
+                  <span>เปิดสิทธิ์ User</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Main card panel */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
         {/* Toolbar & Search & Add Button */}
@@ -315,13 +411,34 @@ export default function UserManagementView({
             </div>
           </div>
 
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-indigo-600/15 transition-all font-sans"
-          >
-            <UserPlus className="h-4 w-4" />
-            <span>เพิ่มบัญชี / กำหนดสิทธิ์ล่วงหน้า</span>
-          </button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+            <button
+              onClick={handleDeepScan}
+              disabled={isScanning}
+              className="w-full sm:w-auto bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-800 transition-all font-sans"
+              title="สแกนระบบและตรวจสอบบัญชีตกค้างทั้งหมด"
+            >
+              {isScanning ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
+                  <span>กำลังสแกน...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 text-indigo-500" />
+                  <span>ตรวจสอบระบบ (Scan System)</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-indigo-600/15 transition-all font-sans"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span>เพิ่มบัญชี / กำหนดสิทธิ์ล่วงหน้า</span>
+            </button>
+          </div>
         </div>
 
         {/* User Table / List */}
@@ -437,13 +554,9 @@ export default function UserManagementView({
                           {/* Edit Details Button */}
                           <button
                             onClick={() => handleStartEdit(user)}
-                            disabled={isSelf || isDeveloper || isUpdating === user.uid}
-                            className={`p-2 rounded-xl border transition-all cursor-pointer ${
-                              isSelf || isDeveloper
-                                ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-60'
-                                : 'bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                            }`}
-                            title={isSelf ? 'ไม่สามารถแก้ไขตนเองได้' : 'แก้ไขข้อมูลและสิทธิ์'}
+                            disabled={isUpdating === user.uid}
+                            className="p-2 rounded-xl border transition-all cursor-pointer bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 disabled:opacity-50"
+                            title={isSelf ? 'แก้ไขโปรไฟล์และชื่อแสดงของท่าน' : 'แก้ไขข้อมูลและสิทธิ์'}
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -451,17 +564,15 @@ export default function UserManagementView({
                           {/* Quick Role Toggle Button */}
                           <button
                             onClick={() => handleRoleToggle(user)}
-                            disabled={isSelf || isDeveloper || isUpdating === user.uid}
-                            className={`px-3 py-2 rounded-xl border font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
-                              isSelf || isDeveloper
-                                ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-60'
-                                : user.role === 'admin'
-                                  ? 'bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                                  : user.role === 'editor'
-                                    ? 'bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100 dark:hover:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50'
-                                    : 'bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/50'
+                            disabled={isUpdating === user.uid}
+                            className={`px-3 py-2 rounded-xl border font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                              user.role === 'admin'
+                                ? 'bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                : user.role === 'editor'
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100 dark:hover:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50'
+                                  : 'bg-indigo-50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-900/50'
                             }`}
-                            title={isSelf ? 'ไม่สามารถแก้ไขสิทธิ์ของตนเองได้' : 'สลับบทบาท (User -> Editor -> Admin)'}
+                            title={isSelf ? 'สลับบทบาท (ล็อกสำหรับบัญชีของท่าน)' : 'สลับบทบาท (User -> Editor -> Admin)'}
                           >
                             {user.role === 'user' ? (
                               <>
@@ -484,10 +595,10 @@ export default function UserManagementView({
                           {/* Delete Account/Role Button */}
                           <button
                             onClick={() => handleDeleteRole(user)}
-                            disabled={isSelf || isDeveloper || isUpdating === user.uid}
-                            className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                            disabled={isUpdating === user.uid}
+                            className={`p-2 rounded-xl border transition-all cursor-pointer disabled:opacity-50 ${
                               isSelf || isDeveloper
-                                ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-60'
+                                ? 'bg-rose-50/10 dark:bg-rose-950/5 text-rose-400/70 border-rose-200/40 hover:bg-rose-50/20'
                                 : 'bg-rose-50 dark:bg-rose-950/10 hover:bg-rose-100 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/30 hover:border-rose-300'
                             }`}
                             title={isSelf ? 'ไม่สามารถลบสิทธิ์ของตนเองได้' : 'ลบสิทธิ์ออกจากระบบ'}
@@ -693,44 +804,59 @@ export default function UserManagementView({
                 <label className="font-bold text-slate-700 dark:text-slate-300">
                   ระดับสิทธิ์การเข้าใช้งาน (Role)
                 </label>
-                <div className="grid grid-cols-3 gap-2 mt-1">
-                  <button
-                    type="button"
-                    onClick={() => setEditRole('user')}
-                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
-                      editRole === 'user'
-                        ? 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-500 text-indigo-700 dark:text-indigo-400 font-bold'
-                        : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
-                    }`}
-                  >
-                    <Lock className="h-4 w-4 shrink-0" />
-                    <span className="truncate">User (ทั่วไป)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditRole('editor')}
-                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
-                      editRole === 'editor'
-                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500 text-emerald-700 dark:text-emerald-400 font-bold'
-                        : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
-                    }`}
-                  >
-                    <Pencil className="h-4 w-4 shrink-0" />
-                    <span className="truncate">Editor (แก้ไข)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditRole('admin')}
-                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
-                      editRole === 'admin'
-                        ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-500 text-amber-700 dark:text-amber-400 font-bold'
-                        : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
-                    }`}
-                  >
-                    <Crown className="h-4 w-4 shrink-0" />
-                    <span className="truncate">Admin (ผู้ดูแล)</span>
-                  </button>
-                </div>
+                {(() => {
+                  const isEditingRoleLocked = editingUser.email === currentUserEmail || editingUser.email === 'chaleesogood@gmail.com' || editingUser.email === 'chalee@gtt2013.com';
+                  return (
+                    <>
+                      <div className="grid grid-cols-3 gap-2 mt-1">
+                        <button
+                          type="button"
+                          onClick={() => !isEditingRoleLocked && setEditRole('user')}
+                          disabled={isEditingRoleLocked}
+                          className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
+                            editRole === 'user'
+                              ? 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-500 text-indigo-700 dark:text-indigo-400 font-bold'
+                              : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
+                          } ${isEditingRoleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <Lock className="h-4 w-4 shrink-0" />
+                          <span className="truncate">User (ทั่วไป)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => !isEditingRoleLocked && setEditRole('editor')}
+                          disabled={isEditingRoleLocked}
+                          className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
+                            editRole === 'editor'
+                              ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500 text-emerald-700 dark:text-emerald-400 font-bold'
+                              : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
+                          } ${isEditingRoleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <Pencil className="h-4 w-4 shrink-0" />
+                          <span className="truncate">Editor (แก้ไข)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => !isEditingRoleLocked && setEditRole('admin')}
+                          disabled={isEditingRoleLocked}
+                          className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
+                            editRole === 'admin'
+                              ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-500 text-amber-700 dark:text-amber-400 font-bold'
+                              : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
+                          } ${isEditingRoleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <Crown className="h-4 w-4 shrink-0" />
+                          <span className="truncate">Admin (ผู้ดูแล)</span>
+                        </button>
+                      </div>
+                      {isEditingRoleLocked && (
+                        <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5 font-sans leading-relaxed">
+                          * ระดับสิทธิ์ของบัญชีผู้พัฒนาหลักหรือของตัวท่านเองถูกล็อกไว้ที่ Admin เพื่อป้องกันการสูญเสียสิทธิ์การบริหารจัดการระบบ
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Action Buttons */}

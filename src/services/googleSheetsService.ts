@@ -62,27 +62,34 @@ export function prepareAllSheetsData(data: AllAppData) {
     'quantity', 'costPrice', 'price', 'minAlert', 'warehouse',
     'supplier', 'description', 'modelNumber', 'modelUnit', 'image', 'createdAt', 'updatedAt'
   ];
-  const productsRows = data.products.map(p => [
-    p.id || '',
-    p.sku || '',
-    p.name || '',
-    p.category || '',
-    p.series || '',
-    p.brand || '',
-    p.unit || 'PCS',
-    p.quantity ?? 0,
-    p.costPrice ?? 0,
-    p.price ?? 0,
-    p.minAlert ?? 0,
-    p.warehouse || '',
-    p.supplier || '',
-    p.description || '',
-    p.modelNumber ?? '',
-    p.modelUnit || '',
-    p.image || '',
-    p.createdAt || '',
-    p.updatedAt || ''
-  ]);
+  const productsRows = data.products.map(p => {
+    let imgVal = p.image || '';
+    // Prevent Google Sheets API 400 error due to >50,000 char cell limits on base64 images
+    if (imgVal.length > 40000 && imgVal.startsWith('data:')) {
+      imgVal = '[Base64 Image]';
+    }
+    return [
+      p.id || '',
+      p.sku || '',
+      p.name || '',
+      p.category || '',
+      p.series || '',
+      p.brand || '',
+      p.unit || 'PCS',
+      p.quantity ?? 0,
+      p.costPrice ?? 0,
+      p.price ?? 0,
+      p.minAlert ?? 0,
+      p.warehouse || '',
+      p.supplier || '',
+      p.description || '',
+      p.modelNumber ?? '',
+      p.modelUnit || '',
+      imgVal,
+      p.createdAt || '',
+      p.updatedAt || ''
+    ];
+  });
 
   // 2. Categories
   const categoriesHeader = ['id', 'name', 'description', 'color', 'series'];
@@ -221,9 +228,11 @@ export function prepareAllSheetsData(data: AllAppData) {
 export const exportToGoogleSheets = async (
   accessToken: string,
   appData: AllAppData,
-  existingSpreadsheetId?: string
+  existingSpreadsheetId?: string,
+  selectedTabs?: string[]
 ): Promise<{ spreadsheetId: string; url: string }> => {
   let spreadsheetId = existingSpreadsheetId;
+  const targetTabs = (selectedTabs && selectedTabs.length > 0) ? selectedTabs : SHEET_TITLES;
 
   // Prepare data tables
   const sheetsDataMap = prepareAllSheetsData(appData);
@@ -287,14 +296,8 @@ export const exportToGoogleSheets = async (
     }
   }
 
-  // Clear existing cells & write updated data to all tabs
-  const valueRanges = SHEET_TITLES.map(title => ({
-    range: `${title}!A1:Z5000`,
-    values: sheetsDataMap[title as keyof typeof sheetsDataMap] || []
-  }));
-
-  // Clear tabs first to remove deleted rows
-  for (const title of SHEET_TITLES) {
+  // Clear target tabs first to remove deleted rows
+  for (const title of targetTabs) {
     try {
       await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(title)}!A1:Z5000:clear`, {
         method: 'POST',
@@ -304,6 +307,12 @@ export const exportToGoogleSheets = async (
       console.warn(`Could not clear sheet ${title}:`, e);
     }
   }
+
+  // Write updated data to target tabs
+  const valueRanges = targetTabs.map(title => ({
+    range: `${title}!A1:Z5000`,
+    values: sheetsDataMap[title as keyof typeof sheetsDataMap] || []
+  }));
 
   const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
     method: 'POST',
@@ -354,70 +363,138 @@ export const importFromGoogleSheets = async (
     valueRangesMap[tabName] = vr.values || [];
   });
 
-  // Helper to get rows excluding header
-  const getRows = (tabName: string) => {
+  // Helper to get header row and data rows
+  const getHeaderAndRows = (tabName: string) => {
     const matrix = valueRangesMap[tabName] || [];
-    if (matrix.length <= 1) return [];
-    return matrix.slice(1);
+    if (matrix.length === 0) return { header: [], rows: [] };
+    const header = (matrix[0] || []).map(h => String(h).trim().toLowerCase());
+    return { header, rows: matrix.slice(1) };
   };
 
-  // Build lookups for existing products to preserve images when sheet cell is empty
+  const getRows = (tabName: string) => getHeaderAndRows(tabName).rows;
+
+  // Build lookups for existing products to preserve images when sheet cell is empty or placeholder
   const existingProdMap = new Map<string, Product>();
   const existingProdSkuMap = new Map<string, Product>();
+  const existingProdNameMap = new Map<string, Product>();
   if (currentAppData?.products) {
     currentAppData.products.forEach(p => {
-      if (p.id) existingProdMap.set(p.id, p);
-      if (p.sku) existingProdSkuMap.set(p.sku, p);
+      if (p.id) existingProdMap.set(String(p.id).trim(), p);
+      if (p.sku) existingProdSkuMap.set(String(p.sku).trim().toLowerCase(), p);
+      if (p.name) existingProdNameMap.set(String(p.name).trim().toLowerCase(), p);
     });
   }
 
   // 1. Parse Products
-  const productsRows = getRows('Products');
-  const products: Product[] = productsRows.map((r, i) => {
-    const id = r[0] || `prod_${Date.now()}_${i}`;
-    const sku = r[1] || '';
-    const existingProd = existingProdMap.get(id) || (sku ? existingProdSkuMap.get(sku) : undefined);
+  const { header: prodHeader, rows: productsRows } = getHeaderAndRows('Products');
+  const getCol = (hName: string, defaultIdx: number) => {
+    const idx = prodHeader.indexOf(hName.toLowerCase());
+    return idx !== -1 ? idx : defaultIdx;
+  };
 
-    const sheetImage = r[16] ? r[16].toString().trim() : '';
-    // If sheetImage is provided, use it; otherwise preserve existing product image if available
+  const pIdIdx = getCol('id', 0);
+  const pSkuIdx = getCol('sku', 1);
+  const pNameIdx = getCol('name', 2);
+  const pCatIdx = getCol('category', 3);
+  const pSeriesIdx = getCol('series', 4);
+  const pBrandIdx = getCol('brand', 5);
+  const pUnitIdx = getCol('unit', 6);
+  const pQtyIdx = getCol('quantity', 7);
+  const pCostIdx = getCol('costprice', 8);
+  const pPriceIdx = getCol('price', 9);
+  const pMinIdx = getCol('minalert', 10);
+  const pWhIdx = getCol('warehouse', 11);
+  const pSupIdx = getCol('supplier', 12);
+  const pDescIdx = getCol('description', 13);
+  const pModelNumIdx = getCol('modelnumber', 14);
+  const pModelUnitIdx = getCol('modelunit', 15);
+  const pImgIdx = prodHeader.indexOf('image'); // -1 if column is missing
+  const pCreatedIdx = getCol('createdat', pImgIdx !== -1 ? 17 : 16);
+  const pUpdatedIdx = getCol('updatedat', pImgIdx !== -1 ? 18 : 17);
+
+  const parsedProducts: Product[] = productsRows.map((r, i) => {
+    const rawId = r[pIdIdx] !== undefined && r[pIdIdx] !== null ? String(r[pIdIdx]).trim() : '';
+    const rawSku = r[pSkuIdx] !== undefined && r[pSkuIdx] !== null ? String(r[pSkuIdx]).trim() : '';
+    const rawName = r[pNameIdx] !== undefined && r[pNameIdx] !== null ? String(r[pNameIdx]).trim() : '';
+
+    const existingProd = (rawId ? existingProdMap.get(rawId) : undefined)
+      || (rawSku ? existingProdSkuMap.get(rawSku.toLowerCase()) : undefined)
+      || (rawName ? existingProdNameMap.get(rawName.toLowerCase()) : undefined);
+
+    const id = rawId || existingProd?.id || `prod_${Date.now()}_${i}`;
+    const sku = rawSku || existingProd?.sku || '';
+
+    let sheetImage = '';
+    if (pImgIdx !== -1 && r[pImgIdx] !== undefined && r[pImgIdx] !== null) {
+      let rawImg = String(r[pImgIdx]).trim();
+
+      // Extract URL if formatted as =IMAGE("url") or =IMAGE('url')
+      const formulaMatch = rawImg.match(/=IMAGE\(["']?([^"']+)["']?\)/i);
+      if (formulaMatch && formulaMatch[1]) {
+        rawImg = formulaMatch[1].trim();
+      }
+
+      // Check if rawImg looks like an image URL, base64 data string, blob, or file path
+      const isDateOrNumber = !isNaN(Date.parse(rawImg)) && /^\d{4}-\d{2}-\d{2}/.test(rawImg);
+      const isPlaceholder = rawImg.startsWith('[') || rawImg.startsWith('#') || rawImg.toLowerCase() === 'n/a' || rawImg === '-';
+      const isImageLike = !isPlaceholder && !isDateOrNumber && (
+        rawImg.startsWith('http://') || 
+        rawImg.startsWith('https://') || 
+        rawImg.startsWith('data:image/') || 
+        rawImg.startsWith('blob:') || 
+        rawImg.startsWith('/') || 
+        /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?.*)?$/i.test(rawImg)
+      );
+
+      if (isImageLike) {
+        sheetImage = rawImg;
+      }
+    }
+
+    // Preserve existing product image if sheet cell is empty, invalid, placeholder, or unparseable
     const finalImage = sheetImage || existingProd?.image || '';
 
     return {
       id,
       sku,
-      name: r[2] || 'สินค้าไม่ระบุชื่อ',
-      category: r[3] || 'ทั่วไป',
-      series: r[4] || '',
-      brand: r[5] || '',
-      unit: r[6] || 'PCS',
-      quantity: parseFloat(r[7]) || 0,
-      costPrice: parseFloat(r[8]) || 0,
-      price: parseFloat(r[9]) || 0,
-      minAlert: parseFloat(r[10]) || 0,
-      warehouse: r[11] || '',
-      supplier: r[12] || '',
-      description: r[13] || '',
-      modelNumber: r[14] || '',
-      modelUnit: r[15] || '',
+      name: rawName || existingProd?.name || 'สินค้าไม่ระบุชื่อ',
+      category: r[pCatIdx] || existingProd?.category || 'ทั่วไป',
+      series: r[pSeriesIdx] || existingProd?.series || '',
+      brand: r[pBrandIdx] || existingProd?.brand || '',
+      unit: r[pUnitIdx] || existingProd?.unit || 'PCS',
+      quantity: parseFloat(r[pQtyIdx]) || 0,
+      costPrice: parseFloat(r[pCostIdx]) || 0,
+      price: parseFloat(r[pPriceIdx]) || 0,
+      minAlert: parseFloat(r[pMinIdx]) || 0,
+      warehouse: r[pWhIdx] || existingProd?.warehouse || '',
+      supplier: r[pSupIdx] || existingProd?.supplier || '',
+      description: r[pDescIdx] || existingProd?.description || '',
+      modelNumber: r[pModelNumIdx] || existingProd?.modelNumber || '',
+      modelUnit: r[pModelUnitIdx] || existingProd?.modelUnit || '',
       image: finalImage,
-      createdAt: r[17] || existingProd?.createdAt || new Date().toISOString(),
-      updatedAt: r[18] || new Date().toISOString()
+      createdAt: r[pCreatedIdx] || existingProd?.createdAt || new Date().toISOString(),
+      updatedAt: r[pUpdatedIdx] || new Date().toISOString()
     };
   });
 
+  const hasTab = (tabName: string) => valueRangesMap[tabName] !== undefined;
+
+  const products = hasTab('Products') ? parsedProducts : (currentAppData?.products || []);
+
   // 2. Parse Categories
   const categoriesRows = getRows('Categories');
-  const categories: Category[] = categoriesRows.map((r, i) => ({
+  const parsedCategories: Category[] = categoriesRows.map((r, i) => ({
     id: r[0] || `cat_${Date.now()}_${i}`,
     name: r[1] || 'หมวดหมู่ทั่วไป',
     description: r[2] || '',
     color: r[3] || 'bg-slate-500',
     series: r[4] ? r[4].split(',').map((s: string) => s.trim()).filter(Boolean) : []
   }));
+  const categories = hasTab('Categories') ? parsedCategories : (currentAppData?.categories || []);
 
   // 3. Parse BOMs
   const bomsRows = getRows('BOMs');
-  const boms: Bom[] = bomsRows.map((r, i) => {
+  const parsedBoms: Bom[] = bomsRows.map((r, i) => {
     let items = [];
     try {
       if (r[8]) items = JSON.parse(r[8]);
@@ -437,10 +514,11 @@ export const importFromGoogleSheets = async (
       updatedAt: r[10] || new Date().toISOString()
     };
   });
+  const boms = hasTab('BOMs') ? parsedBoms : (currentAppData?.boms || []);
 
   // 4. Parse Projects
   const projectsRows = getRows('Projects');
-  const projects: Project[] = projectsRows.map((r, i) => ({
+  const parsedProjects: Project[] = projectsRows.map((r, i) => ({
     id: r[0] || `proj_${Date.now()}_${i}`,
     jobNo: r[1] || '',
     name: r[2] || 'โครงการใหม่',
@@ -452,10 +530,11 @@ export const importFromGoogleSheets = async (
     createdAt: r[8] || new Date().toISOString(),
     updatedAt: r[9] || new Date().toISOString()
   }));
+  const projects = hasTab('Projects') ? parsedProjects : (currentAppData?.projects || []);
 
   // 5. Parse Jobs
   const jobsRows = getRows('Jobs');
-  const jobs: Job[] = jobsRows.map((r, i) => ({
+  const parsedJobs: Job[] = jobsRows.map((r, i) => ({
     id: r[0] || `job_${Date.now()}_${i}`,
     jobNo: r[1] || `JOB-${i + 1}`,
     module: r[2] || '',
@@ -467,10 +546,11 @@ export const importFromGoogleSheets = async (
     createdAt: r[8] || new Date().toISOString(),
     updatedAt: r[9] || new Date().toISOString()
   }));
+  const jobs = hasTab('Jobs') ? parsedJobs : (currentAppData?.jobs || []);
 
   // 6. Parse Employees
   const employeesRows = getRows('Employees');
-  const employees: Employee[] = employeesRows.map((r, i) => ({
+  const parsedEmployees: Employee[] = employeesRows.map((r, i) => ({
     id: r[0] || `emp_${Date.now()}_${i}`,
     name: r[1] || 'พนักงาน',
     nickname: r[2] || '',
@@ -481,18 +561,20 @@ export const importFromGoogleSheets = async (
     phone: r[7] || '',
     createdAt: r[8] || new Date().toISOString()
   }));
+  const employees = hasTab('Employees') ? parsedEmployees : (currentAppData?.employees || []);
 
   // 7. Parse Brands
   const brandsRows = getRows('Brands');
-  const brands: Brand[] = brandsRows.map((r, i) => ({
+  const parsedBrands: Brand[] = brandsRows.map((r, i) => ({
     id: r[0] || `brand_${Date.now()}_${i}`,
     name: r[1] || 'แบรนด์',
     createdAt: r[2] || new Date().toISOString()
   }));
+  const brands = hasTab('Brands') ? parsedBrands : (currentAppData?.brands || []);
 
   // 8. Parse Daily Reports
   const dailyReportsRows = getRows('DailyReports');
-  const dailyReports: DailyReport[] = dailyReportsRows.map((r, i) => ({
+  const parsedDailyReports: DailyReport[] = dailyReportsRows.map((r, i) => ({
     id: r[0] || `report_${Date.now()}_${i}`,
     employeeName: r[1] || 'พนักงาน',
     date: r[2] || new Date().toISOString().split('T')[0],
@@ -506,10 +588,11 @@ export const importFromGoogleSheets = async (
     createdAt: r[10] || new Date().toISOString(),
     updatedAt: r[11] || new Date().toISOString()
   }));
+  const dailyReports = hasTab('DailyReports') ? parsedDailyReports : (currentAppData?.dailyReports || []);
 
   // 9. Parse Activities
   const activitiesRows = getRows('Activities');
-  const activities: StockActivity[] = activitiesRows.map((r, i) => ({
+  const parsedActivities: StockActivity[] = activitiesRows.map((r, i) => ({
     id: r[0] || `act_${Date.now()}_${i}`,
     productId: r[1] || '',
     productName: r[2] || '',
@@ -520,16 +603,18 @@ export const importFromGoogleSheets = async (
     reason: r[7] || '',
     timestamp: r[8] || new Date().toISOString()
   }));
+  const activities = hasTab('Activities') ? parsedActivities : (currentAppData?.activities || []);
 
   // 10. Parse User Roles
   const userRolesRows = getRows('UserRoles');
-  const userRoles: UserRole[] = userRolesRows.map((r, i) => ({
+  const parsedUserRoles: UserRole[] = userRolesRows.map((r, i) => ({
     uid: r[0] || `user_${Date.now()}_${i}`,
     email: r[1] || '',
     displayName: r[2] || '',
     role: (['admin', 'editor', 'user'].includes(r[3]) ? r[3] : 'user') as any,
     createdAt: r[4] || new Date().toISOString()
   }));
+  const userRoles = hasTab('UserRoles') ? parsedUserRoles : (currentAppData?.userRoles || []);
 
   return {
     products,

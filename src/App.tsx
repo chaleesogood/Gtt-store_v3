@@ -15,6 +15,7 @@ import SettingsView from './components/SettingsView';
 import { CatalogView } from './components/CatalogView';
 import UserManagementView from './components/UserManagementView';
 import { GoogleSheetsView } from './components/GoogleSheetsView';
+import DatabaseStatusBar from './components/DatabaseStatusBar';
 import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles, Database, CloudUpload, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs, getDocsFromServer } from 'firebase/firestore';
 import { db, cleanUndefined, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from './firebase';
@@ -141,24 +142,52 @@ export default function App() {
     });
   };
 
-  // Helper to upload list in chunks using Firestore batches with safety timeouts
-  const uploadListToFirestoreInBatches = async (collectionName: string, list: any[]) => {
-    if (!list || list.length === 0) return;
+  // Helper to upload list in chunks using Firestore batches with safety timeouts and optional deletion sync
+  const uploadListToFirestoreInBatches = async (collectionName: string, list: any[], deleteMissing = false) => {
+    if (!list) return;
+
+    let existingDocIds: string[] = [];
+    if (deleteMissing) {
+      try {
+        const snapshot = await getDocs(query(collection(db, collectionName)));
+        snapshot.forEach((docSnap) => existingDocIds.push(docSnap.id));
+      } catch (e) {
+        console.warn(`Error fetching existing docs for deletion check in ${collectionName}:`, e);
+      }
+    }
+
+    const newListDocIds = new Set<string>();
     const chunkSize = 200;
+
     for (let i = 0; i < list.length; i += chunkSize) {
       const chunk = list.slice(i, i + chunkSize);
       const batch = writeBatch(db);
       let count = 0;
       chunk.forEach((item) => {
-        if (item && item.id !== undefined && item.id !== null) {
-          const docId = String(item.id).trim();
-          if (docId) {
-            batch.set(doc(db, collectionName, docId), cleanUndefined(item));
-            count++;
+        if (item) {
+          const idValue = item.id ?? item.uid;
+          if (idValue !== undefined && idValue !== null) {
+            const docId = String(idValue).trim();
+            if (docId) {
+              newListDocIds.add(docId);
+              batch.set(doc(db, collectionName, docId), cleanUndefined(item));
+              count++;
+            }
           }
         }
       });
       if (count > 0) {
+        await withTimeout(batch.commit(), 5000);
+      }
+    }
+
+    // If deleteMissing is true, delete any documents in Firestore that are no longer in list
+    if (deleteMissing && existingDocIds.length > 0) {
+      const toDelete = existingDocIds.filter(id => !newListDocIds.has(id));
+      for (let i = 0; i < toDelete.length; i += chunkSize) {
+        const chunk = toDelete.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach(id => batch.delete(doc(db, collectionName, id)));
         await withTimeout(batch.commit(), 5000);
       }
     }
@@ -206,10 +235,7 @@ export default function App() {
       ];
 
       const syncTasks = collectionsToSync.map(item => {
-        if (item.data && item.data.length > 0) {
-          return uploadListToFirestoreInBatches(item.name, item.data);
-        }
-        return Promise.resolve();
+        return uploadListToFirestoreInBatches(item.name, item.data || [], true);
       });
 
       await withTimeout(Promise.allSettled(syncTasks), 8000);
@@ -222,6 +248,23 @@ export default function App() {
     } finally {
       setIsSavingAllToDb(false);
     }
+  };
+
+  // Helper function to merge two lists by ID without losing items
+  const mergeListsById = <T extends { id: string }>(primaryList: T[], secondaryList: T[]): { merged: T[], missingFromPrimary: T[] } => {
+    const primaryIds = new Set((primaryList || []).map(item => item.id));
+    const missingFromPrimary: T[] = [];
+    
+    if (Array.isArray(secondaryList)) {
+      for (const item of secondaryList) {
+        if (item && item.id && !primaryIds.has(item.id)) {
+          missingFromPrimary.push(item);
+        }
+      }
+    }
+
+    const merged = [...(primaryList || []), ...missingFromPrimary];
+    return { merged, missingFromPrimary };
   };
 
   // Force fetch fresh data directly from Firestore server for all collections
@@ -273,50 +316,146 @@ export default function App() {
         fetchColFresh<DailyReport>('dailyReports')
       ]);
 
-      // Always update state & localStorage from central Firestore database so all accounts see identical data
-      const sortedProds = sortProducts(freshProducts);
+      // Read local cache fallbacks
+      const localProducts: Product[] = JSON.parse(localStorage.getItem('stock_manager_products') || '[]');
+      const localCategories: Category[] = JSON.parse(localStorage.getItem('stock_manager_categories') || '[]');
+      const localActivities: StockActivity[] = JSON.parse(localStorage.getItem('stock_manager_activities') || '[]');
+      const localBoms: Bom[] = JSON.parse(localStorage.getItem('stock_manager_boms') || '[]');
+      const localProjects: Project[] = JSON.parse(localStorage.getItem('stock_manager_projects_list') || '[]');
+      const localJobs: Job[] = JSON.parse(localStorage.getItem('stock_manager_jobs_list') || '[]');
+      const localEmployees: Employee[] = JSON.parse(localStorage.getItem('stock_manager_employees_list') || '[]');
+      const localBrands: Brand[] = JSON.parse(localStorage.getItem('stock_manager_brands_list') || '[]');
+      const localJobProjects: JobProject[] = JSON.parse(localStorage.getItem('stock_manager_job_projects_list') || '[]');
+      const localDailyReports: DailyReport[] = JSON.parse(localStorage.getItem('stock_manager_daily_reports_list') || '[]');
+
+      // For Products
+      let finalProds: Product[];
+      if (freshProducts.length > 0) {
+        finalProds = freshProducts;
+      } else {
+        finalProds = localProducts.length > 0 ? localProducts : INITIAL_PRODUCTS;
+        uploadListToFirestoreInBatches('products', finalProds);
+      }
+      const sortedProds = sortProducts(finalProds);
       setProducts(sortedProds);
       localStorage.setItem('stock_manager_products', JSON.stringify(sortedProds));
 
-      setCategories(freshCategories);
-      localStorage.setItem('stock_manager_categories', JSON.stringify(freshCategories));
+      let finalCats: Category[];
+      if (freshCategories.length > 0) {
+        finalCats = freshCategories;
+      } else {
+        finalCats = localCategories.length > 0 ? localCategories : INITIAL_CATEGORIES;
+        uploadListToFirestoreInBatches('categories', finalCats);
+      }
+      setCategories(finalCats);
+      localStorage.setItem('stock_manager_categories', JSON.stringify(finalCats));
 
-      freshActivities.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
-      setActivities(freshActivities);
-      localStorage.setItem('stock_manager_activities', JSON.stringify(freshActivities));
+      let finalActs: StockActivity[];
+      if (freshActivities.length > 0) {
+        finalActs = freshActivities;
+      } else {
+        finalActs = localActivities.length > 0 ? localActivities : INITIAL_ACTIVITIES;
+        uploadListToFirestoreInBatches('activities', finalActs);
+      }
+      finalActs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+      setActivities(finalActs);
+      localStorage.setItem('stock_manager_activities', JSON.stringify(finalActs));
 
-      freshBoms.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-      setBoms(freshBoms);
-      localStorage.setItem('stock_manager_boms', JSON.stringify(freshBoms));
+      let finalBoms: Bom[];
+      if (freshBoms.length > 0) {
+        finalBoms = freshBoms;
+      } else {
+        finalBoms = localBoms;
+        if (finalBoms.length > 0) {
+          uploadListToFirestoreInBatches('boms', finalBoms);
+        }
+      }
+      finalBoms.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      setBoms(finalBoms);
+      localStorage.setItem('stock_manager_boms', JSON.stringify(finalBoms));
 
-      freshProjects.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-      setProjects(freshProjects);
-      localStorage.setItem('stock_manager_projects_list', JSON.stringify(freshProjects));
+      let finalProjects: Project[];
+      if (freshProjects.length > 0) {
+        finalProjects = freshProjects;
+      } else {
+        finalProjects = localProjects;
+        if (finalProjects.length > 0) {
+          uploadListToFirestoreInBatches('projects', finalProjects);
+        }
+      }
+      finalProjects.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      setProjects(finalProjects);
+      localStorage.setItem('stock_manager_projects_list', JSON.stringify(finalProjects));
 
-      freshJobs.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
-      setJobs(freshJobs);
-      localStorage.setItem('stock_manager_jobs_list', JSON.stringify(freshJobs));
+      let finalJobs: Job[];
+      if (freshJobs.length > 0) {
+        finalJobs = freshJobs;
+      } else {
+        finalJobs = localJobs;
+        if (finalJobs.length > 0) {
+          uploadListToFirestoreInBatches('jobs', finalJobs);
+        }
+      }
+      finalJobs.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
+      setJobs(finalJobs);
+      localStorage.setItem('stock_manager_jobs_list', JSON.stringify(finalJobs));
 
-      freshEmployees.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
-      setEmployees(freshEmployees);
-      localStorage.setItem('stock_manager_employees_list', JSON.stringify(freshEmployees));
+      let finalEmployees: Employee[];
+      if (freshEmployees.length > 0) {
+        finalEmployees = freshEmployees;
+      } else {
+        finalEmployees = localEmployees;
+        if (finalEmployees.length > 0) {
+          uploadListToFirestoreInBatches('employees', finalEmployees);
+        }
+      }
+      finalEmployees.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+      setEmployees(finalEmployees);
+      localStorage.setItem('stock_manager_employees_list', JSON.stringify(finalEmployees));
 
-      freshBrands.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
-      setBrands(freshBrands);
-      localStorage.setItem('stock_manager_brands_list', JSON.stringify(freshBrands));
+      let finalBrands: Brand[];
+      if (freshBrands.length > 0) {
+        finalBrands = freshBrands;
+      } else {
+        finalBrands = localBrands;
+        if (finalBrands.length > 0) {
+          uploadListToFirestoreInBatches('brands', finalBrands);
+        }
+      }
+      finalBrands.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+      setBrands(finalBrands);
+      localStorage.setItem('stock_manager_brands_list', JSON.stringify(finalBrands));
 
-      freshJobProjects.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
-      setJobProjects(freshJobProjects);
-      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(freshJobProjects));
+      let finalJobProjects: JobProject[];
+      if (freshJobProjects.length > 0) {
+        finalJobProjects = freshJobProjects;
+      } else {
+        finalJobProjects = localJobProjects;
+        if (finalJobProjects.length > 0) {
+          uploadListToFirestoreInBatches('jobProjects', finalJobProjects);
+        }
+      }
+      finalJobProjects.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
+      setJobProjects(finalJobProjects);
+      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(finalJobProjects));
 
-      freshDailyReports.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-      setDailyReports(freshDailyReports);
-      localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(freshDailyReports));
+      let finalDailyReports: DailyReport[];
+      if (freshDailyReports.length > 0) {
+        finalDailyReports = freshDailyReports;
+      } else {
+        finalDailyReports = localDailyReports;
+        if (finalDailyReports.length > 0) {
+          uploadListToFirestoreInBatches('dailyReports', finalDailyReports);
+        }
+      }
+      finalDailyReports.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      setDailyReports(finalDailyReports);
+      localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(finalDailyReports));
 
       updateLastSyncTimestamp();
 
       if (showSuccessToast) {
-        addToast('success', 'รีเฟรชข้อมูลสำเร็จ', 'ดึงข้อมูลล่าสุดจาก Database หลักเรียบร้อยแล้ว');
+        addToast('success', 'รีเฟรชข้อมูลสำเร็จ', 'ดึงและรวมข้อมูลล่าสุดจาก Database หลักเรียบร้อยแล้ว');
       }
     } catch (err: any) {
       console.warn("Error pulling fresh data from DB:", err);
@@ -642,29 +781,6 @@ export default function App() {
         window.localStorage.removeItem('stock_manager_is_offline');
         setCurrentUser(null);
         setCurrentUserRole('user');
-
-        const savedProducts = localStorage.getItem('stock_manager_products');
-        const savedCategories = localStorage.getItem('stock_manager_categories');
-        const savedActivities = localStorage.getItem('stock_manager_activities');
-        const savedBoms = localStorage.getItem('stock_manager_boms');
-        const savedProjects = localStorage.getItem('stock_manager_projects_list');
-        const savedJobs = localStorage.getItem('stock_manager_jobs_list');
-        const savedEmployees = localStorage.getItem('stock_manager_employees_list');
-        const savedBrands = localStorage.getItem('stock_manager_brands_list');
-        const savedJobProjects = localStorage.getItem('stock_manager_job_projects_list');
-        const savedDailyReports = localStorage.getItem('stock_manager_daily_reports_list');
-
-        setProducts(savedProducts ? JSON.parse(savedProducts) : INITIAL_PRODUCTS);
-        setCategories(savedCategories ? JSON.parse(savedCategories) : INITIAL_CATEGORIES);
-        setActivities(savedActivities ? JSON.parse(savedActivities) : INITIAL_ACTIVITIES);
-        setBoms(savedBoms ? JSON.parse(savedBoms) : []);
-        setProjects(savedProjects ? JSON.parse(savedProjects) : []);
-        setJobs(savedJobs ? JSON.parse(savedJobs) : []);
-        setEmployees(savedEmployees ? JSON.parse(savedEmployees) : []);
-        setBrands(savedBrands ? JSON.parse(savedBrands) : []);
-        setJobProjects(savedJobProjects ? JSON.parse(savedJobProjects) : []);
-        setDailyReports(savedDailyReports ? JSON.parse(savedDailyReports) : []);
-
         setAuthLoading(false);
       }
     });
@@ -676,9 +792,9 @@ export default function App() {
     };
   }, []);
 
-  // Fetch user_roles list for Admin screen
+  // Fetch user_roles list for all signed in users so user roles count & list is accurate
   useEffect(() => {
-    if (currentUser && currentUserRole === 'admin') {
+    if (currentUser) {
       const q = query(collection(db, 'user_roles'));
       const unsubscribe = onSnapshot(q, async (snapshot) => {
         const list: UserRole[] = [];
@@ -696,7 +812,27 @@ export default function App() {
           }
         });
 
-        // Proactively auto-provision chalee@gtt2013.com if it's missing from Firestore user_roles
+        // Ensure current user record exists in list
+        if (currentUser.email) {
+          const userExistsInList = list.some(r => r.email?.toLowerCase() === currentUser.email?.toLowerCase() || r.uid === currentUser.uid);
+          if (!userExistsInList) {
+            const currentRecord: UserRole = {
+              uid: currentUser.uid,
+              email: currentUser.email,
+              displayName: currentUser.displayName || currentUser.email.split('@')[0],
+              role: currentUserRole,
+              createdAt: new Date().toISOString()
+            };
+            list.push(currentRecord);
+            try {
+              await setDoc(doc(db, 'user_roles', currentUser.uid), cleanUndefined(currentRecord));
+            } catch (e) {
+              console.error('Failed to create user_role record for current user:', e);
+            }
+          }
+        }
+
+        // Proactively auto-provision chalee@gtt2013.com if missing
         if (!hasChaleeGtt) {
           const tempUid = 'pre_chalee_gtt2013_com';
           const chaleeGttRecord: UserRole = {
@@ -706,30 +842,26 @@ export default function App() {
             role: 'admin',
             createdAt: new Date().toISOString()
           };
+          list.push(chaleeGttRecord);
           try {
             await setDoc(doc(db, 'user_roles', tempUid), cleanUndefined(chaleeGttRecord));
-            console.log('Auto-provisioned default admin role for chalee@gtt2013.com');
-          } catch (e) {
-            console.error('Failed to auto-provision chalee@gtt2013.com:', e);
-          }
+          } catch (e) {}
         }
 
-        // Proactively auto-provision chaleesogood@gmail.com if it's missing from Firestore user_roles
+        // Proactively auto-provision chaleesogood@gmail.com if missing
         if (!hasChaleeGood) {
-          const tempUid = currentUser.uid;
+          const tempUid = 'pre_chaleesogood_gmail_com';
           const chaleeGoodRecord: UserRole = {
             uid: tempUid,
             email: 'chaleesogood@gmail.com',
-            displayName: currentUser.displayName || 'Chalee Sogood',
+            displayName: 'Chalee Sogood',
             role: 'admin',
             createdAt: new Date().toISOString()
           };
+          list.push(chaleeGoodRecord);
           try {
             await setDoc(doc(db, 'user_roles', tempUid), cleanUndefined(chaleeGoodRecord));
-            console.log('Auto-provisioned default admin role for chaleesogood@gmail.com');
-          } catch (e) {
-            console.error('Failed to auto-provision chaleesogood@gmail.com:', e);
-          }
+          } catch (e) {}
         }
 
         // Client-side sort by createdAt desc
@@ -811,7 +943,6 @@ export default function App() {
 
   // Sync products from Firestore (Central Shared Database)
   useEffect(() => {
-    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'products'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firestoreList: Product[] = [];
@@ -819,13 +950,15 @@ export default function App() {
         firestoreList.push({ id: document.id, ...document.data() } as Product);
       });
 
+      const savedStr = localStorage.getItem('stock_manager_products');
+      const localList: Product[] = savedStr ? JSON.parse(savedStr) : INITIAL_PRODUCTS;
+
       if (firestoreList.length > 0) {
         const sorted = sortProducts(firestoreList);
         setProducts(sorted);
         localStorage.setItem('stock_manager_products', JSON.stringify(sorted));
       } else {
-        // Seed initial products to Firestore if collection is completely empty
-        const sorted = sortProducts(INITIAL_PRODUCTS);
+        const sorted = sortProducts(localList.length > 0 ? localList : INITIAL_PRODUCTS);
         setProducts(sorted);
         localStorage.setItem('stock_manager_products', JSON.stringify(sorted));
         uploadListToFirestoreInBatches('products', sorted);
@@ -833,14 +966,13 @@ export default function App() {
     }, (error) => {
       handleFirestoreError("Firestore products sync error", error);
       const saved = localStorage.getItem('stock_manager_products');
-      setProducts(saved ? JSON.parse(saved) : INITIAL_PRODUCTS);
+      setProducts(saved ? sortProducts(JSON.parse(saved)) : sortProducts(INITIAL_PRODUCTS));
     });
     return () => unsubscribe();
-  }, [currentUser, isSyncComplete]);
+  }, []);
 
   // Sync categories from Firestore (Central Shared Database)
   useEffect(() => {
-    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'categories'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firestoreList: Category[] = [];
@@ -848,14 +980,17 @@ export default function App() {
         firestoreList.push({ id: document.id, ...document.data() } as Category);
       });
 
+      const savedStr = localStorage.getItem('stock_manager_categories');
+      const localList: Category[] = savedStr ? JSON.parse(savedStr) : INITIAL_CATEGORIES;
+
       if (firestoreList.length > 0) {
         setCategories(firestoreList);
         localStorage.setItem('stock_manager_categories', JSON.stringify(firestoreList));
       } else {
-        // Seed initial categories to Firestore if collection is completely empty
-        setCategories(INITIAL_CATEGORIES);
-        localStorage.setItem('stock_manager_categories', JSON.stringify(INITIAL_CATEGORIES));
-        uploadListToFirestoreInBatches('categories', INITIAL_CATEGORIES);
+        const catList = localList.length > 0 ? localList : INITIAL_CATEGORIES;
+        setCategories(catList);
+        localStorage.setItem('stock_manager_categories', JSON.stringify(catList));
+        uploadListToFirestoreInBatches('categories', catList);
       }
     }, (error) => {
       handleFirestoreError("Firestore categories sync error", error);
@@ -863,11 +998,11 @@ export default function App() {
       setCategories(saved ? JSON.parse(saved) : INITIAL_CATEGORIES);
     });
     return () => unsubscribe();
-  }, [currentUser, isSyncComplete]);
+  }, []);
 
   // Auto-delete cat-2t7zj33 on startup if present as requested by user
   useEffect(() => {
-    if (!currentUser || categories.length === 0) return;
+    if (categories.length === 0) return;
     const hasTargetCat = categories.some(c => c.id === 'cat-2t7zj33');
     if (hasTargetCat) {
       const deleteTargetCategory = async () => {
@@ -896,15 +1031,10 @@ export default function App() {
       };
       deleteTargetCategory();
     }
-  }, [currentUser, categories, products]);
+  }, [categories, products]);
 
   // Synchronize state on user auth change (fetch fresh data directly from database on every login)
   useEffect(() => {
-    if (!currentUser) {
-      setIsSyncComplete(true);
-      return;
-    }
-
     const prepareSync = async () => {
       try {
         await handlePullFreshFromDatabase(false);
@@ -958,7 +1088,6 @@ export default function App() {
 
   // Sync activities from Firestore (Central Shared Database)
   useEffect(() => {
-    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'activities'), orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firestoreList: StockActivity[] = [];
@@ -966,13 +1095,19 @@ export default function App() {
         firestoreList.push({ id: document.id, ...document.data() } as StockActivity);
       });
 
+      const savedStr = localStorage.getItem('stock_manager_activities');
+      const localList: StockActivity[] = savedStr ? JSON.parse(savedStr) : INITIAL_ACTIVITIES;
+
       if (firestoreList.length > 0) {
+        firestoreList.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
         setActivities(firestoreList);
         localStorage.setItem('stock_manager_activities', JSON.stringify(firestoreList));
       } else {
-        setActivities(INITIAL_ACTIVITIES);
-        localStorage.setItem('stock_manager_activities', JSON.stringify(INITIAL_ACTIVITIES));
-        uploadListToFirestoreInBatches('activities', INITIAL_ACTIVITIES);
+        const actList = localList.length > 0 ? localList : INITIAL_ACTIVITIES;
+        actList.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+        setActivities(actList);
+        localStorage.setItem('stock_manager_activities', JSON.stringify(actList));
+        uploadListToFirestoreInBatches('activities', actList);
       }
     }, (error) => {
       handleFirestoreError("Firestore activities sync error", error);
@@ -980,147 +1115,246 @@ export default function App() {
       setActivities(saved ? JSON.parse(saved) : INITIAL_ACTIVITIES);
     });
     return () => unsubscribe();
-  }, [currentUser, isSyncComplete]);
+  }, []);
 
   // Sync boms from Firestore
   useEffect(() => {
-    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'boms'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firestoreList: Bom[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Bom);
       });
-      firestoreList.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-      setBoms(firestoreList);
-      localStorage.setItem('stock_manager_boms', JSON.stringify(firestoreList));
+
+      const savedStr = localStorage.getItem('stock_manager_boms');
+      const localList: Bom[] = savedStr ? JSON.parse(savedStr) : [];
+
+      if (firestoreList.length > 0) {
+        firestoreList.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+        setBoms(firestoreList);
+        localStorage.setItem('stock_manager_boms', JSON.stringify(firestoreList));
+      } else {
+        if (localList.length > 0) {
+          localList.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+          setBoms(localList);
+          uploadListToFirestoreInBatches('boms', localList);
+        } else {
+          setBoms([]);
+          localStorage.setItem('stock_manager_boms', JSON.stringify([]));
+        }
+      }
     }, (error) => {
       handleFirestoreError("Firestore boms sync error", error);
       const saved = localStorage.getItem('stock_manager_boms');
       setBoms(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser, isSyncComplete]);
+  }, []);
 
   // Sync projects from Firestore
   useEffect(() => {
-    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'projects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firestoreList: Project[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Project);
       });
-      firestoreList.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-      setProjects(firestoreList);
-      localStorage.setItem('stock_manager_projects_list', JSON.stringify(firestoreList));
+
+      const savedStr = localStorage.getItem('stock_manager_projects_list');
+      const localList: Project[] = savedStr ? JSON.parse(savedStr) : [];
+
+      if (firestoreList.length > 0) {
+        firestoreList.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+        setProjects(firestoreList);
+        localStorage.setItem('stock_manager_projects_list', JSON.stringify(firestoreList));
+      } else {
+        if (localList.length > 0) {
+          localList.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+          setProjects(localList);
+          uploadListToFirestoreInBatches('projects', localList);
+        } else {
+          setProjects([]);
+          localStorage.setItem('stock_manager_projects_list', JSON.stringify([]));
+        }
+      }
     }, (error) => {
       handleFirestoreError("Firestore projects sync error", error);
       const saved = localStorage.getItem('stock_manager_projects_list');
       setProjects(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser, isSyncComplete]);
+  }, []);
 
   // Sync jobs from Firestore
   useEffect(() => {
-    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'jobs'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firestoreList: Job[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Job);
       });
-      firestoreList.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
-      setJobs(firestoreList);
-      localStorage.setItem('stock_manager_jobs_list', JSON.stringify(firestoreList));
+
+      const savedStr = localStorage.getItem('stock_manager_jobs_list');
+      const localList: Job[] = savedStr ? JSON.parse(savedStr) : [];
+
+      if (firestoreList.length > 0) {
+        firestoreList.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
+        setJobs(firestoreList);
+        localStorage.setItem('stock_manager_jobs_list', JSON.stringify(firestoreList));
+      } else {
+        if (localList.length > 0) {
+          localList.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
+          setJobs(localList);
+          uploadListToFirestoreInBatches('jobs', localList);
+        } else {
+          setJobs([]);
+          localStorage.setItem('stock_manager_jobs_list', JSON.stringify([]));
+        }
+      }
     }, (error) => {
       handleFirestoreError("Firestore jobs sync error", error);
       const saved = localStorage.getItem('stock_manager_jobs_list');
       setJobs(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser, isSyncComplete]);
+  }, []);
 
   // Sync employees from Firestore
   useEffect(() => {
-    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'employees'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firestoreList: Employee[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Employee);
       });
-      firestoreList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
-      setEmployees(firestoreList);
-      localStorage.setItem('stock_manager_employees_list', JSON.stringify(firestoreList));
+
+      const savedStr = localStorage.getItem('stock_manager_employees_list');
+      const localList: Employee[] = savedStr ? JSON.parse(savedStr) : [];
+
+      if (firestoreList.length > 0) {
+        const merged = firestoreList;
+        merged.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+        setEmployees(merged);
+        localStorage.setItem('stock_manager_employees_list', JSON.stringify(merged));
+      } else {
+        if (localList.length > 0) {
+          localList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+          setEmployees(localList);
+          uploadListToFirestoreInBatches('employees', localList);
+        } else {
+          setEmployees([]);
+          localStorage.setItem('stock_manager_employees_list', JSON.stringify([]));
+        }
+      }
     }, (error) => {
       handleFirestoreError("Firestore employees sync error", error);
       const saved = localStorage.getItem('stock_manager_employees_list');
       setEmployees(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser, isSyncComplete]);
+  }, []);
 
   // Sync brands from Firestore
   useEffect(() => {
-    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'brands'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firestoreList: Brand[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Brand);
       });
-      firestoreList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
-      setBrands(firestoreList);
-      localStorage.setItem('stock_manager_brands_list', JSON.stringify(firestoreList));
+
+      const savedStr = localStorage.getItem('stock_manager_brands_list');
+      const localList: Brand[] = savedStr ? JSON.parse(savedStr) : [];
+
+      if (firestoreList.length > 0) {
+        firestoreList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+        setBrands(firestoreList);
+        localStorage.setItem('stock_manager_brands_list', JSON.stringify(firestoreList));
+      } else {
+        if (localList.length > 0) {
+          localList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+          setBrands(localList);
+          uploadListToFirestoreInBatches('brands', localList);
+        } else {
+          setBrands([]);
+          localStorage.setItem('stock_manager_brands_list', JSON.stringify([]));
+        }
+      }
     }, (error) => {
       handleFirestoreError("Firestore brands sync error", error);
       const saved = localStorage.getItem('stock_manager_brands_list');
       setBrands(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser, isSyncComplete]);
+  }, []);
 
   // Sync job projects from Firestore
   useEffect(() => {
-    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'jobProjects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firestoreList: JobProject[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as JobProject);
       });
-      firestoreList.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
-      setJobProjects(firestoreList);
-      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(firestoreList));
+
+      const savedStr = localStorage.getItem('stock_manager_job_projects_list');
+      const localList: JobProject[] = savedStr ? JSON.parse(savedStr) : [];
+
+      if (firestoreList.length > 0) {
+        firestoreList.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
+        setJobProjects(firestoreList);
+        localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(firestoreList));
+      } else {
+        if (localList.length > 0) {
+          localList.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
+          setJobProjects(localList);
+          uploadListToFirestoreInBatches('jobProjects', localList);
+        } else {
+          setJobProjects([]);
+          localStorage.setItem('stock_manager_job_projects_list', JSON.stringify([]));
+        }
+      }
     }, (error) => {
       handleFirestoreError("Firestore jobProjects sync error", error);
       const saved = localStorage.getItem('stock_manager_job_projects_list');
       setJobProjects(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser, isSyncComplete]);
+  }, []);
 
   // Sync daily reports from Firestore
   useEffect(() => {
-    if (!currentUser || !isSyncComplete) return;
     const q = query(collection(db, 'dailyReports'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const firestoreList: DailyReport[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as DailyReport);
       });
-      firestoreList.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-      setDailyReports(firestoreList);
-      localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(firestoreList));
+
+      const savedStr = localStorage.getItem('stock_manager_daily_reports_list');
+      const localList: DailyReport[] = savedStr ? JSON.parse(savedStr) : [];
+
+      if (firestoreList.length > 0) {
+        firestoreList.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        setDailyReports(firestoreList);
+        localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(firestoreList));
+      } else {
+        if (localList.length > 0) {
+          localList.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          setDailyReports(localList);
+          uploadListToFirestoreInBatches('dailyReports', localList);
+        } else {
+          setDailyReports([]);
+          localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify([]));
+        }
+      }
     }, (error) => {
       handleFirestoreError("Firestore dailyReports sync error", error);
       const saved = localStorage.getItem('stock_manager_daily_reports_list');
       setDailyReports(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, [currentUser, isSyncComplete]);
+  }, []);
 
 
 
@@ -2453,6 +2687,12 @@ export default function App() {
             onNavigateToTab={setCurrentTab}
             onSetStatusFilter={setStatusFilter}
             userCount={userRoles.length}
+            isQuotaExceeded={isQuotaExceeded}
+            lastDbSyncTime={lastDbSyncTime}
+            onSaveAllToDatabase={handleSaveAllToDatabase}
+            onPullFreshFromDatabase={() => handlePullFreshFromDatabase(true)}
+            isSavingAllToDb={isSavingAllToDb}
+            isPullingFreshDb={isPullingFreshDb}
           />
         );
       case 'products':
@@ -2594,6 +2834,7 @@ export default function App() {
         return (
           <UserManagementView
             userRoles={userRoles}
+            employees={employees}
             currentUserEmail={currentUser ? currentUser.email : null}
             onUpdateUserRole={async (uid, role) => {
               await updateDoc(doc(db, 'user_roles', uid), { role });
@@ -2644,18 +2885,18 @@ export default function App() {
               if (newData.activities) setActivities(newData.activities);
               if (newData.userRoles) setUserRoles(newData.userRoles);
 
-              // Sync updated lists to Firestore in batches
+              // Sync updated lists to Firestore in batches with deletion cleanup so all signed-in IDs see identical data
               await Promise.all([
-                uploadListToFirestoreInBatches('products', newData.products),
-                uploadListToFirestoreInBatches('categories', newData.categories),
-                uploadListToFirestoreInBatches('boms', newData.boms),
-                uploadListToFirestoreInBatches('projects', newData.projects),
-                uploadListToFirestoreInBatches('jobs', newData.jobs),
-                uploadListToFirestoreInBatches('employees', newData.employees),
-                uploadListToFirestoreInBatches('brands', newData.brands),
-                uploadListToFirestoreInBatches('dailyReports', newData.dailyReports),
-                uploadListToFirestoreInBatches('activities', newData.activities),
-                uploadListToFirestoreInBatches('user_roles', newData.userRoles)
+                uploadListToFirestoreInBatches('products', newData.products || [], true),
+                uploadListToFirestoreInBatches('categories', newData.categories || [], true),
+                uploadListToFirestoreInBatches('boms', newData.boms || [], true),
+                uploadListToFirestoreInBatches('projects', newData.projects || [], true),
+                uploadListToFirestoreInBatches('jobs', newData.jobs || [], true),
+                uploadListToFirestoreInBatches('employees', newData.employees || [], true),
+                uploadListToFirestoreInBatches('brands', newData.brands || [], true),
+                uploadListToFirestoreInBatches('dailyReports', newData.dailyReports || [], true),
+                uploadListToFirestoreInBatches('activities', newData.activities || [], true),
+                uploadListToFirestoreInBatches('user_roles', newData.userRoles || [], true)
               ]);
             }}
             addToast={addToast}
@@ -2826,26 +3067,8 @@ export default function App() {
   const handleSignOut = async () => {
     try {
       window.localStorage.removeItem('stock_manager_is_offline');
-      
-      // Clear central keys on logout to prevent cross-account pollution
-      const canonicalKeys = [
-        'stock_manager_products',
-        'stock_manager_categories',
-        'stock_manager_activities',
-        'stock_manager_boms',
-        'stock_manager_projects_list',
-        'stock_manager_jobs_list',
-        'stock_manager_employees_list',
-        'stock_manager_brands_list',
-        'stock_manager_job_projects_list',
-        'stock_manager_daily_reports_list',
-        'stock_manager_orders_list',
-        'stock_manager_cart'
-      ];
-      canonicalKeys.forEach(key => {
-        window.localStorage.removeItem(key);
-      });
       window.localStorage.removeItem('admin_email');
+      window.localStorage.removeItem('stock_manager_cart');
 
       await signOut(auth);
       addToast('info', 'ออกจากระบบเรียบร้อย', 'เซสชันการเข้าใช้งานคลังถูกปิดเรียบร้อยแล้ว');
@@ -3483,10 +3706,9 @@ export default function App() {
         )}
 
         {/* TOP STATUS BAR (DESKTOP HEADER INSET) */}
-        <header className="hidden md:flex items-center justify-between pb-6 mb-4 border-b border-slate-200/60 dark:border-slate-800">
+        <header className="hidden md:flex items-center justify-between pb-0 mb-4 border-b border-slate-200/60 dark:border-slate-800">
           <div>
             <h1 className="text-xl font-bold font-sans text-slate-800 dark:text-slate-100">ระบบจัดการคลังสินค้าอัจฉริยะ</h1>
-            <p className="text-xs text-slate-400 dark:text-slate-500 font-sans mt-0.5">คลังข้อมูลระบบบริหารสต็อกสินค้าแบบเรียลไทม์</p>
           </div>
 
           <div className="flex items-center gap-3 relative">
@@ -3521,15 +3743,6 @@ export default function App() {
                 <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 <span>Google Sheets</span>
               </button>
-              {lastDbSyncTime && (
-                <div 
-                  className="hidden xl:flex items-center gap-1.5 px-3 py-2 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl text-[11px] text-slate-600 dark:text-slate-300 font-medium select-none"
-                  title="เวลาที่มีการบันทึกข้อมูลเข้า Database หลักล่าสุด"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span>อัปเดตล่าสุด: <strong className="font-mono font-bold text-slate-800 dark:text-slate-100">{lastDbSyncTime}</strong></span>
-                </div>
-              )}
             </div>
 
 
@@ -3637,6 +3850,14 @@ export default function App() {
 
         {/* CORE WORKSPACE VIEW */}
         <div className="animate-in fade-in duration-300">
+          <DatabaseStatusBar
+            isQuotaExceeded={isQuotaExceeded}
+            lastDbSyncTime={lastDbSyncTime}
+            onSaveAllToDatabase={handleSaveAllToDatabase}
+            onPullFreshFromDatabase={() => handlePullFreshFromDatabase(true)}
+            isSavingAllToDb={isSavingAllToDb}
+            isPullingFreshDb={isPullingFreshDb}
+          />
           {renderTabContent()}
         </div>
 
