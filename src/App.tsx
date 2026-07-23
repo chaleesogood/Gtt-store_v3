@@ -328,125 +328,93 @@ export default function App() {
       const localJobProjects: JobProject[] = JSON.parse(localStorage.getItem('stock_manager_job_projects_list') || '[]');
       const localDailyReports: DailyReport[] = JSON.parse(localStorage.getItem('stock_manager_daily_reports_list') || '[]');
 
-      // For Products
-      let finalProds: Product[];
-      if (freshProducts.length > 0) {
-        finalProds = freshProducts;
-      } else {
-        finalProds = localProducts.length > 0 ? localProducts : INITIAL_PRODUCTS;
-        uploadListToFirestoreInBatches('products', finalProds);
+      // Merge Products: combine fresh Firestore products with local products, uploading missing items
+      const localProdsSource = localProducts.length > 0 ? localProducts : INITIAL_PRODUCTS;
+      const { merged: finalProds, missingFromPrimary: missingProds } = mergeListsById(freshProducts, localProdsSource);
+      if (missingProds.length > 0) {
+        uploadListToFirestoreInBatches('products', missingProds);
       }
       const sortedProds = sortProducts(finalProds);
       setProducts(sortedProds);
       localStorage.setItem('stock_manager_products', JSON.stringify(sortedProds));
 
-      let finalCats: Category[];
-      if (freshCategories.length > 0) {
-        finalCats = freshCategories;
-      } else {
-        finalCats = localCategories.length > 0 ? localCategories : INITIAL_CATEGORIES;
-        uploadListToFirestoreInBatches('categories', finalCats);
+      // Merge Categories
+      const localCatsSource = localCategories.length > 0 ? localCategories : INITIAL_CATEGORIES;
+      const { merged: finalCats, missingFromPrimary: missingCats } = mergeListsById(freshCategories, localCatsSource);
+      if (missingCats.length > 0) {
+        uploadListToFirestoreInBatches('categories', missingCats);
       }
       setCategories(finalCats);
       localStorage.setItem('stock_manager_categories', JSON.stringify(finalCats));
 
-      let finalActs: StockActivity[];
-      if (freshActivities.length > 0) {
-        finalActs = freshActivities;
-      } else {
-        finalActs = localActivities.length > 0 ? localActivities : INITIAL_ACTIVITIES;
-        uploadListToFirestoreInBatches('activities', finalActs);
+      // Merge Activities
+      const localActsSource = localActivities.length > 0 ? localActivities : INITIAL_ACTIVITIES;
+      const { merged: finalActs, missingFromPrimary: missingActs } = mergeListsById(freshActivities, localActsSource);
+      if (missingActs.length > 0) {
+        uploadListToFirestoreInBatches('activities', missingActs);
       }
       finalActs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
       setActivities(finalActs);
       localStorage.setItem('stock_manager_activities', JSON.stringify(finalActs));
 
-      let finalBoms: Bom[];
-      if (freshBoms.length > 0) {
-        finalBoms = freshBoms;
-      } else {
-        finalBoms = localBoms;
-        if (finalBoms.length > 0) {
-          uploadListToFirestoreInBatches('boms', finalBoms);
-        }
+      // Merge BOMs
+      const { merged: finalBoms, missingFromPrimary: missingBoms } = mergeListsById(freshBoms, localBoms);
+      if (missingBoms.length > 0) {
+        uploadListToFirestoreInBatches('boms', missingBoms);
       }
       finalBoms.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
       setBoms(finalBoms);
       localStorage.setItem('stock_manager_boms', JSON.stringify(finalBoms));
 
-      let finalProjects: Project[];
-      if (freshProjects.length > 0) {
-        finalProjects = freshProjects;
-      } else {
-        finalProjects = localProjects;
-        if (finalProjects.length > 0) {
-          uploadListToFirestoreInBatches('projects', finalProjects);
-        }
+      // Merge Projects
+      const { merged: finalProjects, missingFromPrimary: missingProjects } = mergeListsById(freshProjects, localProjects);
+      if (missingProjects.length > 0) {
+        uploadListToFirestoreInBatches('projects', missingProjects);
       }
       finalProjects.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
       setProjects(finalProjects);
       localStorage.setItem('stock_manager_projects_list', JSON.stringify(finalProjects));
 
-      let finalJobs: Job[];
-      if (freshJobs.length > 0) {
-        finalJobs = freshJobs;
-      } else {
-        finalJobs = localJobs;
-        if (finalJobs.length > 0) {
-          uploadListToFirestoreInBatches('jobs', finalJobs);
-        }
+      // Merge Jobs
+      const { merged: finalJobs, missingFromPrimary: missingJobs } = mergeListsById(freshJobs, localJobs);
+      if (missingJobs.length > 0) {
+        uploadListToFirestoreInBatches('jobs', missingJobs);
       }
       finalJobs.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
       setJobs(finalJobs);
       localStorage.setItem('stock_manager_jobs_list', JSON.stringify(finalJobs));
 
-      let finalEmployees: Employee[];
-      if (freshEmployees.length > 0) {
-        finalEmployees = freshEmployees;
-      } else {
-        finalEmployees = localEmployees;
-        if (finalEmployees.length > 0) {
-          uploadListToFirestoreInBatches('employees', finalEmployees);
-        }
+      // Merge Employees
+      const { merged: finalEmployees, missingFromPrimary: missingEmployees } = mergeListsById(freshEmployees, localEmployees);
+      if (missingEmployees.length > 0) {
+        uploadListToFirestoreInBatches('employees', missingEmployees);
       }
       finalEmployees.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
       setEmployees(finalEmployees);
       localStorage.setItem('stock_manager_employees_list', JSON.stringify(finalEmployees));
 
-      let finalBrands: Brand[];
-      if (freshBrands.length > 0) {
-        finalBrands = freshBrands;
-      } else {
-        finalBrands = localBrands;
-        if (finalBrands.length > 0) {
-          uploadListToFirestoreInBatches('brands', finalBrands);
-        }
+      // Merge Brands
+      const { merged: finalBrands, missingFromPrimary: missingBrands } = mergeListsById(freshBrands, localBrands);
+      if (missingBrands.length > 0) {
+        uploadListToFirestoreInBatches('brands', missingBrands);
       }
       finalBrands.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
       setBrands(finalBrands);
       localStorage.setItem('stock_manager_brands_list', JSON.stringify(finalBrands));
 
-      let finalJobProjects: JobProject[];
-      if (freshJobProjects.length > 0) {
-        finalJobProjects = freshJobProjects;
-      } else {
-        finalJobProjects = localJobProjects;
-        if (finalJobProjects.length > 0) {
-          uploadListToFirestoreInBatches('jobProjects', finalJobProjects);
-        }
+      // Merge JobProjects
+      const { merged: finalJobProjects, missingFromPrimary: missingJobProjects } = mergeListsById(freshJobProjects, localJobProjects);
+      if (missingJobProjects.length > 0) {
+        uploadListToFirestoreInBatches('jobProjects', missingJobProjects);
       }
       finalJobProjects.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
       setJobProjects(finalJobProjects);
       localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(finalJobProjects));
 
-      let finalDailyReports: DailyReport[];
-      if (freshDailyReports.length > 0) {
-        finalDailyReports = freshDailyReports;
-      } else {
-        finalDailyReports = localDailyReports;
-        if (finalDailyReports.length > 0) {
-          uploadListToFirestoreInBatches('dailyReports', finalDailyReports);
-        }
+      // Merge DailyReports
+      const { merged: finalDailyReports, missingFromPrimary: missingDailyReports } = mergeListsById(freshDailyReports, localDailyReports);
+      if (missingDailyReports.length > 0) {
+        uploadListToFirestoreInBatches('dailyReports', missingDailyReports);
       }
       finalDailyReports.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       setDailyReports(finalDailyReports);
@@ -691,10 +659,11 @@ export default function App() {
         // Fetch/Listen to this user's specific role in 'user_roles'
         const userRoleRef = doc(db, 'user_roles', user.uid);
         unsubscribeRole = onSnapshot(userRoleRef, async (docSnap) => {
-          const isDeveloper = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
+          const userEmailClean = (user.email || '').trim().toLowerCase();
+          const isDeveloper = ['chaleesogood@gmail.com', 'chalee@gtt2013.com'].includes(userEmailClean);
           if (docSnap.exists()) {
             const data = docSnap.data() as UserRole;
-            setCurrentUserRole(isDeveloper ? 'admin' : data.role);
+            setCurrentUserRole(isDeveloper ? 'admin' : (data.role || 'user'));
           } else {
             // Document doesn't exist, let's check if there is an existing role record with the same email!
             try {
@@ -705,7 +674,7 @@ export default function App() {
               
               querySnapshot.forEach((docSnap) => {
                 const data = docSnap.data() as UserRole;
-                if (data.email && data.email.toLowerCase() === user.email?.toLowerCase()) {
+                if (data.email && data.email.trim().toLowerCase() === userEmailClean) {
                   existingRoleRecord = data;
                   existingDocId = docSnap.id;
                 }
@@ -717,7 +686,7 @@ export default function App() {
                   uid: user.uid,
                   email: user.email || '',
                   displayName: user.displayName || (existingRoleRecord as UserRole).displayName || user.email?.split('@')[0] || 'Unknown User',
-                  role: (existingRoleRecord as UserRole).role,
+                  role: isDeveloper ? 'admin' : ((existingRoleRecord as UserRole).role || 'user'),
                   createdAt: (existingRoleRecord as UserRole).createdAt || new Date().toISOString()
                 };
                 
@@ -731,8 +700,7 @@ export default function App() {
                 setCurrentUserRole(newRoleRecord.role);
               } else {
                 // Document doesn't exist, let's create a default role record!
-                const isDefaultAdmin = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
-                const defaultRole: 'admin' | 'editor' | 'user' = isDefaultAdmin ? 'admin' : 'user';
+                const defaultRole: 'admin' | 'editor' | 'user' = isDeveloper ? 'admin' : 'user';
                 
                 const newRoleRecord: UserRole = {
                   uid: user.uid,
@@ -748,8 +716,7 @@ export default function App() {
             } catch (err) {
               console.error("Error looking up existing user role by email:", err);
               // Fallback to default role record!
-              const isDefaultAdmin = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
-              const defaultRole: 'admin' | 'editor' | 'user' = isDefaultAdmin ? 'admin' : 'user';
+              const defaultRole: 'admin' | 'editor' | 'user' = isDeveloper ? 'admin' : 'user';
               
               const newRoleRecord: UserRole = {
                 uid: user.uid,
@@ -771,7 +738,9 @@ export default function App() {
           setAuthLoading(false);
         }, (error) => {
           console.error("Error listening to user role:", error);
-          setCurrentUserRole((user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com') ? 'admin' : 'user');
+          const userEmailClean = (user.email || '').trim().toLowerCase();
+          const isDeveloper = ['chaleesogood@gmail.com', 'chalee@gtt2013.com'].includes(userEmailClean);
+          setCurrentUserRole(isDeveloper ? 'admin' : 'user');
           setAuthLoading(false);
         });
       } else {
@@ -881,7 +850,7 @@ export default function App() {
     }
   }, [currentUser, currentUserRole]);
 
-  // Online Presence Heartbeat
+  // Online Presence Status (Updated on login/session mount and exit)
   useEffect(() => {
     if (!currentUser?.uid) return;
 
@@ -906,10 +875,6 @@ export default function App() {
 
     updatePresence(true);
 
-    const intervalId = setInterval(() => {
-      updatePresence(true);
-    }, 40000);
-
     const handleBeforeUnload = () => {
       updatePresence(false);
     };
@@ -917,7 +882,6 @@ export default function App() {
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
-      clearInterval(intervalId);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [currentUser?.uid, currentUser?.email, currentUser?.displayName]);
@@ -2885,11 +2849,11 @@ export default function App() {
             }}
             onAddUserRole={async (userData) => {
               const tempUid = userData.uid || `pre_${Date.now()}`;
-              await setDoc(doc(db, 'user_roles', tempUid), {
+              await setDoc(doc(db, 'user_roles', tempUid), cleanUndefined({
                 ...userData,
                 uid: tempUid,
                 createdAt: new Date().toISOString()
-              });
+              }));
             }}
             onDeleteUserRole={async (uid) => {
               await deleteDoc(doc(db, 'user_roles', uid));

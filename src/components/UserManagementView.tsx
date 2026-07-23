@@ -649,10 +649,29 @@ export default function UserManagementView({
         {/* User Table / List */}
         <div className="overflow-x-auto">
           {filteredUsers.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 dark:text-slate-500 font-sans">
-              <UserCheck className="h-12 w-12 mx-auto text-slate-300 dark:text-slate-700 mb-3 animate-bounce" />
-              <p className="text-sm font-semibold">ไม่พบข้อมูลรายชื่อผู้ใช้งาน</p>
-              <p className="text-xs mt-1">ลองเปลี่ยนคำค้นหาใหม่อีกครั้ง</p>
+            <div className="p-12 text-center text-slate-400 dark:text-slate-500 font-sans space-y-3">
+              <UserCheck className="h-12 w-12 mx-auto text-slate-300 dark:text-slate-700 mb-1 animate-bounce" />
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                ไม่พบข้อมูลรายชื่อผู้ใช้งาน{searchQuery ? ` ที่ตรงกับ "${searchQuery}"` : ''}
+              </p>
+              <p className="text-xs text-slate-400">
+                {searchQuery ? 'หากเป็นผู้ใช้งานใหม่ ท่านสามารถเพิ่มอีเมลเพื่อกำหนดสิทธิ์การใช้งานได้ทันที' : 'ลองเปลี่ยนคำค้นหาหรือตัวกรองใหม่อีกครั้ง'}
+              </p>
+              {searchQuery && searchQuery.trim().includes('@') && (
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      setAddEmail(searchQuery.trim());
+                      setAddDisplayName(searchQuery.split('@')[0]);
+                      setIsAddModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm rounded-2xl cursor-pointer shadow-sm shadow-indigo-600/20 transition-all font-sans"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    <span>เพิ่มอีเมล "{searchQuery.trim()}" เป็นผู้ใช้งานใหม่</span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <table className="w-full text-left border-collapse font-sans text-xs sm:text-sm">
@@ -668,9 +687,11 @@ export default function UserManagementView({
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                 {filteredUsers.map((user) => {
-                  const isSelf = user.email === currentUserEmail;
-                  const isDeveloper = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
-                  const isPreRegistered = user.uid.startsWith('pre_');
+                  const userEmail = user.email || '';
+                  const isSelf = !!userEmail && !!currentUserEmail && userEmail.toLowerCase() === currentUserEmail.toLowerCase();
+                  const isDeveloper = userEmail.toLowerCase() === 'chaleesogood@gmail.com' || userEmail.toLowerCase() === 'chalee@gtt2013.com';
+                  const isPreRegistered = (user.uid || '').startsWith('pre_');
+                  const isNewUser = user.createdAt && !isNaN(new Date(user.createdAt).getTime()) && (Date.now() - new Date(user.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1000);
                   
                   return (
                     <tr 
@@ -689,7 +710,7 @@ export default function UserManagementView({
                                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50'
                                 : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900/50'
                           }`}>
-                            {user.displayName ? user.displayName.substring(0, 2) : user.email.substring(0, 2)}
+                            {user.displayName ? user.displayName.substring(0, 2) : (userEmail ? userEmail.substring(0, 2) : 'U')}
                           </div>
                           <div>
                             <span className="font-bold text-slate-800 dark:text-slate-200 flex flex-wrap items-center gap-1.5">
@@ -703,6 +724,12 @@ export default function UserManagementView({
                                 <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px] font-black py-0.5 px-2 rounded-lg border border-amber-500/20 flex items-center gap-0.5">
                                   <Crown className="h-2.5 w-2.5" />
                                   DEVELOPER
+                                </span>
+                              )}
+                              {isNewUser && !isDeveloper && (
+                                <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px] font-black py-0.5 px-2 rounded-lg border border-amber-500/20 flex items-center gap-0.5">
+                                  <Sparkles className="h-2.5 w-2.5 text-amber-500" />
+                                  NEW
                                 </span>
                               )}
                               {isPreRegistered && (
@@ -722,7 +749,7 @@ export default function UserManagementView({
                       <td className="py-4 px-5 font-mono text-slate-600 dark:text-slate-300">
                         <div className="flex items-center gap-1.5">
                           <Mail className="h-3.5 w-3.5 text-slate-400" />
-                          <span>{user.email}</span>
+                          <span>{userEmail || 'ไม่มีข้อมูลอีเมล'}</span>
                         </div>
                       </td>
 
