@@ -21,7 +21,10 @@ import {
   Wifi,
   WifiOff,
   Radio,
-  Activity
+  Activity,
+  Copy,
+  Fingerprint,
+  Hash
 } from 'lucide-react';
 
 interface UserManagementViewProps {
@@ -58,6 +61,7 @@ export default function UserManagementView({
   const [editingUser, setEditingUser] = useState<UserRole | null>(null);
 
   // Form states for Add
+  const [addUid, setAddUid] = useState('');
   const [addEmail, setAddEmail] = useState('');
   const [addDisplayName, setAddDisplayName] = useState('');
   const [addRole, setAddRole] = useState<'admin' | 'editor' | 'user'>('user');
@@ -231,6 +235,7 @@ export default function UserManagementView({
       const displayName = addDisplayName.trim() || email.split('@')[0];
       
       await onAddUserRole({
+        uid: addUid.trim() || undefined,
         email,
         displayName,
         role: addRole,
@@ -240,6 +245,7 @@ export default function UserManagementView({
       addToast('success', 'เพิ่มสิทธิ์ผู้ใช้สำเร็จ', `กำหนดสิทธิ์ล่วงหน้าให้ ${email} เป็นสิทธิ์ ${addRole === 'admin' ? 'Admin' : 'User'} เรียบร้อยแล้ว`);
       
       // Reset form & close
+      setAddUid('');
       setAddEmail('');
       setAddDisplayName('');
       setAddRole('user');
@@ -881,6 +887,7 @@ export default function UserManagementView({
               <thead>
                 <tr className="bg-slate-50/50 dark:bg-slate-950/40 text-slate-400 dark:text-slate-500 font-bold border-b border-slate-100 dark:border-slate-800/80">
                   <th className="py-3 px-5">ผู้ใช้งาน (User)</th>
+                  <th className="py-3 px-5">รหัส UID (UID Code)</th>
                   <th className="py-3 px-5">อีเมล (Email)</th>
                   <th className="py-3 px-5">บทบาท (Role)</th>
                   <th className="py-3 px-5">สถานะการยืนยัน (Activation)</th>
@@ -967,6 +974,28 @@ export default function UserManagementView({
                               UID: {user.uid}
                             </span>
                           </div>
+                        </div>
+                      </td>
+
+                      {/* UID */}
+                      <td className="py-4 px-5 font-mono text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-800 font-bold font-mono text-[11px] select-all max-w-[140px] truncate" title={user.uid || 'ไม่มี UID'}>
+                            {user.uid || 'N/A'}
+                          </span>
+                          {user.uid && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(user.uid);
+                                addToast('info', 'คัดลอก UID แล้ว', `คัดลอกรหัส UID (${user.uid}) เรียบร้อยแล้ว`);
+                              }}
+                              className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                              title="คัดลอกรหัส UID"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
 
@@ -1418,6 +1447,33 @@ export default function UserManagementView({
               </div>
 
               <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Fingerprint className="h-4 w-4 text-indigo-500" />
+                    <span>รหัสระบุตัวตน (UID Code)</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal">(เว้นว่างได้ เพื่อให้ระบบสุ่มให้อัตโนมัติ)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={addUid}
+                    onChange={(e) => setAddUid(e.target.value)}
+                    placeholder="เช่น pre_user123 (หรือปล่อยว่างอัตโนมัติ)"
+                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl font-mono text-xs focus:outline-hidden focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 text-slate-800 dark:text-slate-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAddUid(`pre_${Math.random().toString(36).substring(2, 10)}_${Date.now().toString().slice(-4)}`)}
+                    className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-all cursor-pointer shrink-0 border border-slate-200 dark:border-slate-700"
+                    title="สุ่มรหัส UID ล่วงหน้า"
+                  >
+                    สุ่ม UID
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
                 <label className="font-bold text-slate-700 dark:text-slate-300">
                   ระดับสิทธิ์การเข้าใช้งาน (Role)
                 </label>
@@ -1551,6 +1607,38 @@ export default function UserManagementView({
 
             {/* Form */}
             <form onSubmit={handleEditUserSubmit} className="p-5 space-y-4 font-sans text-xs sm:text-sm">
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Fingerprint className="h-4 w-4 text-indigo-500" />
+                    <span>รหัสระบุตัวตนประจำบัญชี (UID Code)</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal">(รหัสประจำตัวสร้างจากระบบ)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={editingUser?.uid || ''}
+                    className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl font-mono text-slate-700 dark:text-slate-300 text-xs font-bold select-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editingUser?.uid) {
+                        navigator.clipboard.writeText(editingUser.uid);
+                        addToast('info', 'คัดลอก UID แล้ว', `คัดลอกรหัส UID (${editingUser.uid}) เรียบร้อยแล้ว`);
+                      }
+                    }}
+                    className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer border border-indigo-200 dark:border-indigo-800/60 shrink-0"
+                    title="คัดลอก UID"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    <span>คัดลอก</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <span>อีเมลผู้ใช้งาน (Email)</span>

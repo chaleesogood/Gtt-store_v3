@@ -16,7 +16,7 @@ import { CatalogView } from './components/CatalogView';
 import UserManagementView from './components/UserManagementView';
 import { GoogleSheetsView } from './components/GoogleSheetsView';
 import DatabaseStatusBar from './components/DatabaseStatusBar';
-import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles, Database, CloudUpload, RefreshCw, FileSpreadsheet, Clock, Lock, Mail, LogOut, Loader2, UserCheck, UserPlus } from 'lucide-react';
+import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles, Database, CloudUpload, RefreshCw, FileSpreadsheet, Clock, Lock, Mail, LogOut, Loader2, UserCheck, UserPlus, Copy, Fingerprint } from 'lucide-react';
 import { collection, doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs, getDocsFromServer } from 'firebase/firestore';
 import { db, cleanUndefined, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from './firebase';
 import { UserRole } from './types';
@@ -3426,7 +3426,32 @@ export default function App() {
           )}
 
           {/* User Account Info Card */}
-          <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-2 font-sans text-xs">
+          <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-2.5 font-sans text-xs">
+            <div className="flex justify-between items-center text-slate-400 pb-2 border-b border-slate-800/80">
+              <span className="flex items-center gap-1">
+                <Fingerprint className="h-3.5 w-3.5 text-indigo-400" />
+                <span>รหัส UID ประจำบัญชี:</span>
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-amber-400 font-mono text-[11px] select-all bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                  {currentUser.uid}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (currentUser?.uid) {
+                      navigator.clipboard.writeText(currentUser.uid);
+                      addToast('info', 'คัดลอก UID แล้ว', `คัดลอกรหัส UID (${currentUser.uid}) เรียบร้อยแล้ว`);
+                    }
+                  }}
+                  className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded transition-colors cursor-pointer"
+                  title="คัดลอกรหัส UID เพื่อส่งให้ผู้ดูแลระบบ"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
             <div className="flex justify-between items-center text-slate-400">
               <span>บัญชีผู้ใช้ (Email):</span>
               <span className="font-bold text-white font-mono">{currentUser.email}</span>
@@ -3902,9 +3927,23 @@ export default function App() {
         )}
 
         {/* TOP STATUS BAR (DESKTOP HEADER INSET) */}
-        <header className="hidden md:flex items-center justify-between pb-0 mb-4 border-b border-slate-200/60 dark:border-slate-800">
+        <header className="hidden md:flex items-center justify-between pb-3 mb-4 border-b border-slate-200/60 dark:border-slate-800">
           <div>
             <h1 className="text-xl font-bold font-sans text-slate-800 dark:text-slate-100">ระบบจัดการคลังสินค้าอัจฉริยะ</h1>
+            <div className="flex items-center gap-2 mt-1.5 text-[11px] font-sans flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
+                <span>localhost / Dev Runtime</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                <span>Dev Database (Sandbox)</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Production Database (Cloud Firestore)</span>
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-3 relative">
