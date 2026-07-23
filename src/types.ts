@@ -240,6 +240,7 @@ export interface UserRole {
   photoURL?: string;
   provider?: string; // e.g. 'google', 'password', 'pre-registered'
   role: 'admin' | 'editor' | 'user'; // admin = Full Control; editor = Add, Edit, View; user = View, Add, Edit but CANNOT delete
+  status?: 'active' | 'pending' | 'disabled'; // active = approved to use app; pending = waiting for admin activation; disabled = account suspended
   createdAt: string;
   lastSeen?: string;
   isOnline?: boolean;

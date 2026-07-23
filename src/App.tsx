@@ -16,8 +16,8 @@ import { CatalogView } from './components/CatalogView';
 import UserManagementView from './components/UserManagementView';
 import { GoogleSheetsView } from './components/GoogleSheetsView';
 import DatabaseStatusBar from './components/DatabaseStatusBar';
-import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles, Database, CloudUpload, RefreshCw, FileSpreadsheet } from 'lucide-react';
-import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs, getDocsFromServer } from 'firebase/firestore';
+import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles, Database, CloudUpload, RefreshCw, FileSpreadsheet, Clock, Lock, Mail, LogOut, Loader2, UserCheck, UserPlus } from 'lucide-react';
+import { collection, doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs, getDocsFromServer } from 'firebase/firestore';
 import { db, cleanUndefined, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from './firebase';
 import { UserRole } from './types';
 
@@ -46,6 +46,8 @@ export default function App() {
   // Real Firebase Auth states (Declared first for shadowed localStorage)
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'editor' | 'user'>('user');
+  const [currentUserStatus, setCurrentUserStatus] = useState<'active' | 'pending' | 'disabled'>('active');
+  const [isCheckingActivation, setIsCheckingActivation] = useState<boolean>(false);
 
   // Delegate to global window.localStorage which is patched for QuotaExceededError and multi-account cache isolation
   const localStorage = window.localStorage;
@@ -667,6 +669,7 @@ export default function App() {
           if (docSnap.exists()) {
             const data = docSnap.data() as UserRole;
             setCurrentUserRole(isDeveloper ? 'admin' : (data.role || 'user'));
+            setCurrentUserStatus(isDeveloper ? 'active' : (data.status || 'active'));
 
             // Auto-sync Google Sign-in metadata (displayName, photoURL, provider) if missing or updated
             if (isGoogleUser || user.displayName || user.photoURL) {
@@ -719,6 +722,7 @@ export default function App() {
                   photoURL: user.photoURL || (existingRoleRecord as UserRole).photoURL || '',
                   provider: authProvider,
                   role: isDeveloper ? 'admin' : ((existingRoleRecord as UserRole).role || 'user'),
+                  status: isDeveloper ? 'active' : ((existingRoleRecord as UserRole).status || 'active'),
                   createdAt: (existingRoleRecord as UserRole).createdAt || new Date().toISOString()
                 };
                 
@@ -730,9 +734,11 @@ export default function App() {
                 }
                 
                 setCurrentUserRole(newRoleRecord.role);
+                setCurrentUserStatus(newRoleRecord.status || 'active');
               } else {
                 // Document doesn't exist, let's create a default role record!
                 const defaultRole: 'admin' | 'editor' | 'user' = isDeveloper ? 'admin' : 'user';
+                const defaultStatus: 'active' | 'pending' = isDeveloper ? 'active' : 'pending';
                 
                 const newRoleRecord: UserRole = {
                   uid: user.uid,
@@ -741,16 +747,19 @@ export default function App() {
                   photoURL: user.photoURL || '',
                   provider: authProvider,
                   role: defaultRole,
+                  status: defaultStatus,
                   createdAt: new Date().toISOString()
                 };
                 
                 await setDoc(userRoleRef, cleanUndefined(newRoleRecord));
                 setCurrentUserRole(defaultRole);
+                setCurrentUserStatus(defaultStatus);
               }
             } catch (err) {
               console.error("Error looking up existing user role by email:", err);
               // Fallback to default role record!
               const defaultRole: 'admin' | 'editor' | 'user' = isDeveloper ? 'admin' : 'user';
+              const defaultStatus: 'active' | 'pending' = isDeveloper ? 'active' : 'pending';
               
               const newRoleRecord: UserRole = {
                 uid: user.uid,
@@ -759,15 +768,18 @@ export default function App() {
                 photoURL: user.photoURL || '',
                 provider: authProvider,
                 role: defaultRole,
+                status: defaultStatus,
                 createdAt: new Date().toISOString()
               };
               
               try {
                 await setDoc(userRoleRef, cleanUndefined(newRoleRecord));
                 setCurrentUserRole(defaultRole);
+                setCurrentUserStatus(defaultStatus);
               } catch (setErr) {
                 console.error("Error creating fallback user role record:", setErr);
                 setCurrentUserRole(defaultRole);
+                setCurrentUserStatus(defaultStatus);
               }
             }
           }
@@ -777,6 +789,7 @@ export default function App() {
           const userEmailClean = (user.email || '').trim().toLowerCase();
           const isDeveloper = ['chaleesogood@gmail.com', 'chalee@gtt2013.com'].includes(userEmailClean);
           setCurrentUserRole(isDeveloper ? 'admin' : 'user');
+          setCurrentUserStatus(isDeveloper ? 'active' : 'pending');
           setAuthLoading(false);
         });
       } else {
@@ -3043,6 +3056,7 @@ export default function App() {
             email,
             displayName,
             role: defaultRole,
+            status: isDefaultAdmin ? 'active' : 'pending',
             createdAt: new Date().toISOString()
           };
           
@@ -3359,6 +3373,147 @@ export default function App() {
           </p>
         </div>
         {/* Toast notifications container during login */}
+        <div className="fixed bottom-5 right-5 space-y-3 z-50 flex flex-col items-end">
+          {toasts.map((toast) => (
+            <Toast key={toast.id} toast={toast} onClose={removeToast} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const userEmailClean = (currentUser?.email || '').trim().toLowerCase();
+  const isDeveloperUser = ['chaleesogood@gmail.com', 'chalee@gtt2013.com'].includes(userEmailClean);
+
+  if (!isDeveloperUser && currentUserStatus !== 'active') {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4 antialiased selection:bg-amber-500/30">
+        <div className="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 animate-in fade-in zoom-in-95 duration-300">
+          <div className="text-center space-y-3">
+            <div className="flex justify-center">
+              <Logo className="h-16 w-16 text-indigo-500" size={64} />
+            </div>
+            <div className="space-y-1">
+              <h1 className="text-xl font-black text-white font-sans tracking-wide">GTT EE STORE PLATFORM</h1>
+              <p className="text-xs text-amber-400 font-mono tracking-widest uppercase">
+                {currentUserStatus === 'disabled' ? '🚫 บัญชีถูกระงับการใช้งาน (Account Suspended)' : '⏳ รอการอนุมัติสิทธิ์เข้าใช้งาน (Pending Activation)'}
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-800/80 my-2"></div>
+
+          {currentUserStatus === 'disabled' ? (
+            <div className="p-4 bg-rose-950/40 border border-rose-800/80 rounded-2xl text-xs space-y-2 text-slate-200">
+              <div className="flex items-center gap-2 font-bold text-rose-400">
+                <AlertTriangle className="h-4.5 w-4.5 shrink-0" />
+                <span>บัญชีของคุณถูกระงับการใช้งานชั่วคราว</span>
+              </div>
+              <p className="text-slate-300 leading-relaxed font-sans">
+                ผู้ดูแลระบบ (Admin) ได้ทำการปิดกั้นหรือระงับสิทธิ์การเข้าใช้งานบัญชีนี้ในระบบ หากคิดว่าเกิดจากความผิดพลาด กรุณาติดต่อผู้ดูแลระบบเพื่อขอเปิดใช้งานอีกครั้ง
+              </p>
+            </div>
+          ) : (
+            <div className="p-4 bg-amber-950/40 border border-amber-800/80 rounded-2xl text-xs space-y-2 text-slate-200">
+              <div className="flex items-center gap-2 font-bold text-amber-400">
+                <Clock className="h-4.5 w-4.5 shrink-0" />
+                <span>ลงทะเบียนเข้าสู่ระบบสำเร็จ — รอ Admin เปิดใช้งานบัญชี</span>
+              </div>
+              <p className="text-slate-300 leading-relaxed font-sans">
+                บัญชีของคุณได้รับการลงทะเบียนเข้าสู่ระบบเรียบร้อยแล้ว แต่เนื่องจากเป็นบัญชีผู้ใช้ใหม่ จำเป็นต้องรอให้ผู้ดูแลระบบ (Admin) ทำการยืนยันและเปิดสิทธิ์การเข้าใช้งานก่อน จึงจะสามารถเข้าถึงข้อมูลคลังและเบิกพัสดุได้
+              </p>
+            </div>
+          )}
+
+          {/* User Account Info Card */}
+          <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-2 font-sans text-xs">
+            <div className="flex justify-between items-center text-slate-400">
+              <span>บัญชีผู้ใช้ (Email):</span>
+              <span className="font-bold text-white font-mono">{currentUser.email}</span>
+            </div>
+            {currentUser.displayName && (
+              <div className="flex justify-between items-center text-slate-400">
+                <span>ชื่อแสดง (Name):</span>
+                <span className="font-medium text-slate-200">{currentUser.displayName}</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center text-slate-400">
+              <span>สถานะสิทธิ์ในระบบ:</span>
+              <span className={`font-bold px-2.5 py-0.5 rounded-md text-[10.5px] ${
+                currentUserStatus === 'disabled' 
+                  ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
+                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+              }`}>
+                {currentUserStatus === 'disabled' ? 'Disabled (ระงับการใช้งาน)' : 'Pending Activation (รอ Admin ยืนยันสิทธิ์)'}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-3 font-sans">
+            <button
+              onClick={async () => {
+                setIsCheckingActivation(true);
+                try {
+                  const docSnap = await getDoc(doc(db, 'user_roles', currentUser.uid));
+                  if (docSnap.exists()) {
+                    const data = docSnap.data() as UserRole;
+                    const st = data.status || 'active';
+                    setCurrentUserStatus(st);
+                    if (st === 'active') {
+                      addToast('success', 'อนุมัติเรียบร้อยแล้ว!', 'บัญชีของคุณได้รับการเปิดใช้งานเรียบร้อยแล้ว ยินดีต้อนรับเข้าสู่ระบบ');
+                    } else {
+                      addToast('info', 'ยังคงรอการอนุมัติ', 'บัญชีของคุณยังคงอยู่ในสถานะรอการยืนยันจาก Admin');
+                    }
+                  } else {
+                    addToast('info', 'ยังคงรอการอนุมัติ', 'ยังไม่พบการอนุมัติสิทธิ์ในขณะนี้');
+                  }
+                } catch (e) {
+                  addToast('error', 'ข้อผิดพลาด', 'ไม่สามารถตรวจสอบสถานะได้ในขณะนี้');
+                } finally {
+                  setIsCheckingActivation(false);
+                }
+              }}
+              disabled={isCheckingActivation}
+              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 cursor-pointer flex items-center justify-center gap-2"
+            >
+              {isCheckingActivation ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>กำลังตรวจสอบสถานะ...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 text-amber-300" />
+                  <span>ตรวจสอบสถานะการเปิดใช้งาน (Check Status)</span>
+                </>
+              )}
+            </button>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <a
+                href="mailto:chaleesogood@gmail.com"
+                className="py-2.5 px-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all text-center cursor-pointer"
+              >
+                <Mail className="h-3.5 w-3.5 text-indigo-400" />
+                <span>แจ้ง Admin</span>
+              </a>
+
+              <button
+                onClick={handleSignOut}
+                className="py-2.5 px-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-rose-400 hover:text-rose-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span>ออกจากระบบ</span>
+              </button>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-slate-500 text-center font-mono leading-relaxed pt-1">
+            เมื่อผู้ดูแลระบบทำการกดยืนยันเปิดสิทธิ์ ระบบจะนำท่านเข้าสู่แอปพลิเคชันโดยอัตโนมัติทันที
+          </p>
+        </div>
+
+        {/* Toast notifications container */}
         <div className="fixed bottom-5 right-5 space-y-3 z-50 flex flex-col items-end">
           {toasts.map((toast) => (
             <Toast key={toast.id} toast={toast} onClose={removeToast} />

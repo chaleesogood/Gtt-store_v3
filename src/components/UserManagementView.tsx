@@ -29,8 +29,8 @@ interface UserManagementViewProps {
   employees?: Employee[];
   currentUserEmail: string | null;
   onUpdateUserRole: (uid: string, role: 'admin' | 'editor' | 'user') => Promise<void>;
-  onUpdateUser: (uid: string, updatedData: { email: string; displayName: string; role: 'admin' | 'editor' | 'user' }) => Promise<void>;
-  onAddUserRole: (userData: { email: string; displayName: string; role: 'admin' | 'editor' | 'user'; uid?: string }) => Promise<void>;
+  onUpdateUser: (uid: string, updatedData: { email: string; displayName: string; role: 'admin' | 'editor' | 'user'; status?: 'active' | 'pending' | 'disabled' }) => Promise<void>;
+  onAddUserRole: (userData: { email: string; displayName: string; role: 'admin' | 'editor' | 'user'; status?: 'active' | 'pending' | 'disabled'; uid?: string }) => Promise<void>;
   onDeleteUserRole: (uid: string) => Promise<void>;
   addToast: (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string) => void;
   triggerConfirm?: (title: string, message: string, onConfirm: () => void) => void;
@@ -48,7 +48,7 @@ export default function UserManagementView({
   triggerConfirm
 }: UserManagementViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'new'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'google' | 'pending' | 'disabled' | 'active'>('all');
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
 
@@ -61,11 +61,13 @@ export default function UserManagementView({
   const [addEmail, setAddEmail] = useState('');
   const [addDisplayName, setAddDisplayName] = useState('');
   const [addRole, setAddRole] = useState<'admin' | 'editor' | 'user'>('user');
+  const [addStatus, setAddStatus] = useState<'active' | 'pending' | 'disabled'>('active');
 
   // Form states for Edit
   const [editEmail, setEditEmail] = useState('');
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editRole, setEditRole] = useState<'admin' | 'editor' | 'user'>('user');
+  const [editStatus, setEditStatus] = useState<'active' | 'pending' | 'disabled'>('active');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -127,7 +129,18 @@ export default function UserManagementView({
     return userRoles.filter(u => u.provider === 'google' || (u.email || '').toLowerCase().endsWith('@gmail.com')).length;
   }, [userRoles]);
 
-  // Filter users based on search and status filter
+  const pendingActivationCount = useMemo(() => {
+    return userRoles.filter(u => u.status === 'pending').length;
+  }, [userRoles]);
+
+  const disabledCount = useMemo(() => {
+    return userRoles.filter(u => u.status === 'disabled').length;
+  }, [userRoles]);
+
+  const [activeTab, setActiveTab] = useState<'users' | 'matrix' | 'pending'>('users');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'editor' | 'user'>('all');
+
+  // Filter users based on search, status filter, and role filter
   const filteredUsers = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
     return userRoles.filter(user => {
@@ -139,21 +152,23 @@ export default function UserManagementView({
 
       if (!matchesSearch) return false;
 
+      // Role Filter
+      if (roleFilter !== 'all' && user.role !== roleFilter) {
+        return false;
+      }
+
       const online = isUserOnline(user);
 
       if (statusFilter === 'online') return online;
       if (statusFilter === 'offline') return !online;
       if (statusFilter === 'google') return user.provider === 'google' || (user.email || '').toLowerCase().endsWith('@gmail.com');
-      if (statusFilter === 'new') {
-        if (!user.createdAt) return false;
-        const createdDate = new Date(user.createdAt).getTime();
-        const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-        return !isNaN(createdDate) && (Date.now() - createdDate <= sevenDaysMs);
-      }
+      if (statusFilter === 'pending') return user.status === 'pending';
+      if (statusFilter === 'disabled') return user.status === 'disabled';
+      if (statusFilter === 'active') return user.status === 'active' || !user.status;
 
       return true;
     });
-  }, [userRoles, searchQuery, statusFilter, currentUserEmail]);
+  }, [userRoles, searchQuery, statusFilter, roleFilter, currentUserEmail]);
 
   // Find employees with valid email who don't have a user role record yet
   const pendingEmployees = useMemo(() => {
@@ -218,7 +233,8 @@ export default function UserManagementView({
       await onAddUserRole({
         email,
         displayName,
-        role: addRole
+        role: addRole,
+        status: addStatus
       });
 
       addToast('success', 'เพิ่มสิทธิ์ผู้ใช้สำเร็จ', `กำหนดสิทธิ์ล่วงหน้าให้ ${email} เป็นสิทธิ์ ${addRole === 'admin' ? 'Admin' : 'User'} เรียบร้อยแล้ว`);
@@ -241,6 +257,7 @@ export default function UserManagementView({
     setEditEmail(user.email);
     setEditDisplayName(user.displayName || '');
     setEditRole(user.role);
+    setEditStatus(user.status || 'active');
     setIsEditModalOpen(true);
   };
 
@@ -275,7 +292,8 @@ export default function UserManagementView({
       await onUpdateUser(editingUser.uid, {
         email,
         displayName,
-        role: editRole
+        role: editRole,
+        status: editStatus
       });
 
       addToast('success', 'แก้ไขข้อมูลสำเร็จ', `อัปเดตข้อมูลบัญชีผู้ใช้งาน ${email} เรียบร้อยแล้ว`);
@@ -285,6 +303,35 @@ export default function UserManagementView({
       addToast('error', 'บันทึกล้มเหลว', 'เกิดข้อผิดพลาดในการอัปเดตข้อมูลผู้ใช้งาน');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Handle Quick Status Change (Activate / Disable)
+  const handleStatusChange = async (user: UserRole, targetStatus: 'active' | 'pending' | 'disabled') => {
+    const isSelf = user.email?.toLowerCase() === currentUserEmail?.toLowerCase();
+
+    if (isSelf && targetStatus !== 'active') {
+      addToast('warning', 'ไม่อนุญาต', 'ท่านไม่สามารถระงับสิทธิ์บัญชีของตนเองได้');
+      return;
+    }
+
+    const statusLabel = 
+      targetStatus === 'active' ? 'เปิดใช้งาน (Activated)' :
+      targetStatus === 'disabled' ? 'ระงับใช้งาน (Disabled)' : 'รอการอนุมัติ (Pending)';
+
+    try {
+      setIsUpdating(user.uid);
+      await onUpdateUser(user.uid, {
+        email: user.email,
+        displayName: user.displayName || user.email.split('@')[0],
+        role: user.role,
+        status: targetStatus
+      });
+      addToast('success', 'อัปเดตสถานะสำเร็จ', `เปลี่ยนสถานะบัญชีของ ${user.email} เป็น ${statusLabel} เรียบร้อยแล้ว`);
+    } catch (err) {
+      addToast('error', 'บันทึกล้มเหลว', 'เกิดข้อผิดพลาดในการอัปเดตสถานะผู้ใช้งาน');
+    } finally {
+      setIsUpdating(null);
     }
   };
 
@@ -571,113 +618,239 @@ export default function UserManagementView({
 
       {/* Main card panel */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
-        {/* Toolbar & Search & Add Button */}
-        <div className="p-5 border-b border-slate-100 dark:border-slate-800 space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="ค้นหาชื่อผู้ใช้ หรืออีเมล..."
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs sm:text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-sans"
-                />
-              </div>
+        {/* Navigation Tabs Header */}
+        <div className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 p-2 sm:p-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none w-full sm:w-auto">
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`px-4 py-2.5 rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                activeTab === 'users'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/80 dark:border-slate-800'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <Users className="h-4 w-4 text-indigo-500" />
+              <span>รายชื่อผู้ใช้งาน & สิทธิ์ ({userRoles.length})</span>
+            </button>
 
-              <div className="text-xs text-slate-500 dark:text-slate-400 font-sans font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-slate-950 px-3 py-2 rounded-2xl border border-slate-200/50 dark:border-slate-800/50">
-                <Users className="h-3.5 w-3.5 text-slate-400" />
-                <span>ผลการค้นหา: {filteredUsers.length} บัญชี</span>
-              </div>
-            </div>
+            <button
+              onClick={() => setActiveTab('matrix')}
+              className={`px-4 py-2.5 rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                activeTab === 'matrix'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs border border-slate-200/80 dark:border-slate-800'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <Shield className="h-4 w-4 text-emerald-500" />
+              <span>ตารางสิทธิ์การใช้งาน (Permissions Matrix)</span>
+            </button>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+            {pendingEmployees.length > 0 && (
               <button
-                onClick={handleDeepScan}
-                disabled={isScanning}
-                className="w-full sm:w-auto bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-800 transition-all font-sans"
-                title="สแกนระบบและตรวจสอบบัญชีตกค้างทั้งหมด"
+                onClick={() => setActiveTab('pending')}
+                className={`px-4 py-2.5 rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+                  activeTab === 'pending'
+                    ? 'bg-amber-500 text-slate-950 shadow-xs font-black'
+                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20'
+                }`}
               >
-                {isScanning ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
-                    <span>กำลังสแกน...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4 text-indigo-500" />
-                    <span>ตรวจสอบระบบ (Scan System)</span>
-                  </>
-                )}
+                <Sparkles className="h-4 w-4 text-amber-500" />
+                <span>พนักงานรอเปิดสิทธิ์ ({pendingEmployees.length})</span>
               </button>
-
-              <button
-                onClick={() => setIsAddModalOpen(true)}
-                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-indigo-600/15 transition-all font-sans"
-              >
-                <UserPlus className="h-4 w-4" />
-                <span>เพิ่มบัญชี / กำหนดสิทธิ์ล่วงหน้า</span>
-              </button>
-            </div>
+            )}
           </div>
 
-          {/* Quick Filter Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 scrollbar-none border-t border-slate-100 dark:border-slate-800/60">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                statusFilter === 'all'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              <span>ทั้งหมด ({userRoles.length})</span>
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('online')}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                statusFilter === 'online'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-900/30'
-              }`}
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span>ออนไลน์ ({onlineCount})</span>
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('offline')}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                statusFilter === 'offline'
-                  ? 'bg-slate-700 text-white shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 text-slate-600 dark:text-slate-300'
-              }`}
-            >
-              <span className="h-2 w-2 rounded-full bg-slate-400"></span>
-              <span>ออฟไลน์ ({offlineCount})</span>
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('new')}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                statusFilter === 'new'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-amber-50 dark:bg-amber-950/20 hover:bg-amber-100 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/30'
-              }`}
-            >
-              <Sparkles className="h-3 w-3 text-amber-500" />
-              <span>สมาชิกใหม่ 7 วัน ({newMembersCount})</span>
-            </button>
+          <div className="hidden lg:flex items-center gap-2 text-xs font-sans text-slate-400 px-3">
+            <Lock className="h-3.5 w-3.5 text-indigo-500" />
+            <span>ระบบความปลอดภัย Firestore Real-time Auto-Sync Enabled</span>
           </div>
         </div>
 
-        {/* User Table / List */}
-        <div className="overflow-x-auto">
+        {activeTab === 'users' && (
+          <>
+            {/* Toolbar & Search & Add Button */}
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="ค้นหาชื่อผู้ใช้ หรืออีเมล..."
+                      className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs sm:text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-sans"
+                    />
+                  </div>
+
+                  <div className="text-xs text-slate-500 dark:text-slate-400 font-sans font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-slate-950 px-3 py-2 rounded-2xl border border-slate-200/50 dark:border-slate-800/50">
+                    <Users className="h-3.5 w-3.5 text-slate-400" />
+                    <span>ผลการค้นหา: {filteredUsers.length} บัญชี</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+                  <button
+                    onClick={handleDeepScan}
+                    disabled={isScanning}
+                    className="w-full sm:w-auto bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-200 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-800 transition-all font-sans"
+                    title="สแกนระบบและตรวจสอบบัญชีตกค้างทั้งหมด"
+                  >
+                    {isScanning ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
+                        <span>กำลังสแกน...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 text-indigo-500" />
+                        <span>ตรวจสอบระบบ (Scan System)</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-indigo-600/15 transition-all font-sans"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    <span>เพิ่มบัญชี / กำหนดสิทธิ์ล่วงหน้า</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Filter Tabs & Role Filters */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800/60">
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  <span className="text-xs font-bold text-slate-400 mr-1 hidden sm:inline">สถานะ:</span>
+                  <button
+                    onClick={() => setStatusFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      statusFilter === 'all'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    <span>ทั้งหมด ({userRoles.length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setStatusFilter('online')}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      statusFilter === 'online'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-900/30'
+                    }`}
+                  >
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span>ออนไลน์ ({onlineCount})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setStatusFilter('google')}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      statusFilter === 'google'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-blue-50 dark:bg-blue-950/20 hover:bg-blue-100 text-blue-700 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/30'
+                    }`}
+                  >
+                    <svg className="h-3 w-3 shrink-0" viewBox="0 0 24 24">
+                      <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    </svg>
+                    <span>Google Sign-In ({googleUsersCount})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setStatusFilter('pending')}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      statusFilter === 'pending'
+                        ? 'bg-amber-500 text-slate-950 shadow-xs'
+                        : 'bg-amber-50 dark:bg-amber-950/20 hover:bg-amber-100 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/30'
+                    }`}
+                  >
+                    <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    <span>รออนุมัติ ({pendingActivationCount})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setStatusFilter('disabled')}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      statusFilter === 'disabled'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-rose-50 dark:bg-rose-950/20 hover:bg-rose-100 text-rose-700 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/30'
+                    }`}
+                  >
+                    <ShieldAlert className="h-3.5 w-3.5 text-rose-500" />
+                    <span>ถูกระงับ ({disabledCount})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setStatusFilter('offline')}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      statusFilter === 'offline'
+                        ? 'bg-slate-700 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-slate-400"></span>
+                    <span>ออฟไลน์ ({offlineCount})</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  <span className="text-xs font-bold text-slate-400 mr-1 hidden sm:inline">กรองบทบาท:</span>
+                  <button
+                    onClick={() => setRoleFilter('all')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      roleFilter === 'all'
+                        ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
+                        : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    ทุกสิทธิ์
+                  </button>
+                  <button
+                    onClick={() => setRoleFilter('admin')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      roleFilter === 'admin'
+                        ? 'bg-amber-500 text-slate-950 font-black'
+                        : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                    }`}
+                  >
+                    <Crown className="h-3 w-3" />
+                    <span>Admin</span>
+                  </button>
+                  <button
+                    onClick={() => setRoleFilter('editor')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      roleFilter === 'editor'
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                    }`}
+                  >
+                    <Pencil className="h-3 w-3" />
+                    <span>Editor</span>
+                  </button>
+                  <button
+                    onClick={() => setRoleFilter('user')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                      roleFilter === 'user'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30'
+                    }`}
+                  >
+                    <Lock className="h-3 w-3" />
+                    <span>User</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* User Table / List */}
+            <div className="overflow-x-auto">
           {filteredUsers.length === 0 ? (
             <div className="p-12 text-center text-slate-400 dark:text-slate-500 font-sans space-y-3">
               <UserCheck className="h-12 w-12 mx-auto text-slate-300 dark:text-slate-700 mb-1 animate-bounce" />
@@ -710,8 +883,9 @@ export default function UserManagementView({
                   <th className="py-3 px-5">ผู้ใช้งาน (User)</th>
                   <th className="py-3 px-5">อีเมล (Email)</th>
                   <th className="py-3 px-5">บทบาท (Role)</th>
-                  <th className="py-3 px-5">สถานะใช้งาน (Status)</th>
-                  <th className="py-3 px-5">ลงทะเบียนเมื่อ (Created / Registered)</th>
+                  <th className="py-3 px-5">สถานะการยืนยัน (Activation)</th>
+                  <th className="py-3 px-5">สถานะออนไลน์ (Online)</th>
+                  <th className="py-3 px-5">ลงทะเบียนเมื่อ (Registered)</th>
                   <th className="py-3 px-5 text-right">ดำเนินการ (Actions)</th>
                 </tr>
               </thead>
@@ -824,6 +998,26 @@ export default function UserManagementView({
                         )}
                       </td>
 
+                      {/* Activation Status */}
+                      <td className="py-4 px-5">
+                        {user.status === 'pending' ? (
+                          <span className="inline-flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50 py-1 px-2.5 rounded-full font-bold text-xs animate-pulse">
+                            <Clock className="h-3.5 w-3.5 text-amber-500" />
+                            <span>รออนุมัติสิทธิ์</span>
+                          </span>
+                        ) : user.status === 'disabled' ? (
+                          <span className="inline-flex items-center gap-1.5 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50 py-1 px-2.5 rounded-full font-bold text-xs">
+                            <ShieldAlert className="h-3.5 w-3.5 text-rose-500" />
+                            <span>ถูกระงับใช้งาน</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50 py-1 px-2.5 rounded-full font-bold text-xs">
+                            <UserCheck className="h-3.5 w-3.5 text-emerald-500" />
+                            <span>เปิดใช้งานแล้ว</span>
+                          </span>
+                        )}
+                      </td>
+
                       {/* Online Status */}
                       <td className="py-4 px-5">
                         {isUserOnline(user) ? (
@@ -853,6 +1047,29 @@ export default function UserManagementView({
                       {/* Action buttons */}
                       <td className="py-4 px-5 text-right">
                         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                          {/* Quick Activation Toggle Button */}
+                          {user.status === 'pending' ? (
+                            <button
+                              onClick={() => handleStatusChange(user, 'active')}
+                              disabled={isUpdating === user.uid}
+                              className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                              title="อนุมัติการใช้งานบัญชีนี้"
+                            >
+                              <UserCheck className="h-3.5 w-3.5" />
+                              <span>อนุมัติสิทธิ์</span>
+                            </button>
+                          ) : user.status === 'disabled' ? (
+                            <button
+                              onClick={() => handleStatusChange(user, 'active')}
+                              disabled={isUpdating === user.uid}
+                              className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 hover:bg-emerald-100 dark:hover:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                              title="ปลดล็อกและอนุมัติใช้งานอีกครั้ง"
+                            >
+                              <UserCheck className="h-3.5 w-3.5" />
+                              <span>ปลดระงับ</span>
+                            </button>
+                          ) : null}
+
                           {/* Edit Details Button */}
                           <button
                             onClick={() => handleStartEdit(user)}
@@ -916,6 +1133,235 @@ export default function UserManagementView({
             </table>
           )}
         </div>
+        </>
+        )}
+
+        {/* ================= TAB 2: PERMISSIONS MATRIX ================= */}
+        {activeTab === 'matrix' && (
+          <div className="p-6 space-y-6">
+            <div className="bg-indigo-50/50 dark:bg-indigo-950/20 p-4 rounded-2xl border border-indigo-200/50 dark:border-indigo-900/30 flex items-start gap-3">
+              <Shield className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+              <div className="space-y-1 text-xs sm:text-sm">
+                <h4 className="font-bold text-slate-800 dark:text-slate-200">โครงสร้างการควบคุมระดับสิทธิ์ (Role-based Access Control Matrix)</h4>
+                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                  ระบบแบ่งสิทธิ์การใช้งานออกเป็น 3 ระดับหลัก เพื่อความปลอดภัยและความถูกต้องของข้อมูลพัสดุ สต็อก และใบงาน
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+              <table className="w-full text-left text-xs sm:text-sm font-sans border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-800">
+                    <th className="py-3.5 px-4 font-bold">มอดูล / ฟังก์ชันการใช้งาน (System Modules)</th>
+                    <th className="py-3.5 px-4 text-center">
+                      <div className="inline-flex items-center gap-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 py-1 px-3 rounded-full border border-amber-500/20">
+                        <Crown className="h-3.5 w-3.5" />
+                        <span>Admin (ผู้ดูแลระบบ)</span>
+                      </div>
+                    </th>
+                    <th className="py-3.5 px-4 text-center">
+                      <div className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 py-1 px-3 rounded-full border border-emerald-500/20">
+                        <Pencil className="h-3.5 w-3.5" />
+                        <span>Editor (แก้ไขข้อมูล)</span>
+                      </div>
+                    </th>
+                    <th className="py-3.5 px-4 text-center">
+                      <div className="inline-flex items-center gap-1.5 bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 py-1 px-3 rounded-full border border-indigo-500/20">
+                        <Lock className="h-3.5 w-3.5" />
+                        <span>User (ผู้ใช้ทั่วไป)</span>
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 bg-white dark:bg-slate-900">
+                  {/* Module 1 */}
+                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
+                      📦 คลังสินค้า & สต็อกพัสดุ (Products & Stock)
+                      <span className="block text-[11px] font-normal text-slate-400">ค้นหา, เพิ่มรายการพัสดุ, แก้ไขจำนวน, ปรับสต็อก, ลบสินค้า</span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> เต็มรูปแบบ
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> เพิ่ม/แก้ไข (ห้ามลบ)
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-blue-500/10 text-blue-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> ดูข้อมูล & เบิก/คืน
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Module 2 */}
+                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
+                      📋 ใบเบิก & สูตร BOM (BOM & Stock Movement)
+                      <span className="block text-[11px] font-normal text-slate-400">สร้างสูตรประกอบ BOM, ทำรายการเบิกวัสดุ, สแกน QR Code</span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> เต็มรูปแบบ
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> สร้าง & แก้ไข
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-blue-500/10 text-blue-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> ทำรายการเบิก
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Module 3 */}
+                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
+                      🛒 ใบขอซื้อ & ใบสั่งซื้อ (PR & PO Management)
+                      <span className="block text-[11px] font-normal text-slate-400">ขอซื้อพัสดุ, ออกใบสั่งซื้อ, อนุมัติวงเงิน</span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> สร้าง, อนุมัติ & ลบ
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> สร้าง & ออก PO
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> ขอซื้อ (PR)
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Module 4 */}
+                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
+                      🏗️ โครงการ & ใบงาน (Projects & Work Orders)
+                      <span className="block text-[11px] font-normal text-slate-400">สร้างโครงการ, มอบหมายงาน, อัปเดตสถานะงาน</span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> เต็มรูปแบบ
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> สร้าง & อัปเดต
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-blue-500/10 text-blue-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> ดูข้อมูลใบงาน
+                      </span>
+                    </td>
+                  </tr>
+
+                  {/* Module 5 */}
+                  <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
+                      🛡️ จัดการสิทธิ์ผู้ใช้งาน (User Roles & Permissions)
+                      <span className="block text-[11px] font-normal text-slate-400">เพิ่มสิทธิ์, สลับบทบาท, กำหนดสิทธิ์ล่วงหน้า, ลบบัญชีผู้ใช้</span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <Check className="h-3.5 w-3.5" /> สิทธิ์เฉพาะ Admin
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-rose-500/10 text-rose-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <X className="h-3.5 w-3.5" /> ห้ามเข้าถึง
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="inline-flex items-center gap-1 bg-rose-500/10 text-rose-600 font-bold px-2.5 py-1 rounded-lg text-xs">
+                        <X className="h-3.5 w-3.5" /> ห้ามเข้าถึง
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ================= TAB 3: PENDING EMPLOYEES ================= */}
+        {activeTab === 'pending' && (
+          <div className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base font-sans">
+                  พนักงานในคลังที่ยังไม่ได้เปิดสิทธิ์เข้าใช้งานระบบ ({pendingEmployees.length} ราย)
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-sans">
+                  กดปุ่มเปิดสิทธิ์เพื่อสร้าง Record กำหนดสิทธิ์ล่วงหน้า พนักงานจะสามารถ Sign-in เข้าใช้งานได้ทันที
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pt-2">
+              {pendingEmployees.map(emp => (
+                <div 
+                  key={emp.id} 
+                  className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-xs"
+                >
+                  <div className="space-y-1 min-w-0">
+                    <div className="font-bold text-slate-800 dark:text-slate-200 truncate text-xs sm:text-sm">
+                      {emp.name} {emp.nickname ? `(${emp.nickname})` : ''}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-mono">
+                      {emp.email}
+                    </div>
+                    <div className="text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/20 py-0.5 px-2 rounded-md border border-indigo-100 dark:border-indigo-950 inline-block font-sans">
+                      แผนก: {emp.department || 'ไม่ระบุ'}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      try {
+                        setIsUpdating(emp.id);
+                        await onAddUserRole({
+                          email: emp.email || '',
+                          displayName: emp.name,
+                          role: 'user'
+                        });
+                        addToast(
+                          'success',
+                          'กำหนดสิทธิ์พนักงานสำเร็จ',
+                          `กำหนดสิทธิ์ล่วงหน้าให้พนักงาน "${emp.name}" (สิทธิ์ User) เรียบร้อยแล้ว`
+                        );
+                      } catch (err) {
+                        addToast('error', 'ข้อผิดพลาด', 'ไม่สามารถกำหนดสิทธิ์ให้พนักงานท่านนี้ได้');
+                      } finally {
+                        setIsUpdating(null);
+                      }
+                    }}
+                    disabled={isUpdating !== null}
+                    className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-slate-950 font-bold text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    {isUpdating === emp.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <UserPlus className="h-3.5 w-3.5" />
+                    )}
+                    <span>เปิดสิทธิ์ User</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ================= MODAL: ADD USER / PRE-REGISTER ROLE ================= */}
@@ -1011,6 +1457,38 @@ export default function UserManagementView({
                   >
                     <Crown className="h-4 w-4 shrink-0" />
                     <span className="truncate">Admin (ผู้ดูแล)</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  สถานะการอนุมัติแรกเริ่ม (Initial Status)
+                </label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setAddStatus('active')}
+                    className={`p-2.5 rounded-xl border text-center transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs ${
+                      addStatus === 'active'
+                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500 text-emerald-700 dark:text-emerald-400 font-bold'
+                        : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
+                    }`}
+                  >
+                    <UserCheck className="h-4 w-4 text-emerald-500 shrink-0" />
+                    <span>อนุมัติเลย (Active)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddStatus('pending')}
+                    className={`p-2.5 rounded-xl border text-center transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs ${
+                      addStatus === 'pending'
+                        ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-500 text-amber-700 dark:text-amber-400 font-bold'
+                        : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
+                    }`}
+                  >
+                    <Clock className="h-4 w-4 text-amber-500 shrink-0" />
+                    <span>รออนุมัติ (Pending)</span>
                   </button>
                 </div>
               </div>
@@ -1159,6 +1637,50 @@ export default function UserManagementView({
                     </>
                   );
                 })()}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700 dark:text-slate-300">
+                  สถานะการอนุมัติใช้งาน (Activation Status)
+                </label>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setEditStatus('active')}
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
+                      editStatus === 'active'
+                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500 text-emerald-700 dark:text-emerald-400 font-bold'
+                        : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
+                    }`}
+                  >
+                    <UserCheck className="h-4 w-4 shrink-0 text-emerald-500" />
+                    <span className="truncate">อนุมัติ (Active)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditStatus('pending')}
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
+                      editStatus === 'pending'
+                        ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-500 text-amber-700 dark:text-amber-400 font-bold'
+                        : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
+                    }`}
+                  >
+                    <Clock className="h-4 w-4 shrink-0 text-amber-500" />
+                    <span className="truncate">รออนุมัติ (Pending)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditStatus('disabled')}
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-xs ${
+                      editStatus === 'disabled'
+                        ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-500 text-rose-700 dark:text-rose-400 font-bold'
+                        : 'bg-slate-50/50 dark:bg-slate-950/10 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100/50'
+                    }`}
+                  >
+                    <ShieldAlert className="h-4 w-4 shrink-0 text-rose-500" />
+                    <span className="truncate">ระงับ (Disabled)</span>
+                  </button>
+                </div>
               </div>
 
               {/* Action Buttons */}
