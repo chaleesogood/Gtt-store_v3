@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { Product, Category, Employee, JobProject, Brand, sortProducts, Bom } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { Product, Category, Employee, JobProject, Brand, sortProducts, Bom, SubSeries, MediaFile } from '../types';
 import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag, Copy, ArrowUpDown, FileText } from 'lucide-react';
 import CategoryView from './CategoryView';
 import OrderingSystemView from './OrderingSystemView';
@@ -26,6 +26,7 @@ interface ProductListViewProps {
   brands?: Brand[];
   boms?: Bom[];
   setBoms?: React.Dispatch<React.SetStateAction<Bom[]>>;
+  onAddMediaFile?: (data: Omit<MediaFile, 'id' | 'createdAt'>) => Promise<MediaFile>;
 }
 
 // Curated stock photos for quick selection
@@ -90,7 +91,8 @@ export default function ProductListView({
   jobProjects,
   brands = [],
   boms = [],
-  setBoms
+  setBoms,
+  onAddMediaFile
 }: ProductListViewProps) {
   // Filters & Search
   const [activeSubTab, setActiveSubTab] = useState<'products' | 'categories' | 'ordering' | 'cart'>('products');
@@ -100,6 +102,157 @@ export default function ProductListView({
   const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const [isReorderMode, setIsReorderMode] = useState(false);
+
+  // Edit Category & SubSeries Modal States
+  const [editingCatModal, setEditingCatModal] = useState<Category | null>(null);
+  const [editCatTab, setEditCatTab] = useState<'general' | 'subseries'>('general');
+  const [catFormName, setCatFormName] = useState('');
+  const [catFormDescription, setCatFormDescription] = useState('');
+  const [catFormColor, setCatFormColor] = useState('bg-blue-100 text-blue-800 border-blue-150');
+  const [catFormImageUrl, setCatFormImageUrl] = useState('');
+
+  // SubSeries state inside Modal
+  const [catSubSeriesList, setCatSubSeriesList] = useState<SubSeries[]>([]);
+  const [editingSubSeriesIndex, setEditingSubSeriesIndex] = useState<number | null>(null);
+  const [subSeriesInputName, setSubSeriesInputName] = useState('');
+  const [subSeriesInputImageUrl, setSubSeriesInputImageUrl] = useState('');
+  const [subSeriesInputPdfUrl, setSubSeriesInputPdfUrl] = useState('');
+
+  const handleStartEditCategory = (cat: Category, defaultTab: 'general' | 'subseries' = 'general') => {
+    setEditingCatModal(cat);
+    setCatFormName(cat.name);
+    setCatFormDescription(cat.description || '');
+    setCatFormColor(cat.color || 'bg-blue-100 text-blue-800 border-blue-150');
+    setCatFormImageUrl(cat.imageUrl || '');
+
+    const initialSubList: SubSeries[] = (cat.subSeries && cat.subSeries.length > 0)
+      ? cat.subSeries.map(s => ({ ...s }))
+      : (cat.series || []).map(sName => ({ name: sName }));
+    setCatSubSeriesList(initialSubList);
+
+    setEditCatTab(defaultTab);
+    setEditingSubSeriesIndex(null);
+    setSubSeriesInputName('');
+    setSubSeriesInputImageUrl('');
+    setSubSeriesInputPdfUrl('');
+  };
+
+  const handleAddOrUpdateSubSeries = () => {
+    const trimmedName = subSeriesInputName.trim();
+    if (!trimmedName) {
+      addToast('warning', 'กรอกข้อมูลไม่ครบ', 'โปรดระบุชื่อ Sub Series');
+      return;
+    }
+
+    if (editingSubSeriesIndex !== null) {
+      // Edit existing subseries
+      const oldSubSeries = catSubSeriesList[editingSubSeriesIndex];
+      const oldName = oldSubSeries.name;
+
+      const updatedList = [...catSubSeriesList];
+      updatedList[editingSubSeriesIndex] = {
+        name: trimmedName,
+        imageUrl: subSeriesInputImageUrl.trim(),
+        pdfUrl: subSeriesInputPdfUrl.trim(),
+      };
+      setCatSubSeriesList(updatedList);
+
+      // Update products that use oldName if name changed
+      if (oldName !== trimmedName && editingCatModal) {
+        const productsToRename = products.filter(
+          p => p.category === editingCatModal.id && p.series === oldName
+        );
+        productsToRename.forEach(p => {
+          onEditProduct(p.id, { series: trimmedName });
+        });
+        if (productsToRename.length > 0) {
+          addToast('info', 'อัปเดตสินค้า', `เปลี่ยนชื่อ Series ของสินค้าจำนวน ${productsToRename.length} รายการเป็น "${trimmedName}"`);
+        }
+      }
+
+      addToast('success', 'ปรับปรุงสำเร็จ', `อัปเดต Sub Series "${trimmedName}" เรียบร้อยแล้ว`);
+      setEditingSubSeriesIndex(null);
+    } else {
+      // Add new subseries
+      if (catSubSeriesList.some(s => s.name.toLowerCase() === trimmedName.toLowerCase())) {
+        addToast('warning', 'ชื่อซ้ำ', `มี Sub Series ชื่อ "${trimmedName}" อยู่แล้ว`);
+        return;
+      }
+
+      setCatSubSeriesList(prev => [
+        ...prev,
+        {
+          name: trimmedName,
+          imageUrl: subSeriesInputImageUrl.trim(),
+          pdfUrl: subSeriesInputPdfUrl.trim(),
+        }
+      ]);
+      addToast('success', 'เพิ่มสำเร็จ', `เพิ่ม Sub Series "${trimmedName}" เรียบร้อยแล้ว`);
+    }
+
+    setSubSeriesInputName('');
+    setSubSeriesInputImageUrl('');
+    setSubSeriesInputPdfUrl('');
+  };
+
+  const handleEditSubSeriesClick = (index: number) => {
+    const target = catSubSeriesList[index];
+    if (!target) return;
+    setEditingSubSeriesIndex(index);
+    setSubSeriesInputName(target.name);
+    setSubSeriesInputImageUrl(target.imageUrl || '');
+    setSubSeriesInputPdfUrl(target.pdfUrl || '');
+  };
+
+  const handleDeleteSubSeries = (index: number) => {
+    const target = catSubSeriesList[index];
+    if (!target) return;
+
+    if (confirm(`คุณแน่ใจหรือไม่ที่จะลบ Sub Series "${target.name}"?`)) {
+      setCatSubSeriesList(prev => prev.filter((_, i) => i !== index));
+      if (editingSubSeriesIndex === index) {
+        setEditingSubSeriesIndex(null);
+        setSubSeriesInputName('');
+        setSubSeriesInputImageUrl('');
+        setSubSeriesInputPdfUrl('');
+      }
+      addToast('info', 'ลบสำเร็จ', `นำ Sub Series "${target.name}" ออกแล้ว`);
+    }
+  };
+
+  const handleMoveSubSeriesInModal = (index: number, direction: 'up' | 'down') => {
+    if (
+      (direction === 'up' && index === 0) ||
+      (direction === 'down' && index === catSubSeriesList.length - 1)
+    ) {
+      return;
+    }
+    const targetIdx = direction === 'up' ? index - 1 : index + 1;
+    const newList = [...catSubSeriesList];
+    const temp = newList[index];
+    newList[index] = newList[targetIdx];
+    newList[targetIdx] = temp;
+    setCatSubSeriesList(newList);
+  };
+
+  const handleSaveCategoryModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCatModal || !catFormName.trim()) return;
+
+    const seriesNames = catSubSeriesList.map(s => s.name);
+
+    onEditCategory(editingCatModal.id, {
+      name: catFormName.trim(),
+      description: catFormDescription.trim(),
+      color: catFormColor,
+      imageUrl: catFormImageUrl.trim(),
+      subSeries: catSubSeriesList,
+      series: seriesNames,
+    });
+
+    addToast('success', 'แก้ไขหมวดหมู่สำเร็จ', `ปรับปรุงข้อมูลหมวดหมู่ "${catFormName}" และ Sub Series เรียบร้อยแล้ว`);
+    setEditingCatModal(null);
+  };
 
 
 
@@ -194,6 +347,13 @@ export default function ProductListView({
   const [formBrand, setFormBrand] = useState('');
   const [formModelNumber, setFormModelNumber] = useState<string | number>('');
   const [formModelUnit, setFormModelUnit] = useState<string>('Kg');
+
+  // Auto-reset formBrand if selected brand is deleted or no longer exists
+  useEffect(() => {
+    if (formBrand && !brands.some(b => b.name.trim().toLowerCase() === formBrand.trim().toLowerCase())) {
+      setFormBrand('');
+    }
+  }, [brands, formBrand]);
 
   // Image Upload States
   const [imagePreview, setImagePreview] = useState('');
@@ -464,6 +624,18 @@ export default function ProductListView({
         const base64String = reader.result as string;
         setFormImage(base64String);
         setImagePreview(base64String);
+
+        if (onAddMediaFile && base64String) {
+          onAddMediaFile({
+            name: formName ? `รูปสินค้า: ${formName}` : `รูปสินค้า ${file.name}`,
+            type: 'image',
+            url: base64String,
+            category: 'รูปสินค้า',
+            refName: formBrand || formCategory || formSku || undefined,
+            size: file.size,
+            fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
+          });
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -489,6 +661,18 @@ export default function ProductListView({
         const base64String = reader.result as string;
         setFormImage(base64String);
         setImagePreview(base64String);
+
+        if (onAddMediaFile && base64String) {
+          onAddMediaFile({
+            name: formName ? `รูปสินค้า: ${formName}` : `รูปสินค้า ${file.name}`,
+            type: 'image',
+            url: base64String,
+            category: 'รูปสินค้า',
+            refName: formBrand || formCategory || formSku || undefined,
+            size: file.size,
+            fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
+          });
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -991,14 +1175,26 @@ export default function ProductListView({
                       </div>
                     </div>
                     <div className="flex items-center gap-2 text-[10px] sm:text-xs font-bold text-slate-500 font-sans" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-slate-100 shadow-3xs">
+                      <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-100 dark:border-slate-800 shadow-3xs">
                         <span className="text-slate-400 font-medium">สต็อกรวม:</span>
-                        <span className="font-black text-slate-700">{totalQty} ชิ้น</span>
+                        <span className="font-black text-slate-700 dark:text-slate-200">{totalQty} ชิ้น</span>
                       </div>
-                      <div className="flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-slate-100 shadow-3xs">
+                      <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-100 dark:border-slate-800 shadow-3xs">
                         <span className="text-slate-400 font-medium">ทุนคลัง:</span>
-                        <span className="font-black text-indigo-600">{formatCurrency(totalCostVal)}</span>
+                        <span className="font-black text-indigo-600 dark:text-indigo-400">{formatCurrency(totalCostVal)}</span>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditCategory(group.category, 'general')}
+                        className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-3xs shrink-0"
+                        title="แก้ไขหมวดหมู่และจัดการ Series ย่อย"
+                      >
+                        <Edit3 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                        <span>แก้ไขหมวดหมู่ / Series ย่อย</span>
+                        <span className="ml-0.5 px-1.5 py-0.2 text-[10px] bg-indigo-200/60 dark:bg-indigo-900/80 text-indigo-800 dark:text-indigo-200 rounded-md font-extrabold">
+                          {group.category.subSeries?.length || group.category.series?.length || 0}
+                        </span>
+                      </button>
                     </div>
                   </div>
 
@@ -1101,7 +1297,7 @@ export default function ProductListView({
                                               );
                                             })()}
                                             <div>
-                                              <span className="uppercase tracking-wide font-extrabold text-[12px] block sm:inline">Series: {ps.seriesName}</span>
+                                              <span className="uppercase tracking-wide font-extrabold text-[12px] block sm:inline">Series ย่อย: {ps.seriesName}</span>
                                               <span className="ml-1.5 text-[9px] font-normal text-slate-400 dark:text-slate-500 font-sans">
                                                 ({ps.products.length} รายการ)
                                               </span>
@@ -1779,7 +1975,7 @@ export default function ProductListView({
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">Series ย่อย</label>
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">Series ย่อย (Sub Series)</label>
                       {(() => {
                         const selectedCat = mergedCategories.find((c) => c.id === formCategory);
                         const listFromSeries = selectedCat?.series || [];
@@ -1793,7 +1989,7 @@ export default function ProductListView({
                               value={formSeries}
                               onChange={(e) => setFormSeries(e.target.value)}
                             >
-                              <option value="">-- ไม่มี Series --</option>
+                              <option value="">-- ไม่มี Series ย่อย --</option>
                               {availableSeries.map((s, idx) => (
                                 <option key={idx} value={s}>
                                   {s}
@@ -2167,6 +2363,403 @@ export default function ProductListView({
                   id="btn-submit-quick-adjust"
                 >
                   บันทึกรายการ
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT CATEGORY & SUB-SERIES MODAL */}
+      {editingCatModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5 text-left max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-2xl border border-indigo-100 dark:border-indigo-900/40">
+                  <Layers className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800 dark:text-slate-100 font-sans">
+                    จัดการหมวดหมู่ &amp; Sub Series
+                  </h3>
+                  <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-sans">
+                    {editingCatModal.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCatModal(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/60 p-1 rounded-2xl shrink-0">
+              <button
+                type="button"
+                onClick={() => setEditCatTab('general')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  editCatTab === 'general'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <Edit3 className="h-3.5 w-3.5" />
+                <span>ข้อมูลหมวดหมู่</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditCatTab('subseries')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  editCatTab === 'subseries'
+                    ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                <span>จัดการ Sub Series ({catSubSeriesList.length})</span>
+              </button>
+            </div>
+
+            {/* Tab 1: General Category Info */}
+            <form onSubmit={handleSaveCategoryModal} className="space-y-4 overflow-y-auto pr-1 flex-1">
+              {editCatTab === 'general' && (
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 font-sans">
+                      ชื่อหมวดหมู่ <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={catFormName}
+                      onChange={(e) => setCatFormName(e.target.value)}
+                      placeholder="ระบุชื่อหมวดหมู่สินค้า..."
+                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 font-sans">
+                      คำอธิบายเพิ่มเติม
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={catFormDescription}
+                      onChange={(e) => setCatFormDescription(e.target.value)}
+                      placeholder="รายละเอียดสั้นๆ ของหมวดหมู่นี้..."
+                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 font-sans">
+                      รูปภาพประกอบหมวดหมู่ (URL)
+                    </label>
+                    <input
+                      type="text"
+                      value={catFormImageUrl}
+                      onChange={(e) => setCatFormImageUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 font-sans">
+                      ธีมสีป้ายหมวดหมู่
+                    </label>
+                    <div className="grid grid-cols-4 gap-2 pt-1">
+                      {[
+                        { name: 'น้ำเงิน', value: 'bg-blue-100 text-blue-800 border-blue-150 dark:bg-blue-900/30 dark:text-blue-200 dark:border-blue-800' },
+                        { name: 'ม่วง', value: 'bg-purple-100 text-purple-800 border-purple-150 dark:bg-purple-900/30 dark:text-purple-200 dark:border-purple-800' },
+                        { name: 'ส้มทอง', value: 'bg-amber-100 text-amber-800 border-amber-150 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800' },
+                        { name: 'เขียว', value: 'bg-emerald-100 text-emerald-800 border-emerald-150 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800' },
+                        { name: 'แดงชมพู', value: 'bg-rose-100 text-rose-800 border-rose-150 dark:bg-rose-900/30 dark:text-rose-200 dark:border-rose-800' },
+                        { name: 'ฟ้าคราม', value: 'bg-cyan-100 text-cyan-800 border-cyan-150 dark:bg-cyan-900/30 dark:text-cyan-200 dark:border-cyan-800' },
+                        { name: 'เทาสุขุม', value: 'bg-slate-100 text-slate-800 border-slate-150 dark:bg-slate-800/40 dark:text-slate-200 dark:border-slate-700' },
+                        { name: 'แดงสด', value: 'bg-red-100 text-red-800 border-red-150 dark:bg-red-900/30 dark:text-red-200 dark:border-red-800' },
+                      ].map((colorOpt) => (
+                        <button
+                          key={colorOpt.name}
+                          type="button"
+                          onClick={() => setCatFormColor(colorOpt.value)}
+                          className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold font-sans transition-all cursor-pointer text-center ${colorOpt.value} ${
+                            catFormColor === colorOpt.value ? 'ring-2 ring-indigo-500 scale-105' : 'opacity-80 hover:opacity-100'
+                          }`}
+                        >
+                          {colorOpt.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2: Sub-Series Management */}
+              {editCatTab === 'subseries' && (
+                <div className="space-y-5">
+                  {/* Form for Adding / Editing Sub Series */}
+                  <div className="p-4 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-150 dark:border-purple-900/40 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-purple-900 dark:text-purple-200 font-sans flex items-center gap-1.5">
+                        <PlusCircle className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                        {editingSubSeriesIndex !== null ? 'แก้ไข Sub Series' : 'เพิ่ม Sub Series ใหม่'}
+                      </span>
+                      {editingSubSeriesIndex !== null && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingSubSeriesIndex(null);
+                            setSubSeriesInputName('');
+                            setSubSeriesInputImageUrl('');
+                            setSubSeriesInputPdfUrl('');
+                          }}
+                          className="text-[11px] font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 cursor-pointer"
+                        >
+                          ยกเลิกการแก้ไข
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="sm:col-span-2 space-y-1">
+                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 font-sans">
+                          ชื่อ Sub Series / รุ่นย่อย <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={subSeriesInputName}
+                          onChange={(e) => setSubSeriesInputName(e.target.value)}
+                          placeholder="เช่น 1 Pole, 3 Pole, Series A..."
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 font-sans flex items-center justify-between">
+                          <span>รูปภาพ Sub Series</span>
+                          <label className="text-[10px] text-purple-600 dark:text-purple-400 font-bold hover:underline cursor-pointer">
+                            + อัปโหลดรูป
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  if (typeof reader.result === 'string') {
+                                    setSubSeriesInputImageUrl(reader.result);
+                                    if (onAddMediaFile) {
+                                      onAddMediaFile({
+                                        name: `รูปซีรีส์ย่อย: ${subSeriesInputName || file.name}`,
+                                        type: 'image',
+                                        url: reader.result,
+                                        category: 'รูปหมวดหมู่',
+                                        refName: editingCatModal?.name || undefined,
+                                        size: file.size,
+                                        fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
+                                      });
+                                    }
+                                  }
+                                };
+                                reader.readAsDataURL(file);
+                              }}
+                            />
+                          </label>
+                        </label>
+                        <input
+                          type="text"
+                          value={subSeriesInputImageUrl}
+                          onChange={(e) => setSubSeriesInputImageUrl(e.target.value)}
+                          placeholder="URL รูปภาพ..."
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 font-sans flex items-center justify-between">
+                          <span>คู่มือสินค้า (PDF)</span>
+                          <label className="text-[10px] text-purple-600 dark:text-purple-400 font-bold hover:underline cursor-pointer">
+                            + อัปโหลด PDF
+                            <input
+                              type="file"
+                              accept="application/pdf"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  if (typeof reader.result === 'string') {
+                                    setSubSeriesInputPdfUrl(reader.result);
+                                    if (onAddMediaFile) {
+                                      onAddMediaFile({
+                                        name: `คู่มือ/แคตตาล็อก: ${subSeriesInputName || file.name}`,
+                                        type: 'document',
+                                        url: reader.result,
+                                        category: 'คู่มือ / เอกสารทางเทคนิค',
+                                        refName: editingCatModal?.name || undefined,
+                                        size: file.size,
+                                        fileType: 'PDF'
+                                      });
+                                    }
+                                  }
+                                };
+                                reader.readAsDataURL(file);
+                              }}
+                            />
+                          </label>
+                        </label>
+                        <input
+                          type="text"
+                          value={subSeriesInputPdfUrl}
+                          onChange={(e) => setSubSeriesInputPdfUrl(e.target.value)}
+                          placeholder="URL ไฟล์ PDF..."
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={handleAddOrUpdateSubSeries}
+                        className="px-4 py-2 text-xs font-black text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        {editingSubSeriesIndex !== null ? <Edit3 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                        <span>{editingSubSeriesIndex !== null ? 'บันทึก Sub Series' : 'เพิ่ม Sub Series'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* List of Existing Sub Series */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">
+                        รายการ Sub Series ทั้งหมด ({catSubSeriesList.length})
+                      </span>
+                    </div>
+
+                    {catSubSeriesList.length === 0 ? (
+                      <div className="text-center py-6 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl text-slate-400 text-xs font-sans">
+                        ยังไม่มี Sub Series ในหมวดหมู่นี้
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                        {catSubSeriesList.map((sub, idx) => {
+                          const prodCount = products.filter(
+                            p => p.category === editingCatModal.id && p.series === sub.name
+                          ).length;
+
+                          return (
+                            <div
+                              key={sub.name + idx}
+                              className={`p-3 bg-white dark:bg-slate-950 border rounded-2xl flex items-center justify-between gap-3 transition-all ${
+                                editingSubSeriesIndex === idx
+                                  ? 'border-purple-500 ring-2 ring-purple-500/20'
+                                  : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                {sub.imageUrl ? (
+                                  <img
+                                    src={sub.imageUrl}
+                                    alt={sub.name}
+                                    className="w-9 h-9 object-cover rounded-lg border border-slate-200 shrink-0"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                                    <Tag className="h-4 w-4" />
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-black text-slate-800 dark:text-slate-100 font-sans truncate">
+                                      {sub.name}
+                                    </span>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg shrink-0">
+                                      {prodCount} สินค้า
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                                    {sub.pdfUrl && (
+                                      <span className="text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-0.5">
+                                        <FileText className="h-3 w-3" /> มีคู่มือ PDF
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveSubSeriesInModal(idx, 'up')}
+                                  disabled={idx === 0}
+                                  className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"
+                                  title="ย้ายขึ้น"
+                                >
+                                  <ChevronUp className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveSubSeriesInModal(idx, 'down')}
+                                  disabled={idx === catSubSeriesList.length - 1}
+                                  className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"
+                                  title="ย้ายลง"
+                                >
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditSubSeriesClick(idx)}
+                                  className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg cursor-pointer"
+                                  title="แก้ไข Sub Series"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSubSeries(idx)}
+                                  className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg cursor-pointer"
+                                  title="ลบ Sub Series"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-4 mt-4 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setEditingCatModal(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl transition-all cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  <span>บันทึกการเปลี่ยนแปลงทั้งหมด</span>
                 </button>
               </div>
             </form>

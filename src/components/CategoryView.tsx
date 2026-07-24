@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Category, Product } from '../types';
+import { Category, Product, MediaFile } from '../types';
 import { Plus, Trash2, Edit3, X, Layers, AlertCircle, Upload, Image as ImageIcon, ChevronDown, ChevronUp, Tag, FileText } from 'lucide-react';
 
 interface CategoryViewProps {
@@ -9,6 +9,7 @@ interface CategoryViewProps {
   onEditCategory: (id: string, updated: Partial<Category>) => void;
   onDeleteCategory: (id: string) => void;
   onEditProduct?: (id: string, updated: Partial<Product>) => void;
+  onAddMediaFile?: (data: Omit<MediaFile, 'id' | 'createdAt'>) => Promise<MediaFile>;
 }
 
 const PRESET_COLORS = [
@@ -29,6 +30,7 @@ export default function CategoryView({
   onEditCategory,
   onDeleteCategory,
   onEditProduct,
+  onAddMediaFile,
 }: CategoryViewProps) {
   // Local state
   const [isEditing, setIsEditing] = useState<string | null>(null);
@@ -320,7 +322,19 @@ export default function CategoryView({
                       if (file) {
                         const reader = new FileReader();
                         reader.onloadend = () => {
-                          setImageUrl(reader.result as string);
+                          const base64 = reader.result as string;
+                          setImageUrl(base64);
+                          if (onAddMediaFile && base64) {
+                            onAddMediaFile({
+                              name: name ? `รูปหมวดหมู่: ${name}` : `รูปหมวดหมู่ ${file.name}`,
+                              type: 'image',
+                              url: base64,
+                              category: 'รูปหมวดหมู่',
+                              refName: name || undefined,
+                              size: file.size,
+                              fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
+                            });
+                          }
                         };
                         reader.readAsDataURL(file);
                       }
@@ -588,7 +602,19 @@ export default function CategoryView({
                                     if (file) {
                                       const reader = new FileReader();
                                       reader.onloadend = () => {
-                                        setSeriesImageInput(reader.result as string);
+                                        const base64 = reader.result as string;
+                                        setSeriesImageInput(base64);
+                                        if (onAddMediaFile && base64) {
+                                          onAddMediaFile({
+                                            name: seriesNameInput ? `รูปซีรีส์: ${seriesNameInput}` : `รูปซีรีส์ ${file.name}`,
+                                            type: 'image',
+                                            url: base64,
+                                            category: 'รูปหมวดหมู่',
+                                            refName: cat.name || undefined,
+                                            size: file.size,
+                                            fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
+                                          });
+                                        }
                                       };
                                       reader.readAsDataURL(file);
                                     }
@@ -626,7 +652,19 @@ export default function CategoryView({
                                       }
                                       const reader = new FileReader();
                                       reader.onloadend = () => {
-                                        setSeriesPdfInput(reader.result as string);
+                                        const base64 = reader.result as string;
+                                        setSeriesPdfInput(base64);
+                                        if (onAddMediaFile && base64) {
+                                          onAddMediaFile({
+                                            name: seriesNameInput ? `แคตตาล็อก/คู่มือ: ${seriesNameInput}` : `คู่มือ PDF ${file.name}`,
+                                            type: 'document',
+                                            url: base64,
+                                            category: 'แคตตาล็อกสินค้า',
+                                            refName: cat.name || undefined,
+                                            size: file.size,
+                                            fileType: 'PDF'
+                                          });
+                                        }
                                       };
                                       reader.readAsDataURL(file);
                                     }

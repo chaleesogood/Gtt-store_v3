@@ -29,10 +29,26 @@ export interface SubSeries {
   pdfUrl?: string;
 }
 
+export interface MediaFile {
+  id: string;
+  name: string;
+  type: 'image' | 'document' | 'other';
+  fileType?: string;
+  url: string;
+  size?: number;
+  category?: string;
+  refId?: string;
+  refName?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Brand {
   id: string;
   name: string;
   logoUrl?: string; // Base64 or image URL
+  documentIds?: string[]; // IDs of attached documents in Media Library
   createdAt: string;
 }
 

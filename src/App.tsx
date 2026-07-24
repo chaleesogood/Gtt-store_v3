@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand, sortProducts } from './types';
+import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand, MediaFile, sortProducts } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_ACTIVITIES } from './initialData';
 import Toast, { ToastMessage } from './components/Toast';
 import DashboardView from './components/DashboardView';
@@ -15,7 +15,6 @@ import SettingsView from './components/SettingsView';
 import { CatalogView } from './components/CatalogView';
 import UserManagementView from './components/UserManagementView';
 import { GoogleSheetsView } from './components/GoogleSheetsView';
-import DatabaseStatusBar from './components/DatabaseStatusBar';
 import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles, Database, CloudUpload, RefreshCw, FileSpreadsheet, Clock, Lock, Mail, LogOut, Loader2, UserCheck, UserPlus, Copy, Fingerprint } from 'lucide-react';
 import { collection, doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs, getDocsFromServer } from 'firebase/firestore';
 import { db, cleanUndefined, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from './firebase';
@@ -91,6 +90,10 @@ export default function App() {
   });
   const [brands, setBrands] = useState<Brand[]>(() => {
     const saved = window.localStorage.getItem('stock_manager_brands_list');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_media_files_list');
     return saved ? JSON.parse(saved) : [];
   });
   const [isSyncComplete, setIsSyncComplete] = useState<boolean>(true);
@@ -1325,6 +1328,8 @@ export default function App() {
   }, []);
 
   // Sync brands from Firestore
+  const isBrandsInitializedRef = useRef(false);
+
   useEffect(() => {
     const q = query(collection(db, 'brands'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -1337,15 +1342,18 @@ export default function App() {
       const localList: Brand[] = savedStr ? JSON.parse(savedStr) : [];
 
       if (firestoreList.length > 0) {
+        isBrandsInitializedRef.current = true;
         firestoreList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
         setBrands(firestoreList);
         localStorage.setItem('stock_manager_brands_list', JSON.stringify(firestoreList));
       } else {
-        if (localList.length > 0) {
+        if (!isBrandsInitializedRef.current && localList.length > 0) {
+          isBrandsInitializedRef.current = true;
           localList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
           setBrands(localList);
           uploadListToFirestoreInBatches('brands', localList);
         } else {
+          isBrandsInitializedRef.current = true;
           setBrands([]);
           localStorage.setItem('stock_manager_brands_list', JSON.stringify([]));
         }
@@ -1422,6 +1430,45 @@ export default function App() {
       handleFirestoreError("Firestore dailyReports sync error", error);
       const saved = localStorage.getItem('stock_manager_daily_reports_list');
       setDailyReports(saved ? JSON.parse(saved) : []);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync media files from Firestore
+  const isMediaFilesInitializedRef = useRef(false);
+
+  useEffect(() => {
+    const q = query(collection(db, 'media_files'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const firestoreList: MediaFile[] = [];
+      snapshot.forEach((document) => {
+        firestoreList.push({ id: document.id, ...document.data() } as MediaFile);
+      });
+
+      const savedStr = localStorage.getItem('stock_manager_media_files_list');
+      const localList: MediaFile[] = savedStr ? JSON.parse(savedStr) : [];
+
+      if (firestoreList.length > 0) {
+        isMediaFilesInitializedRef.current = true;
+        firestoreList.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        setMediaFiles(firestoreList);
+        localStorage.setItem('stock_manager_media_files_list', JSON.stringify(firestoreList));
+      } else {
+        if (!isMediaFilesInitializedRef.current && localList.length > 0) {
+          isMediaFilesInitializedRef.current = true;
+          localList.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          setMediaFiles(localList);
+          uploadListToFirestoreInBatches('media_files', localList);
+        } else {
+          isMediaFilesInitializedRef.current = true;
+          setMediaFiles([]);
+          localStorage.setItem('stock_manager_media_files_list', JSON.stringify([]));
+        }
+      }
+    }, (error) => {
+      handleFirestoreError("Firestore media_files sync error", error);
+      const saved = localStorage.getItem('stock_manager_media_files_list');
+      setMediaFiles(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
   }, []);
@@ -2509,11 +2556,34 @@ export default function App() {
   };
 
   const handleEditBrand = async (id: string, updatedFields: Partial<Brand>) => {
+    const oldBrand = brands.find((br) => br.id === id);
     const updatedBrands = brands.map((br) =>
       br.id === id ? { ...br, ...updatedFields } : br
     );
     setBrands(updatedBrands);
     localStorage.setItem('stock_manager_brands_list', JSON.stringify(updatedBrands));
+
+    // If brand name changed, also update products referencing old brand name
+    if (oldBrand && updatedFields.name && oldBrand.name !== updatedFields.name) {
+      const affectedProducts = products.filter((p) => p.brand === oldBrand.name);
+      if (affectedProducts.length > 0) {
+        const updatedProducts = products.map((p) =>
+          p.brand === oldBrand.name ? { ...p, brand: updatedFields.name } : p
+        );
+        setProducts(updatedProducts);
+        localStorage.setItem('stock_manager_products', JSON.stringify(updatedProducts));
+
+        try {
+          const batch = writeBatch(db);
+          affectedProducts.forEach((p) => {
+            batch.update(doc(db, 'products', p.id), { brand: updatedFields.name });
+          });
+          await batch.commit();
+        } catch (e) {
+          console.warn("Could not update product brand references in firestore:", e);
+        }
+      }
+    }
 
     try {
       const brandRef = doc(db, 'brands', id);
@@ -2532,25 +2602,158 @@ export default function App() {
   };
 
   const handleDeleteBrand = async (id: string) => {
-    if (currentUserRole !== 'admin') {
-      addToast('error', 'ปฏิเสธการเข้าถึง', 'เฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่ได้รับอนุญาตให้ลบข้อมูล');
-      return;
-    }
     const brandToDelete = brands.find((b) => b.id === id);
     if (!brandToDelete) return;
 
-    const updatedBrands = brands.filter((br) => br.id !== id);
+    const normalizedTargetName = brandToDelete.name.trim().toLowerCase();
+
+    // Find all brand entries that match either the ID or the same brand name
+    const brandsToRemove = brands.filter(
+      (b) => b.id === id || (b.name && b.name.trim().toLowerCase() === normalizedTargetName)
+    );
+
+    // Optimistically update brands
+    const updatedBrands = brands.filter(
+      (br) => !brandsToRemove.some((r) => r.id === br.id)
+    );
     setBrands(updatedBrands);
     localStorage.setItem('stock_manager_brands_list', JSON.stringify(updatedBrands));
 
+    // Clear brand association on products if any
+    const isBrandMatch = (bName?: string) => {
+      if (!bName) return false;
+      return bName.trim().toLowerCase() === normalizedTargetName;
+    };
+
+    const affectedProducts = products.filter((p) => isBrandMatch(p.brand));
+    if (affectedProducts.length > 0) {
+      const updatedProducts = products.map((p) => isBrandMatch(p.brand) ? { ...p, brand: '' } : p);
+      setProducts(updatedProducts);
+      localStorage.setItem('stock_manager_products', JSON.stringify(updatedProducts));
+
+      try {
+        const batch = writeBatch(db);
+        affectedProducts.forEach((p) => {
+          batch.update(doc(db, 'products', p.id), { brand: '' });
+        });
+        await batch.commit();
+      } catch (e) {
+        console.warn("Could not clear product brand references in firestore:", e);
+      }
+    }
+
+    // Also clear brand reference on media files if any
+    const affectedMedia = mediaFiles.filter((m) =>
+      (m.refId && m.refId === id) ||
+      (m.refName && isBrandMatch(m.refName))
+    );
+    if (affectedMedia.length > 0) {
+      const updatedMedia = mediaFiles.map((m) =>
+        ((m.refId && m.refId === id) || (m.refName && isBrandMatch(m.refName)))
+          ? { ...m, refId: undefined, refName: undefined }
+          : m
+      );
+      setMediaFiles(updatedMedia);
+      localStorage.setItem('stock_manager_media_files', JSON.stringify(updatedMedia));
+
+      try {
+        const batch = writeBatch(db);
+        affectedMedia.forEach((m) => {
+          batch.update(doc(db, 'media_files', m.id), { refId: null, refName: null });
+        });
+        await batch.commit();
+      } catch (e) {
+        console.warn("Could not clear media file brand references in firestore:", e);
+      }
+    }
+
     try {
-      await deleteDoc(doc(db, 'brands', id));
-      addToast('info', 'ลบแบรนด์สินค้าสำเร็จ', `แบรนด์ "${brandToDelete.name}" ถูกนำออกจากระบบแล้ว`);
+      // Fetch all docs from Firestore 'brands' collection to catch duplicates or docs with different IDs
+      const idsToDelete = new Set<string>();
+      brandsToRemove.forEach((b) => idsToDelete.add(b.id));
+
+      try {
+        const snap = await getDocs(collection(db, 'brands'));
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (
+            docSnap.id === id ||
+            idsToDelete.has(docSnap.id) ||
+            (data.name && String(data.name).trim().toLowerCase() === normalizedTargetName)
+          ) {
+            idsToDelete.add(docSnap.id);
+          }
+        });
+      } catch (e) {
+        console.warn("Could not query all brands in firestore before deletion:", e);
+      }
+
+      const batch = writeBatch(db);
+      idsToDelete.forEach((docId) => {
+        batch.delete(doc(db, 'brands', docId));
+      });
+      await batch.commit();
+
+      addToast('info', 'ลบแบรนด์สินค้าสำเร็จ', `แบรนด์ "${brandToDelete.name}" ถูกนำออกจากระบบเรียบร้อยแล้ว`);
     } catch (error: any) {
-      console.error(error);
-      setBrands(brands);
-      localStorage.setItem('stock_manager_brands_list', JSON.stringify(brands));
-      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถลบแบรนด์ได้: ${error.message}`);
+      console.error("Firestore brand delete error:", error);
+      addToast('warning', 'แจ้งเตือน', `นำแบรนด์ออกจากระบบสำเร็จแล้ว (${error.message || 'Firestore Sync'})`);
+    }
+  };
+
+  // -------------------- MEDIA & DOCUMENTS WORKFLOWS --------------------
+
+  const handleAddMediaFile = async (data: Omit<MediaFile, 'id' | 'createdAt'>): Promise<MediaFile> => {
+    // Deduplicate check by URL if provided
+    if (data.url) {
+      const existing = mediaFiles.find(m => m.url === data.url);
+      if (existing) {
+        return existing;
+      }
+    }
+
+    const newMedia: MediaFile = {
+      ...data,
+      id: `media-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: new Date().toISOString()
+    };
+    const updated = [newMedia, ...mediaFiles];
+    setMediaFiles(updated);
+    localStorage.setItem('stock_manager_media_files_list', JSON.stringify(updated));
+    try {
+      await setDoc(doc(db, 'media_files', newMedia.id), cleanUndefined(newMedia));
+      addToast('success', 'เข้าคลังไฟล์เรียบร้อย', `จัดเก็บ "${newMedia.name}" ในหมวด [${newMedia.category || 'ทั่วไป'}] อัตโนมัติแล้ว`);
+    } catch (e: any) {
+      console.error(e);
+      addToast('error', 'เกิดข้อผิดพลาดในการบันทึกไฟล์', e.message);
+    }
+    return newMedia;
+  };
+
+  const handleEditMediaFile = async (id: string, updatedFields: Partial<MediaFile>) => {
+    const updated = mediaFiles.map(m => m.id === id ? { ...m, ...updatedFields, updatedAt: new Date().toISOString() } : m);
+    setMediaFiles(updated);
+    localStorage.setItem('stock_manager_media_files_list', JSON.stringify(updated));
+    try {
+      await setDoc(doc(db, 'media_files', id), cleanUndefined(updated.find(m => m.id === id)), { merge: true });
+      addToast('success', 'แก้ไขข้อมูลไฟล์สำเร็จ', 'ปรับปรุงรายละเอียดไฟล์เรียบร้อยแล้ว');
+    } catch (e: any) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteMediaFile = async (id: string) => {
+    const mediaToDelete = mediaFiles.find(m => m.id === id);
+    const updated = mediaFiles.filter(m => m.id !== id);
+    setMediaFiles(updated);
+    localStorage.setItem('stock_manager_media_files_list', JSON.stringify(updated));
+    try {
+      await deleteDoc(doc(db, 'media_files', id));
+      if (mediaToDelete) {
+        addToast('info', 'ลบไฟล์สำเร็จ', `นำ "${mediaToDelete.name}" ออกจากคลังไฟล์แล้ว`);
+      }
+    } catch (e: any) {
+      console.error(e);
     }
   };
 
@@ -2786,6 +2989,7 @@ export default function App() {
             brands={brands}
             boms={boms}
             setBoms={setBoms}
+            onAddMediaFile={handleAddMediaFile}
           />
         );
       case 'logs':
@@ -2815,6 +3019,7 @@ export default function App() {
             onAddDailyReport={handleAddDailyReport}
             onEditDailyReport={handleEditDailyReport}
             onDeleteDailyReport={handleDeleteDailyReport}
+            onAddMediaFile={handleAddMediaFile}
           />
         );
       case 'reports':
@@ -2844,6 +3049,7 @@ export default function App() {
             onAddDailyReport={handleAddDailyReport}
             onEditDailyReport={handleEditDailyReport}
             onDeleteDailyReport={handleDeleteDailyReport}
+            onAddMediaFile={handleAddMediaFile}
           />
         );
       case 'settings':
@@ -2878,6 +3084,10 @@ export default function App() {
             categories={categories}
             boms={boms}
             dailyReports={dailyReports}
+            mediaFiles={mediaFiles}
+            onAddMediaFile={handleAddMediaFile}
+            onEditMediaFile={handleEditMediaFile}
+            onDeleteMediaFile={handleDeleteMediaFile}
           />
         );
       case 'catalog':
@@ -2889,6 +3099,11 @@ export default function App() {
             addToast={addToast}
             brands={brands}
             boms={boms}
+            onEditCategory={handleEditCategory}
+            onAddCategory={handleAddCategory}
+            onDeleteCategory={handleDeleteCategory}
+            onEditProduct={handleEditProduct}
+            onAddMediaFile={handleAddMediaFile}
           />
         );
       case 'users':
@@ -3686,8 +3901,6 @@ export default function App() {
             <History className="h-4.5 w-4.5 flex-shrink-0" />
             บันทึกประวัติ (Logs)
           </button>
-
-
         </nav>
 
         {/* Footer */}
@@ -3826,6 +4039,15 @@ export default function App() {
               BOM & Planning
             </button>
             <button
+              onClick={() => { setCurrentTab('google_sheets'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
+                currentTab === 'google_sheets' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800 text-emerald-400'
+              }`}
+            >
+              <FileSpreadsheet className="h-4.5 w-4.5 text-emerald-400" />
+              <span>Google Sheets (เชื่อมสเปรดชีต)</span>
+            </button>
+            <button
               onClick={() => { setCurrentTab('settings'); setIsMobileMenuOpen(false); }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold ${
                 currentTab === 'settings' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'
@@ -3872,7 +4094,6 @@ export default function App() {
             >
               <span>ออกจากระบบ (Sign Out)</span>
             </button>
-
           </nav>
         </div>
       )}
@@ -3946,58 +4167,9 @@ export default function App() {
         <header className="hidden md:flex items-center justify-between pb-3 mb-4 border-b border-slate-200/60 dark:border-slate-800">
           <div>
             <h1 className="text-xl font-bold font-sans text-slate-800 dark:text-slate-100">ระบบจัดการคลังสินค้าอัจฉริยะ</h1>
-            <div className="flex items-center gap-2 mt-1.5 text-[11px] font-sans flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
-                <span>localhost / Dev Runtime</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                <span>Dev Database (Sandbox)</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Production Database (Cloud Firestore)</span>
-              </span>
-            </div>
           </div>
 
           <div className="flex items-center gap-3 relative">
-            {/* Save All Data to Central Database Button & Timestamp */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleSaveAllToDatabase}
-                disabled={isSavingAllToDb}
-                className="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white text-xs font-black rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                title="บันทึกและซิงค์ข้อมูลทั้งหมดลงใน Database หลัก (Cloud Firestore)"
-                id="btn-header-save-all-to-db"
-              >
-                <Database className={`h-4 w-4 ${isSavingAllToDb ? 'animate-spin' : ''}`} />
-                <span>{isSavingAllToDb ? 'กำลังบันทึก...' : 'บันทึกข้อมูลลง Database หลัก'}</span>
-              </button>
-              <button
-                onClick={() => handlePullFreshFromDatabase(true)}
-                disabled={isPullingFreshDb}
-                className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition-all cursor-pointer disabled:opacity-50 shrink-0"
-                title="ดึงข้อมูลล่าสุดจาก Database หลักใหม่ทุกครั้ง"
-                id="btn-header-pull-fresh-db"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${isPullingFreshDb ? 'animate-spin text-indigo-500' : 'text-slate-500 dark:text-slate-400'}`} />
-                <span>{isPullingFreshDb ? 'กำลังดึงข้อมูล...' : 'รีเฟรชข้อมูล'}</span>
-              </button>
-              <button
-                onClick={() => setCurrentTab('google_sheets')}
-                className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-black rounded-xl transition-all cursor-pointer shrink-0"
-                title="จัดการส่งออกและซิงค์ข้อมูลผ่าน Google Sheets"
-                id="btn-header-google-sheets"
-              >
-                <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                <span>Google Sheets</span>
-              </button>
-            </div>
-
-
-
             {/* Theme Toggle Button */}
             <button
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
@@ -4101,14 +4273,6 @@ export default function App() {
 
         {/* CORE WORKSPACE VIEW */}
         <div className="animate-in fade-in duration-300">
-          <DatabaseStatusBar
-            isQuotaExceeded={isQuotaExceeded}
-            lastDbSyncTime={lastDbSyncTime}
-            onSaveAllToDatabase={handleSaveAllToDatabase}
-            onPullFreshFromDatabase={() => handlePullFreshFromDatabase(true)}
-            isSavingAllToDb={isSavingAllToDb}
-            isPullingFreshDb={isPullingFreshDb}
-          />
           {renderTabContent()}
         </div>
 

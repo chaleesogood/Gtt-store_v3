@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Product, Bom, BomItem, Category, JobProject, ProductOrder, normalizeModules, Employee, Job, DailyReport } from '../types';
+import { Product, Bom, BomItem, Category, JobProject, ProductOrder, normalizeModules, Employee, Job, DailyReport, MediaFile } from '../types';
 import Logo from './Logo';
 import JobAssignmentView from './JobAssignmentView';
 import { 
@@ -57,6 +57,7 @@ interface ProjectBomViewProps {
   onAddDailyReport?: (newReport: Omit<DailyReport, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onEditDailyReport?: (id: string, updatedFields: Partial<DailyReport>) => void;
   onDeleteDailyReport?: (id: string) => void;
+  onAddMediaFile?: (data: Omit<MediaFile, 'id' | 'createdAt'>) => Promise<MediaFile>;
 }
 
 // Typings for backward compatibility
@@ -429,7 +430,19 @@ function ProjectModulesManager({ proj, onEditJobProject, addToast }: ProjectModu
                           if (!file) return;
                           const reader = new FileReader();
                           reader.onloadend = () => {
-                            handleUploadImage(m.code, reader.result as string);
+                            const base64 = reader.result as string;
+                            handleUploadImage(m.code, base64);
+                            if (onAddMediaFile && base64) {
+                              onAddMediaFile({
+                                name: `รูปมอดูลโครงการ: ${m.name || m.code}`,
+                                type: 'image',
+                                url: base64,
+                                category: 'เอกสารโครงการ',
+                                refName: selectedBom?.projectName || m.code,
+                                size: file.size,
+                                fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
+                              });
+                            }
                           };
                           reader.readAsDataURL(file);
                         }}
@@ -538,7 +551,8 @@ export default function ProjectBomView({
   dailyReports = [],
   onAddDailyReport,
   onEditDailyReport,
-  onDeleteDailyReport
+  onDeleteDailyReport,
+  onAddMediaFile
 }: ProjectBomViewProps) {
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<'bom' | 'planning'>('bom');

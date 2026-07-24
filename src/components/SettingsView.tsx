@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Job, Employee, JobProject, normalizeModules, Brand, UserRole } from '../types';
+import { Job, Employee, JobProject, normalizeModules, Brand, UserRole, MediaFile } from '../types';
 import { 
   FolderGit2, 
   Users, 
@@ -31,7 +31,19 @@ import {
   Download,
   CloudUpload,
   Server,
-  CheckCircle2
+  CheckCircle2,
+  FolderOpen,
+  FileText,
+  File,
+  Image as ImageIcon,
+  FileSpreadsheet,
+  ExternalLink,
+  Eye,
+  Copy,
+  Paperclip,
+  Filter,
+  HardDrive,
+  CheckCircle
 } from 'lucide-react';
 
 const getDeptBadgeStyle = (dept: string) => {
@@ -500,9 +512,13 @@ interface SettingsViewProps {
   categories?: any[];
   boms?: any[];
   dailyReports?: any[];
+  mediaFiles?: MediaFile[];
+  onAddMediaFile?: (data: Omit<MediaFile, 'id' | 'createdAt'>) => Promise<MediaFile>;
+  onEditMediaFile?: (id: string, updatedFields: Partial<MediaFile>) => Promise<void>;
+  onDeleteMediaFile?: (id: string) => Promise<void>;
 }
 
-type SubTab = 'projects' | 'employees' | 'brands' | 'database';
+type SubTab = 'projects' | 'employees' | 'brands' | 'media' | 'database';
 
 export default function SettingsView({
   employees,
@@ -533,7 +549,11 @@ export default function SettingsView({
   products = [],
   categories = [],
   boms = [],
-  dailyReports = []
+  dailyReports = [],
+  mediaFiles = [],
+  onAddMediaFile,
+  onEditMediaFile,
+  onDeleteMediaFile
 }: SettingsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('projects');
 
@@ -692,6 +712,29 @@ export default function SettingsView({
   const [isBrandAddModalOpen, setIsBrandAddModalOpen] = useState(false);
   const [isBrandEditModalOpen, setIsBrandEditModalOpen] = useState(false);
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
+  const [brandAttachedDocs, setBrandAttachedDocs] = useState<string[]>([]);
+  const [brandDocModalBrand, setBrandDocModalBrand] = useState<Brand | null>(null);
+
+  // Media Repository States
+  const [mediaSearch, setMediaSearch] = useState('');
+  const [mediaCategoryFilter, setMediaCategoryFilter] = useState<string>('all');
+  const [mediaTypeFilter, setMediaTypeFilter] = useState<'all' | 'image' | 'document'>('all');
+  const [isAddMediaModalOpen, setIsAddMediaModalOpen] = useState(false);
+  const [isEditMediaModalOpen, setIsEditMediaModalOpen] = useState(false);
+  const [selectedMediaFile, setSelectedMediaFile] = useState<MediaFile | null>(null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<'brandLogo' | 'brandDoc' | null>(null);
+
+  // New/Edit Media Form States
+  const [mediaName, setMediaName] = useState('');
+  const [mediaCategory, setMediaCategory] = useState<string>('แบรนด์');
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [mediaFileType, setMediaFileType] = useState('');
+  const [mediaRefName, setMediaRefName] = useState('');
+  const [mediaNotes, setMediaNotes] = useState('');
+  const [mediaType, setMediaType] = useState<'image' | 'document'>('image');
+  const [mediaSize, setMediaSize] = useState<number | undefined>(undefined);
+  const [previewMediaFile, setPreviewMediaFile] = useState<MediaFile | null>(null);
 
   const [employeeSubTab, setEmployeeSubTab] = useState<'chart' | 'list'>('chart');
 
@@ -937,6 +980,196 @@ export default function SettingsView({
     setSelectedEmp(null);
   };
 
+  // Dynamic category list from mediaFiles + standard categories
+  const availableMediaCategories = useMemo(() => {
+    const defaultCats = [
+      'แบรนด์',
+      'รูปสินค้า',
+      'รูปหมวดหมู่',
+      'รูปงาน / หน้างาน',
+      'แคตตาล็อกสินค้า',
+      'คู่มือ / เอกสารทางเทคนิค',
+      'เอกสารโครงการ',
+      'ทั่วไป',
+    ];
+    const customCats = mediaFiles.map((f) => f.category).filter(Boolean) as string[];
+    return Array.from(new Set([...defaultCats, ...customCats]));
+  }, [mediaFiles]);
+
+  // Filter media files & search
+  const filteredMediaFiles = useMemo(() => {
+    return mediaFiles.filter((file) => {
+      const matchSearch =
+        !mediaSearch.trim() ||
+        (file.name || '').toLowerCase().includes(mediaSearch.toLowerCase()) ||
+        (file.notes || '').toLowerCase().includes(mediaSearch.toLowerCase()) ||
+        (file.refName || '').toLowerCase().includes(mediaSearch.toLowerCase());
+
+      const matchCategory =
+        mediaCategoryFilter === 'all' || file.category === mediaCategoryFilter;
+
+      const matchType =
+        mediaTypeFilter === 'all' ||
+        (mediaTypeFilter === 'image' && file.type === 'image') ||
+        (mediaTypeFilter === 'document' && file.type !== 'image');
+
+      return matchSearch && matchCategory && matchType;
+    });
+  }, [mediaFiles, mediaSearch, mediaCategoryFilter, mediaTypeFilter]);
+
+  // Size calculations for media files
+  const calculateTotalBytes = (files: MediaFile[]) => {
+    return files.reduce((acc, f) => {
+      if (f.size && f.size > 0) return acc + f.size;
+      if (f.url && f.url.startsWith('data:')) {
+        const base64Length = f.url.length - (f.url.indexOf(',') + 1);
+        return acc + Math.round(base64Length * 0.75);
+      }
+      return acc;
+    }, 0);
+  };
+
+  const totalMediaBytes = useMemo(() => calculateTotalBytes(mediaFiles), [mediaFiles]);
+  const filteredMediaBytes = useMemo(() => calculateTotalBytes(filteredMediaFiles), [filteredMediaFiles]);
+
+  const formatBytes = (bytes: number) => {
+    if (bytes <= 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  };
+
+  // Handle Brand Add Submit
+  const handleBrandAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!brandName.trim()) {
+      alert('กรุณากรอกชื่อแบรนด์สินค้า');
+      return;
+    }
+
+    if (brands.some(b => b.name.toLowerCase().trim() === brandName.toLowerCase().trim())) {
+      alert(`มีแบรนด์สินค้าชื่อ "${brandName.trim()}" ในระบบแล้ว`);
+      return;
+    }
+
+    const trimmedName = brandName.trim();
+    const logo = brandLogo.trim();
+
+    // If logo provided, automatically add/save it into mediaFiles repository to prevent loss!
+    if (logo && onAddMediaFile) {
+      const alreadyInRepo = mediaFiles.some(m => m.url === logo);
+      if (!alreadyInRepo) {
+        await onAddMediaFile({
+          name: `โลโก้ ${trimmedName}`,
+          type: 'image',
+          url: logo,
+          category: 'แบรนด์',
+          refName: trimmedName,
+          notes: `โลโก้ทางการแบรนด์ ${trimmedName}`
+        });
+      }
+    }
+
+    await onAddBrand({
+      name: trimmedName,
+      logoUrl: logo,
+      documentIds: brandAttachedDocs
+    });
+
+    setIsBrandAddModalOpen(false);
+    setBrandName('');
+    setBrandLogo('');
+    setBrandAttachedDocs([]);
+  };
+
+  // Handle Brand Edit Submit
+  const handleBrandEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBrand || !brandName.trim()) return;
+
+    const trimmedName = brandName.trim();
+    const logo = brandLogo.trim();
+
+    if (logo && onAddMediaFile) {
+      const alreadyInRepo = mediaFiles.some(m => m.url === logo);
+      if (!alreadyInRepo) {
+        await onAddMediaFile({
+          name: `โลโก้ ${trimmedName}`,
+          type: 'image',
+          url: logo,
+          category: 'แบรนด์',
+          refName: trimmedName,
+          notes: `โลโก้ทางการแบรนด์ ${trimmedName}`
+        });
+      }
+    }
+
+    await onEditBrand(selectedBrand.id, {
+      name: trimmedName,
+      logoUrl: logo,
+      documentIds: brandAttachedDocs
+    });
+
+    setIsBrandEditModalOpen(false);
+    setSelectedBrand(null);
+    setBrandName('');
+    setBrandLogo('');
+    setBrandAttachedDocs([]);
+  };
+
+  // Handle Media Add Submit
+  const handleMediaAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mediaName.trim() || !mediaUrl.trim()) {
+      alert('กรุณากรอกชื่อไฟล์และเลือกไฟล์ที่ต้องการอัปโหลด');
+      return;
+    }
+
+    if (onAddMediaFile) {
+      await onAddMediaFile({
+        name: mediaName.trim(),
+        type: mediaType,
+        url: mediaUrl.trim(),
+        category: mediaCategory,
+        fileType: mediaFileType || (mediaType === 'image' ? 'PNG/JPG' : 'FILE'),
+        size: mediaSize,
+        refName: mediaRefName.trim() || undefined,
+        notes: mediaNotes.trim() || undefined
+      });
+    }
+
+    setIsAddMediaModalOpen(false);
+    setMediaName('');
+    setMediaUrl('');
+    setMediaFileType('');
+    setMediaSize(undefined);
+    setMediaRefName('');
+    setMediaNotes('');
+  };
+
+  // Handle Media Edit Submit
+  const handleMediaEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMediaFile || !mediaName.trim()) return;
+
+    if (onEditMediaFile) {
+      await onEditMediaFile(selectedMediaFile.id, {
+        name: mediaName.trim(),
+        category: mediaCategory,
+        refName: mediaRefName.trim() || undefined,
+        notes: mediaNotes.trim() || undefined,
+        url: mediaUrl || selectedMediaFile.url,
+        type: mediaType || selectedMediaFile.type,
+        fileType: mediaFileType || selectedMediaFile.fileType,
+        size: mediaSize !== undefined ? mediaSize : selectedMediaFile.size,
+      });
+    }
+
+    setIsEditMediaModalOpen(false);
+    setSelectedMediaFile(null);
+  };
+
   return (
     <div className="space-y-2 text-left">
       
@@ -995,6 +1228,18 @@ export default function SettingsView({
           >
             <Tag className="h-3 w-3" />
             <span>แบรนด์ ({brands.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveSubTab('media')}
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
+              activeSubTab === 'media' 
+                ? 'bg-indigo-600 text-white shadow-3xs' 
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            id="settings-tab-media"
+          >
+            <FolderOpen className="h-3 w-3" />
+            <span>คลังรูปภาพ & ไฟล์เอกสาร ({mediaFiles.length})</span>
           </button>
           <button
             onClick={() => setActiveSubTab('database')}
@@ -2928,11 +3173,25 @@ export default function SettingsView({
                       <p className="text-[9px] font-bold text-slate-400 font-sans">
                         ID: {brand.id.replace('brand-', '')}
                       </p>
+                      {(() => {
+                        const count = mediaFiles.filter(m => (brand.documentIds?.includes(m.id)) || (m.refName && m.refName.toLowerCase() === brand.name.toLowerCase())).length;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setBrandDocModalBrand(brand)}
+                            className="mt-1 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 rounded-full text-[9px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer mx-auto"
+                            title="ดูเอกสารและรูปภาพที่เกี่ยวข้องกับแบรนด์นี้"
+                          >
+                            <FileText className="h-2.5 w-2.5" />
+                            <span>เอกสาร ({count})</span>
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center justify-center gap-1.5 mt-4 pt-3 border-t border-slate-50 dark:border-slate-800 w-full opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                  <div className="flex items-center justify-center gap-1.5 mt-4 pt-3 border-t border-slate-50 dark:border-slate-800 w-full transition-opacity">
                     <button
                       type="button"
                       onClick={() => {
@@ -2941,7 +3200,7 @@ export default function SettingsView({
                         setBrandLogo(brand.logoUrl || '');
                         setIsBrandEditModalOpen(true);
                       }}
-                      className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                      className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
                       title="แก้ไขข้อมูลแบรนด์"
                     >
                       <Edit3 className="h-3.5 w-3.5" />
@@ -2949,11 +3208,17 @@ export default function SettingsView({
                     <button
                       type="button"
                       onClick={() => {
-                        if (confirm(`คุณต้องการลบแบรนด์ "${brand.name}" หรือไม่? หากมีสินค้าใช้งานแบรนด์นี้ ข้อมูลแบรนด์อาจจะไม่แสดงผล`)) {
+                        if (triggerConfirm) {
+                          triggerConfirm(
+                            'ยืนยันการลบแบรนด์สินค้า',
+                            `คุณต้องการลบแบรนด์ "${brand.name}" หรือไม่? แบรนด์นี้จะถูกลบออกจากระบบ ตัวเลือกแบรนด์ และรายการสินค้าที่ระบุแบรนด์นี้`,
+                            () => onDeleteBrand?.(brand.id)
+                          );
+                        } else if (confirm(`คุณต้องการลบแบรนด์ "${brand.name}" หรือไม่? แบรนด์นี้จะถูกลบออกจากระบบ ตัวเลือกแบรนด์ และรายการสินค้าที่ระบุแบรนด์นี้`)) {
                           onDeleteBrand?.(brand.id);
                         }
                       }}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                      className="p-1.5 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
                       title="ลบแบรนด์สินค้า"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -2989,15 +3254,7 @@ export default function SettingsView({
 
             {/* Form */}
             <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!brandName.trim()) return;
-                await onAddBrand?.({
-                  name: brandName.trim(),
-                  logoUrl: brandLogo.trim()
-                });
-                setIsBrandAddModalOpen(false);
-              }}
+              onSubmit={handleBrandAddSubmit}
               className="flex-1 overflow-y-auto"
             >
               <div className="p-4 space-y-4">
@@ -3030,26 +3287,52 @@ export default function SettingsView({
                         <Tag className="h-5 w-5 text-slate-300" />
                       )}
                     </div>
-                    <div className="flex-1">
-                      <label className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer border border-slate-200/60 dark:border-slate-700/60">
-                        <Upload className="h-3.5 w-3.5" />
-                        เลือกไฟล์รูปภาพ Logo
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setBrandLogo(reader.result as string);
-                            };
-                            reader.readAsDataURL(file);
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <label className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer border border-slate-200/60 dark:border-slate-700/60">
+                          <Upload className="h-3.5 w-3.5" />
+                          อัปโหลดไฟล์
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                const base64 = reader.result as string;
+                                setBrandLogo(base64);
+                                if (onAddMediaFile && base64) {
+                                  onAddMediaFile({
+                                    name: brandName ? `โลโก้แบรนด์: ${brandName}` : `โลโก้แบรนด์ ${file.name}`,
+                                    type: 'image',
+                                    url: base64,
+                                    category: 'แบรนด์',
+                                    refName: brandName || undefined,
+                                    size: file.size,
+                                    fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
+                                  });
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMediaPickerOpen(true);
+                            setPickerTarget('brandLogo');
                           }}
-                        />
-                      </label>
-                      <p className="text-[8px] text-slate-400 mt-1">ขนาดแนะนำ: อัตราส่วน 1:1, สี่เหลี่ยมจัตุรัส</p>
+                          className="px-2.5 py-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer border border-indigo-200/50 dark:border-indigo-800/50 shrink-0"
+                          title="เลือกรูปภาพโลโก้จากคลังสื่อ"
+                        >
+                          <ImageIcon className="h-3.5 w-3.5" />
+                          <span>เลือกจากคลัง</span>
+                        </button>
+                      </div>
+                      <p className="text-[8px] text-slate-400">ขนาดแนะนำ: อัตราส่วน 1:1, สี่เหลี่ยมจัตุรัส</p>
                     </div>
                   </div>
                 </div>
@@ -3131,16 +3414,7 @@ export default function SettingsView({
 
             {/* Form */}
             <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!brandName.trim() || !selectedBrand) return;
-                await onEditBrand?.(selectedBrand.id, {
-                  name: brandName.trim(),
-                  logoUrl: brandLogo.trim()
-                });
-                setIsBrandEditModalOpen(false);
-                setSelectedBrand(null);
-              }}
+              onSubmit={handleBrandEditSubmit}
               className="flex-1 overflow-y-auto"
             >
               <div className="p-4 space-y-4">
@@ -3173,26 +3447,52 @@ export default function SettingsView({
                         <Tag className="h-5 w-5 text-slate-300" />
                       )}
                     </div>
-                    <div className="flex-1">
-                      <label className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer border border-slate-200/60 dark:border-slate-700/60">
-                        <Upload className="h-3.5 w-3.5" />
-                        เปลี่ยนไฟล์รูปภาพ Logo
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setBrandLogo(reader.result as string);
-                            };
-                            reader.readAsDataURL(file);
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <label className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer border border-slate-200/60 dark:border-slate-700/60">
+                          <Upload className="h-3.5 w-3.5" />
+                          เปลี่ยนไฟล์รูปภาพ
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                const base64 = reader.result as string;
+                                setBrandLogo(base64);
+                                if (onAddMediaFile && base64) {
+                                  onAddMediaFile({
+                                    name: brandName ? `โลโก้แบรนด์: ${brandName}` : `โลโก้แบรนด์ ${file.name}`,
+                                    type: 'image',
+                                    url: base64,
+                                    category: 'แบรนด์',
+                                    refName: brandName || undefined,
+                                    size: file.size,
+                                    fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
+                                  });
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMediaPickerOpen(true);
+                            setPickerTarget('brandLogo');
                           }}
-                        />
-                      </label>
-                      <p className="text-[8px] text-slate-400 mt-1">ขนาดแนะนำ: อัตราส่วน 1:1, สี่เหลี่ยมจัตุรัส</p>
+                          className="px-2.5 py-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer border border-indigo-200/50 dark:border-indigo-800/50 shrink-0"
+                          title="เลือกรูปภาพโลโก้จากคลังสื่อ"
+                        >
+                          <ImageIcon className="h-3.5 w-3.5" />
+                          <span>เลือกจากคลัง</span>
+                        </button>
+                      </div>
+                      <p className="text-[8px] text-slate-400">ขนาดแนะนำ: อัตราส่วน 1:1, สี่เหลี่ยมจัตุรัส</p>
                     </div>
                   </div>
                 </div>
@@ -3247,6 +3547,838 @@ export default function SettingsView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ==================== TAB: MEDIA & DOCUMENT GALLERY ===================== */}
+      {/* ======================================================================= */}
+      {activeSubTab === 'media' && (
+        <div className="space-y-4 animate-in fade-in duration-200 text-left">
+          {/* Header & Action */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 font-sans flex items-center gap-1.5">
+                <FolderOpen className="h-4 w-4 text-indigo-500" />
+                คลังรูปภาพ & ไฟล์เอกสาร (Media & Document Repository)
+              </h3>
+              <p className="text-[10px] text-slate-400 font-medium">
+                ศูนย์กลางจัดเก็บรูปภาพโลโก้แบรนด์, รูปภาพสินค้า, คู่มือการใช้งาน, แคตตาล็อก PDF และไฟล์เอกสารสำคัญ ป้องกันไฟล์สูญหาย
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setMediaName('');
+                setMediaUrl('');
+                setMediaCategory('แบรนด์');
+                setMediaType('image');
+                setMediaFileType('');
+                setMediaRefName('');
+                setMediaNotes('');
+                setIsAddMediaModalOpen(true);
+              }}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-xs self-start md:self-auto"
+              id="btn-add-media-modal"
+            >
+              <Plus className="h-4 w-4" />
+              <span>เพิ่มรูปภาพ / เอกสารใหม่</span>
+            </button>
+          </div>
+
+          {/* Stat Summary Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
+              <div className="p-2 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 rounded-lg shrink-0">
+                <FolderOpen className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-medium">ไฟล์รวมทั้งหมด</p>
+                <p className="text-sm font-black text-slate-800 dark:text-slate-100">{mediaFiles.length} รายการ</p>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
+              <div className="p-2 bg-purple-50 dark:bg-purple-950/50 text-purple-600 rounded-lg shrink-0">
+                <HardDrive className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-medium">ขนาดไฟล์รวม</p>
+                <p className="text-sm font-black text-purple-600 dark:text-purple-400 font-mono">{formatBytes(totalMediaBytes)}</p>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
+              <div className="p-2 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 rounded-lg shrink-0">
+                <ImageIcon className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-medium">รูปภาพ & โลโก้</p>
+                <p className="text-sm font-black text-slate-800 dark:text-slate-100">
+                  {mediaFiles.filter(m => m.type === 'image').length} ไฟล์
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
+              <div className="p-2 bg-blue-50 dark:bg-blue-950/50 text-blue-600 rounded-lg shrink-0">
+                <FileText className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-medium">ไฟล์เอกสาร & PDF</p>
+                <p className="text-sm font-black text-slate-800 dark:text-slate-100">
+                  {mediaFiles.filter(m => m.type === 'document' || m.type === 'other').length} ไฟล์
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-3 rounded-xl flex items-center gap-3">
+              <div className="p-2 bg-amber-50 dark:bg-amber-950/50 text-amber-600 rounded-lg shrink-0">
+                <Tag className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-400 font-medium">หมวดหมู่ทั้งหมด</p>
+                <p className="text-sm font-black text-slate-800 dark:text-slate-100">
+                  {availableMediaCategories.length} หมวด
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Search & Filter Toolbar */}
+          <div className="bg-white/80 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row gap-2.5 items-center justify-between">
+            <div className="relative w-full sm:w-72">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <Search className="h-3.5 w-3.5 text-slate-400" />
+              </span>
+              <input
+                type="text"
+                placeholder="ค้นหาตามชื่อไฟล์, แบรนด์, หรือโน้ต..."
+                value={mediaSearch}
+                onChange={(e) => setMediaSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+              <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setMediaTypeFilter('all')}
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                    mediaTypeFilter === 'all' ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-2xs font-black' : 'text-slate-500'
+                  }`}
+                >
+                  ทั้งหมด
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMediaTypeFilter('image')}
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                    mediaTypeFilter === 'image' ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-2xs font-black' : 'text-slate-500'
+                  }`}
+                >
+                  <ImageIcon className="h-3 w-3" />
+                  รูปภาพ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMediaTypeFilter('document')}
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                    mediaTypeFilter === 'document' ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-2xs font-black' : 'text-slate-500'
+                  }`}
+                >
+                  <FileText className="h-3 w-3" />
+                  เอกสาร
+                </button>
+              </div>
+
+              <select
+                value={mediaCategoryFilter}
+                onChange={(e) => setMediaCategoryFilter(e.target.value)}
+                className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer"
+              >
+                <option value="all">ทุกหมวดหมู่ ({mediaFiles.length})</option>
+                {availableMediaCategories.map((cat) => {
+                  const count = mediaFiles.filter((f) => f.category === cat).length;
+                  return (
+                    <option key={cat} value={cat}>
+                      หมวด: {cat} ({count})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          </div>
+
+          {/* Category Pills Bar & Total Size Info */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white/60 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar text-xs">
+              <span className="text-slate-400 text-[10px] shrink-0 font-bold mr-1 flex items-center gap-1">
+                <Filter className="h-3 w-3 text-indigo-500" /> หมวดหมู่:
+              </span>
+              <button
+                type="button"
+                onClick={() => setMediaCategoryFilter('all')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1 ${
+                  mediaCategoryFilter === 'all'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-indigo-300'
+                }`}
+              >
+                <span>ทั้งหมด</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[9px] ${
+                  mediaCategoryFilter === 'all' ? 'bg-indigo-700 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                }`}>
+                  {mediaFiles.length}
+                </span>
+              </button>
+              {availableMediaCategories.map((cat) => {
+                const count = mediaFiles.filter((f) => f.category === cat).length;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setMediaCategoryFilter(cat)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1 ${
+                      mediaCategoryFilter === cat
+                        ? 'bg-indigo-600 text-white shadow-2xs font-black'
+                        : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-indigo-300'
+                    }`}
+                  >
+                    <span>{cat}</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[9px] ${
+                      mediaCategoryFilter === cat ? 'bg-indigo-700 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 shrink-0 self-end sm:self-auto bg-slate-100/80 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200/50 dark:border-slate-700/50">
+              <HardDrive className="h-3 w-3 text-purple-500" />
+              <span>ขนาดไฟล์รวมที่เลือก:</span>
+              <span className="text-purple-600 dark:text-purple-400 font-extrabold font-mono">{formatBytes(filteredMediaBytes)}</span>
+              <span className="text-slate-300 dark:text-slate-600">/</span>
+              <span className="text-slate-400 font-mono" title="ขนาดไฟล์รวมทั้งหมด">{formatBytes(totalMediaBytes)}</span>
+            </div>
+          </div>
+
+          {/* Files Grid */}
+          {filteredMediaFiles.length === 0 ? (
+            <div className="bg-white/40 dark:bg-slate-900/20 border border-slate-100 dark:border-slate-800 rounded-2xl p-12 text-center">
+              <div className="inline-flex p-3 bg-slate-100 dark:bg-slate-800 rounded-xl mb-3">
+                <FolderOpen className="h-6 w-6 text-slate-400" />
+              </div>
+              <p className="text-xs font-bold text-slate-600 dark:text-slate-400">ยังไม่มีไฟล์หรือรูปภาพในคลัง</p>
+              <p className="text-[10px] text-slate-400 mt-1">คลิกปุ่ม "เพิ่มรูปภาพ / เอกสารใหม่" หรืออัปโหลดโลโก้แบรนด์เพื่อจัดเก็บไฟล์ลงในระบบ</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
+              {filteredMediaFiles.map((file) => (
+                <div
+                  key={file.id}
+                  className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-3 flex flex-col justify-between shadow-xs transition-all hover:border-indigo-500/30 group relative overflow-hidden"
+                >
+                  {/* Category Badge */}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded-full text-[8px] font-black uppercase bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30">
+                      {file.category || 'ทั่วไป'}
+                    </span>
+                    <span className="text-[8px] text-slate-400 font-mono">
+                      {file.fileType || (file.type === 'image' ? 'IMG' : 'DOC')}
+                    </span>
+                  </div>
+
+                  {/* Thumbnail / Icon Box */}
+                  <div 
+                    onClick={() => {
+                      if (file.type === 'image') {
+                        setPreviewMediaFile(file);
+                      } else {
+                        window.open(file.url, '_blank');
+                      }
+                    }}
+                    className="h-28 w-full bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-center overflow-hidden cursor-pointer group-hover:bg-slate-100 dark:group-hover:bg-slate-800/60 transition-all relative"
+                  >
+                    {file.type === 'image' ? (
+                      <img
+                        src={file.url}
+                        alt={file.name}
+                        className="max-h-full max-w-full object-contain p-1 group-hover:scale-105 transition-transform duration-200"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center p-3 text-center space-y-1">
+                        <FileText className="h-8 w-8 text-indigo-500" />
+                        <span className="text-[9px] font-black text-slate-600 dark:text-slate-300 font-mono uppercase">
+                          {file.fileType || 'DOCUMENT'}
+                        </span>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-slate-900/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <span className="p-1.5 bg-white/90 dark:bg-slate-900/90 rounded-lg text-[9px] font-extrabold text-slate-800 dark:text-slate-100 shadow-xs flex items-center gap-1">
+                        <Eye className="h-3 w-3" /> {file.type === 'image' ? 'ขยายรูป' : 'เปิดไฟล์'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* File Details */}
+                  <div className="mt-2.5 space-y-0.5">
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate font-sans" title={file.name}>
+                      {file.name}
+                    </p>
+                    {file.refName && (
+                      <p className="text-[9px] font-medium text-indigo-600 dark:text-indigo-400 truncate flex items-center gap-1">
+                        <Tag className="h-2.5 w-2.5" />
+                        <span>{file.refName}</span>
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between text-[8px] text-slate-400 pt-1 border-t border-slate-50 dark:border-slate-800/80">
+                      <span>{file.size ? `${(file.size / 1024).toFixed(1)} KB` : 'N/A'}</span>
+                      <span>{new Date(file.createdAt).toLocaleDateString('th-TH')}</span>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-50 dark:border-slate-800/80">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(file.url);
+                          addToast?.('success', 'คัดลอกสำเร็จ', 'คัดลอก Data/URL ของไฟล์เรียบร้อยแล้ว');
+                        }}
+                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-all cursor-pointer"
+                        title="คัดลอกลิงก์/Data"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                      <a
+                        href={file.url}
+                        download={file.name}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-all cursor-pointer"
+                        title="ดาวน์โหลดไฟล์"
+                      >
+                        <Download className="h-3 w-3" />
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedMediaFile(file);
+                          setMediaName(file.name);
+                          setMediaCategory(file.category || 'ทั่วไป');
+                          setMediaRefName(file.refName || '');
+                          setMediaNotes(file.notes || '');
+                          setMediaUrl(file.url || '');
+                          setMediaType(file.type || 'image');
+                          setMediaFileType(file.fileType || '');
+                          setMediaSize(file.size);
+                          setIsEditMediaModalOpen(true);
+                        }}
+                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-all cursor-pointer"
+                        title="แก้ไขข้อมูลไฟล์"
+                      >
+                        <Edit3 className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (triggerConfirm) {
+                            triggerConfirm(
+                              'ยืนยันการลบไฟล์',
+                              `คุณต้องการลบไฟล์ "${file.name}" จากคลังหรือไม่?`,
+                              () => onDeleteMediaFile?.(file.id)
+                            );
+                          } else if (confirm(`คุณต้องการลบไฟล์ "${file.name}" หรือไม่?`)) {
+                            onDeleteMediaFile?.(file.id);
+                          }
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-all cursor-pointer"
+                        title="ลบไฟล์"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ======================= MODAL: ADD MEDIA FILE ========================= */}
+      {/* ======================================================================= */}
+      {isAddMediaModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="h-4 w-4 text-indigo-500" />
+                <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">เพิ่มรูปภาพ / อัปโหลดไฟล์เอกสาร</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddMediaModalOpen(false)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleMediaAddSubmit} className="flex-1 overflow-y-auto">
+              <div className="p-4 space-y-4 text-left">
+                {/* File Upload Box */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">เลือกไฟล์รูปภาพ หรือ เอกสาร (PDF, DOCX, XLSX, TXT) <span className="text-rose-500">*</span></label>
+                  <label className="flex flex-col items-center justify-center p-5 border-2 border-dashed border-indigo-200 dark:border-indigo-800/60 hover:border-indigo-500 dark:hover:border-indigo-400 bg-indigo-50/30 dark:bg-indigo-950/20 rounded-xl transition-all cursor-pointer text-center group">
+                    <CloudUpload className="h-8 w-8 text-indigo-500 group-hover:scale-110 transition-transform mb-1" />
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">คลิกเพื่ออัปโหลดไฟล์ หรือ ลากไฟล์มาวางที่นี่</span>
+                    <span className="text-[9px] text-slate-400 mt-0.5">รองรับไฟล์รูปภาพ PNG, JPG, WEBP และเอกสาร PDF, DOCX, XLSX</span>
+                    <input
+                      type="file"
+                      required={!mediaUrl}
+                      accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setMediaName(file.name.replace(/\.[^/.]+$/, ""));
+                        setMediaSize(file.size);
+                        const ext = file.name.split('.').pop()?.toUpperCase() || '';
+                        setMediaFileType(ext);
+
+                        if (file.type.startsWith('image/')) {
+                          setMediaType('image');
+                        } else {
+                          setMediaType('document');
+                        }
+
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setMediaUrl(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </label>
+                  {mediaUrl && (
+                    <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-lg flex items-center justify-between text-[10px]">
+                      <span className="font-bold text-emerald-700 dark:text-emerald-300 truncate">✓ เลือกไฟล์แล้ว: {mediaName} ({mediaFileType})</span>
+                      <button type="button" onClick={() => setMediaUrl('')} className="text-rose-500 font-bold hover:underline">เปลี่ยนไฟล์</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* File Title */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อไฟล์ / ชื่อเอกสาร <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={mediaName}
+                    onChange={(e) => setMediaName(e.target.value)}
+                    placeholder="กรอกชื่อไฟล์ (เช่น โลโก้ Siemens 2026, แคตตาล็อกสินค้า)..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Category */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">หมวดหมู่ไฟล์</label>
+                  <select
+                    value={mediaCategory}
+                    onChange={(e) => setMediaCategory(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden cursor-pointer"
+                  >
+                    {availableMediaCategories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">รายละเอียด / คำอธิบายเพิ่มเติม</label>
+                  <textarea
+                    rows={2}
+                    value={mediaNotes}
+                    onChange={(e) => setMediaNotes(e.target.value)}
+                    placeholder="บันทึกรายละเอียดเพิ่มเติมของไฟล์นี้..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/10 flex justify-end gap-2 rounded-b-2xl">
+                <button
+                  type="button"
+                  onClick={() => setIsAddMediaModalOpen(false)}
+                  className="px-3.5 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 rounded-lg cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={!mediaName.trim() || !mediaUrl.trim()}
+                  className={`px-4 py-1.5 text-xs font-black text-white rounded-lg cursor-pointer shadow-xs transition-all ${
+                    mediaName.trim() && mediaUrl.trim()
+                      ? 'bg-indigo-600 hover:bg-indigo-500'
+                      : 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  บันทึกไฟล์ลงคลัง
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ======================= MODAL: EDIT MEDIA FILE ======================== */}
+      {/* ======================================================================= */}
+      {isEditMediaModalOpen && selectedMediaFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Edit3 className="h-4 w-4 text-indigo-500" />
+                <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">แก้ไขข้อมูลไฟล์ในคลัง</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditMediaModalOpen(false);
+                  setSelectedMediaFile(null);
+                }}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleMediaEditSubmit} className="flex-1 overflow-y-auto">
+              <div className="p-4 space-y-4 text-left">
+                {/* File Upload / Replace Box */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">เปลี่ยนไฟล์รูปภาพ หรือ เอกสาร (ถ้าต้องการ)</label>
+                  <label className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-indigo-200 dark:border-indigo-800/60 hover:border-indigo-500 dark:hover:border-indigo-400 bg-indigo-50/20 dark:bg-indigo-950/10 rounded-xl transition-all cursor-pointer text-center group">
+                    <CloudUpload className="h-6 w-6 text-indigo-500 group-hover:scale-110 transition-transform mb-1" />
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">คลิกเพื่ออัปโหลดไฟล์ใหม่แทนที่ไฟล์เดิม</span>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setMediaSize(file.size);
+                        const ext = file.name.split('.').pop()?.toUpperCase() || '';
+                        setMediaFileType(ext);
+
+                        if (file.type.startsWith('image/')) {
+                          setMediaType('image');
+                        } else {
+                          setMediaType('document');
+                        }
+
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setMediaUrl(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </label>
+                  {mediaUrl && (
+                    <div className="p-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg flex items-center gap-3 text-[10px]">
+                      {mediaType === 'image' && (
+                        <img src={mediaUrl} alt="Preview" className="w-10 h-10 object-contain rounded bg-white border border-slate-200 dark:border-slate-700 shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-slate-700 dark:text-slate-200 truncate">ประเภทไฟล์: {mediaFileType || 'FILE'}</p>
+                        <p className="text-[9px] text-slate-400">ขนาด: {mediaSize ? `${(mediaSize / 1024).toFixed(1)} KB` : 'ไม่ระบุ'}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* File Title */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อไฟล์ / ชื่อเอกสาร <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={mediaName}
+                    onChange={(e) => setMediaName(e.target.value)}
+                    placeholder="กรอกชื่อไฟล์..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Category */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">หมวดหมู่ไฟล์</label>
+                  <select
+                    value={mediaCategory}
+                    onChange={(e) => setMediaCategory(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden cursor-pointer"
+                  >
+                    {availableMediaCategories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block">รายละเอียดเพิ่มเติม</label>
+                  <textarea
+                    rows={2}
+                    value={mediaNotes}
+                    onChange={(e) => setMediaNotes(e.target.value)}
+                    placeholder="รายละเอียดเพิ่มเติม..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/10 flex justify-end gap-2 rounded-b-2xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditMediaModalOpen(false);
+                    setSelectedMediaFile(null);
+                  }}
+                  className="px-3.5 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 rounded-lg cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={!mediaName.trim()}
+                  className="px-4 py-1.5 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg cursor-pointer shadow-xs transition-all"
+                >
+                  บันทึกการแก้ไข
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ================== MODAL: FULL IMAGE / FILE PREVIEW =================== */}
+      {/* ======================================================================= */}
+      {previewMediaFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/20">
+              <div className="flex items-center gap-2 truncate">
+                <ImageIcon className="h-4 w-4 text-indigo-500 shrink-0" />
+                <h3 className="text-xs font-black text-slate-800 dark:text-slate-100 truncate">{previewMediaFile.name}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewMediaFile(null)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 flex-1 overflow-y-auto flex items-center justify-center bg-slate-950/90">
+              <img
+                src={previewMediaFile.url}
+                alt={previewMediaFile.name}
+                className="max-h-[60vh] max-w-full object-contain rounded-lg shadow-lg"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+
+            <div className="p-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300">
+              <div className="space-y-0.5 text-[10px]">
+                {previewMediaFile.refName && <p>แบรนด์ที่เชื่อมโยง: <strong className="text-indigo-500">{previewMediaFile.refName}</strong></p>}
+                {previewMediaFile.notes && <p className="text-slate-400">{previewMediaFile.notes}</p>}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(previewMediaFile.url);
+                    addToast?.('success', 'คัดลอกสำเร็จ', 'คัดลอก Data URL เรียบร้อยแล้ว');
+                  }}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  คัดลอก
+                </button>
+                <a
+                  href={previewMediaFile.url}
+                  download={previewMediaFile.name}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  ดาวน์โหลด
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ======================== MODAL: MEDIA PICKER ========================== */}
+      {/* ======================================================================= */}
+      {isMediaPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200 text-left">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="h-4 w-4 text-indigo-500" />
+                <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">เลือกรูปภาพจากคลังสื่อระบบ</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMediaPickerOpen(false)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20">
+              <input
+                type="text"
+                placeholder="ค้นหาชื่อรูปภาพหรือแบรนด์..."
+                value={mediaSearch}
+                onChange={(e) => setMediaSearch(e.target.value)}
+                className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs"
+              />
+            </div>
+
+            <div className="p-4 flex-1 overflow-y-auto">
+              {filteredMediaFiles.filter(m => m.type === 'image').length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">
+                  ยังไม่มีรูปภาพในคลังสื่อ คุณสามารถอัปโหลดรูปภาพใหม่ได้ที่แฮชแท็ก "คลังรูปภาพ & ไฟล์เอกสาร"
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                  {filteredMediaFiles.filter(m => m.type === 'image').map((file) => (
+                    <div
+                      key={file.id}
+                      onClick={() => {
+                        if (pickerTarget === 'brandLogo') {
+                          setBrandLogo(file.url);
+                        }
+                        setIsMediaPickerOpen(false);
+                      }}
+                      className="group bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl p-2 flex flex-col items-center justify-between cursor-pointer hover:border-indigo-500 transition-all relative overflow-hidden"
+                    >
+                      <div className="h-20 w-full flex items-center justify-center overflow-hidden">
+                        <img src={file.url} alt={file.name} className="max-h-full max-w-full object-contain p-1 group-hover:scale-105 transition-transform" referrerPolicy="no-referrer" />
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate w-full mt-1 text-center">{file.name}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ================= MODAL: BRAND DOCUMENTS & CATALOGS =================== */}
+      {/* ======================================================================= */}
+      {brandDocModalBrand && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200 text-left">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                  {brandDocModalBrand.logoUrl ? (
+                    <img src={brandDocModalBrand.logoUrl} alt={brandDocModalBrand.name} className="max-h-full max-w-full object-contain p-0.5" referrerPolicy="no-referrer" />
+                  ) : (
+                    <Tag className="h-4 w-4 text-indigo-500" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">เอกสาร & แคตตาล็อก: {brandDocModalBrand.name}</h3>
+                  <p className="text-[9px] text-slate-400">รายการไฟล์เอกสารและรูปภาพที่เกี่ยวข้องกับแบรนด์นี้</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBrandDocModalBrand(null)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 flex-1 overflow-y-auto space-y-3">
+              {(() => {
+                const brandDocs = mediaFiles.filter(m => (brandDocModalBrand.documentIds?.includes(m.id)) || (m.refName && m.refName.toLowerCase() === brandDocModalBrand.name.toLowerCase()));
+                if (brandDocs.length === 0) {
+                  return (
+                    <div className="p-8 text-center text-slate-400 text-xs">
+                      ยังไม่มีเอกสารหรือรูปภาพเชื่อมโยงกับแบรนด์ "{brandDocModalBrand.name}"
+                      <p className="text-[10px] text-slate-400 mt-1">คุณสามารถเพิ่มรูปภาพหรือเอกสารใหม่ในแฮชแท็ก "คลังรูปภาพ & ไฟล์เอกสาร" พร้อมระบุชื่อแบรนด์นี้ได้</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="space-y-2">
+                    {brandDocs.map(docFile => (
+                      <div key={docFile.id} className="p-3 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 truncate">
+                          {docFile.type === 'image' ? (
+                            <img src={docFile.url} alt={docFile.name} className="h-10 w-10 object-contain bg-white dark:bg-slate-900 rounded-lg p-1 border border-slate-200 dark:border-slate-800 shrink-0" referrerPolicy="no-referrer" />
+                          ) : (
+                            <div className="h-10 w-10 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 rounded-lg flex items-center justify-center shrink-0 font-extrabold text-[10px] font-mono">
+                              {docFile.fileType || 'PDF'}
+                            </div>
+                          )}
+                          <div className="truncate">
+                            <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{docFile.name}</p>
+                            <p className="text-[9px] text-slate-400 font-mono">{docFile.category || 'แบรนด์'} • {docFile.size ? `${(docFile.size / 1024).toFixed(1)} KB` : 'Data'}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <a
+                            href={docFile.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            <span>เปิดดู / ดาวน์โหลด</span>
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </div>
       )}

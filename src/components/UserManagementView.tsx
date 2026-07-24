@@ -144,6 +144,18 @@ export default function UserManagementView({
     return userRoles.filter(u => u.status === 'disabled').length;
   }, [userRoles]);
 
+  const duplicateEmailUsers = useMemo(() => {
+    const counts: Record<string, number> = {};
+    userRoles.forEach(u => {
+      const em = (u.email || '').trim().toLowerCase();
+      if (em) counts[em] = (counts[em] || 0) + 1;
+    });
+    return userRoles.filter(u => {
+      const em = (u.email || '').trim().toLowerCase();
+      return em && counts[em] > 1;
+    });
+  }, [userRoles]);
+
   const [activeTab, setActiveTab] = useState<'users' | 'matrix' | 'pending'>('users');
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'editor' | 'user'>('all');
 
@@ -454,21 +466,36 @@ export default function UserManagementView({
 
   // Handle Delete Role
   const handleDeleteRole = async (user: UserRole) => {
-    const isSelf = user.email?.toLowerCase() === currentUserEmail?.toLowerCase();
-    const isDev = user.email === 'chaleesogood@gmail.com' || user.email === 'chalee@gtt2013.com';
+    const userEmailNormalized = (user.email || '').toLowerCase().trim();
+    const sameEmailCount = userRoles.filter(u => (u.email || '').toLowerCase().trim() === userEmailNormalized && userEmailNormalized !== '').length;
+    const isDuplicateEmail = sameEmailCount > 1;
 
-    if (isDev && isSelf) {
+    const isSelf = !!userEmailNormalized && !!currentUserEmail && userEmailNormalized === currentUserEmail.toLowerCase().trim();
+    const isDev = userEmailNormalized === 'chaleesogood@gmail.com' || userEmailNormalized === 'chalee@gtt2013.com';
+
+    if (isDev && isSelf && !isDuplicateEmail) {
       addToast('warning', 'ระงับการทำงาน', 'ไม่สามารถลบบัญชีผู้พัฒนาหลักระบบออกจากคลังได้');
       return;
     }
 
-    const confirmMsg = `คุณแน่ใจหรือไม่ว่าต้องการลบสิทธิ์และบัญชีผู้ใช้งานของ "${user.email}" ออกจากคลัง?`;
+    if (isSelf && !isDuplicateEmail) {
+      addToast('warning', 'ไม่อนุญาต', 'ท่านไม่สามารถลบบัญชีเดียวของตนเองได้');
+      return;
+    }
+
+    const confirmMsg = isDuplicateEmail
+      ? `ตรวจพบอีเมล "${user.email}" ซ้ำกันในระบบ (${sameEmailCount} บัญชี)\n\nคุณต้องการลบบัญชีซ้ำรายการนี้ (UID: ${user.uid}) ออกใช่หรือไม่?`
+      : `คุณแน่ใจหรือไม่ว่าต้องการลบสิทธิ์และบัญชีผู้ใช้งานของ "${user.email}" ออกจากคลัง?`;
 
     const executeDelete = async () => {
       try {
         setIsUpdating(user.uid);
         await onDeleteUserRole(user.uid);
-        addToast('success', 'ลบผู้ใช้งานสำเร็จ', `ลบข้อมูลบทบาทและสิทธิ์ของ ${user.email} เรียบร้อยแล้ว`);
+        if (isDuplicateEmail) {
+          addToast('success', 'ลบบัญชีอีเมลซ้ำสำเร็จ', `ลบรายการบัญชีที่ซ้ำของ ${user.email} (UID: ${user.uid}) เรียบร้อยแล้ว`);
+        } else {
+          addToast('success', 'ลบผู้ใช้งานสำเร็จ', `ลบข้อมูลบทบาทและสิทธิ์ของ ${user.email} เรียบร้อยแล้ว`);
+        }
       } catch (err) {
         addToast('error', 'ลบล้มเหลว', 'เกิดข้อผิดพลาดในการลบข้อมูลบทบาทผู้ใช้งาน');
       } finally {
@@ -477,7 +504,7 @@ export default function UserManagementView({
     };
 
     if (triggerConfirm) {
-      triggerConfirm('ยืนยันการลบสิทธิ์ผู้ใช้งาน', confirmMsg, executeDelete);
+      triggerConfirm(isDuplicateEmail ? 'ยืนยันการลบบัญชีอีเมลซ้ำ' : 'ยืนยันการลบสิทธิ์ผู้ใช้งาน', confirmMsg, executeDelete);
     } else if (confirm(confirmMsg)) {
       executeDelete();
     }
@@ -687,6 +714,25 @@ export default function UserManagementView({
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Email Alert Area */}
+      {duplicateEmailUsers.length > 0 && (
+        <div className="bg-rose-500/10 dark:bg-rose-500/5 rounded-3xl p-5 border border-rose-500/20 shadow-xs space-y-2">
+          <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400">
+            <span className="p-1.5 bg-rose-500/20 text-rose-700 dark:text-rose-400 rounded-lg">
+              <ShieldAlert className="h-5 w-5 animate-pulse" />
+            </span>
+            <div>
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base font-sans">
+                ตรวจพบผู้ใช้งานที่ใช้อีเมลซ้ำกัน ({duplicateEmailUsers.length} รายการ)
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-sans">
+                ระบบเปิดให้คุณสามารถกดปุ่มถังขยะ (Trash) เพื่อลบบัญชีซ้ำส่วนเกินออกได้ทันที
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -977,8 +1023,10 @@ export default function UserManagementView({
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                 {filteredUsers.map((user) => {
-                  const userEmail = user.email || '';
-                  const isSelf = !!userEmail && !!currentUserEmail && userEmail.toLowerCase() === currentUserEmail.toLowerCase();
+                  const userEmail = (user.email || '').trim();
+                  const sameEmailCount = userRoles.filter(u => (u.email || '').trim().toLowerCase() === userEmail.toLowerCase() && userEmail !== '').length;
+                  const isDuplicateEmail = sameEmailCount > 1;
+                  const isSelf = !!userEmail && !!currentUserEmail && userEmail.toLowerCase() === currentUserEmail.toLowerCase().trim();
                   const isDeveloper = userEmail.toLowerCase() === 'chaleesogood@gmail.com' || userEmail.toLowerCase() === 'chalee@gtt2013.com';
                   const isPreRegistered = (user.uid || '').startsWith('pre_');
                   const isGoogleUser = user.provider === 'google' || userEmail.toLowerCase().endsWith('@gmail.com');
@@ -1018,6 +1066,12 @@ export default function UserManagementView({
                               {isSelf && (
                                 <span className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[9px] font-black py-0.5 px-2 rounded-lg border border-indigo-500/20">
                                   ตัวคุณ
+                                </span>
+                              )}
+                              {isDuplicateEmail && (
+                                <span className="bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[9px] font-black py-0.5 px-2 rounded-lg border border-rose-500/20 flex items-center gap-1 shrink-0" title={`พบอีเมลนี้ซ้ำกัน ${sameEmailCount} รายการในระบบ สามารถกดลบรายการซ้ำได้`}>
+                                  <ShieldAlert className="h-2.5 w-2.5 text-rose-500" />
+                                  อีเมลซ้ำ (ลบได้)
                                 </span>
                               )}
                               {isDeveloper && (
@@ -1222,13 +1276,21 @@ export default function UserManagementView({
                           {/* Delete Account/Role Button */}
                           <button
                             onClick={() => handleDeleteRole(user)}
-                            disabled={isUpdating === user.uid}
+                            disabled={isUpdating === user.uid || (isSelf && !isDuplicateEmail && isDeveloper)}
                             className={`p-2 rounded-xl border transition-all cursor-pointer disabled:opacity-50 ${
-                              isSelf || isDeveloper
-                                ? 'bg-rose-50/10 dark:bg-rose-950/5 text-rose-400/70 border-rose-200/40 hover:bg-rose-50/20'
-                                : 'bg-rose-50 dark:bg-rose-950/10 hover:bg-rose-100 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/30 hover:border-rose-300'
+                              isDuplicateEmail
+                                ? 'bg-rose-100 dark:bg-rose-950/40 hover:bg-rose-200 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800 font-bold shadow-2xs'
+                                : isSelf && !isDuplicateEmail
+                                  ? 'bg-rose-50/10 dark:bg-rose-950/5 text-rose-400/70 border-rose-200/40 hover:bg-rose-50/20'
+                                  : 'bg-rose-50 dark:bg-rose-950/10 hover:bg-rose-100 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/30 hover:border-rose-300'
                             }`}
-                            title={isSelf ? 'ไม่สามารถลบสิทธิ์ของตนเองได้' : 'ลบสิทธิ์ออกจากระบบ'}
+                            title={
+                              isDuplicateEmail
+                                ? `ลบบัญชีที่ใช้อีเมลซ้ำนี้ (${user.email}) ออกจากระบบ`
+                                : isSelf
+                                  ? 'ไม่สามารถลบบัญชีเดียวของตนเองได้'
+                                  : 'ลบสิทธิ์ออกจากระบบ'
+                            }
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>

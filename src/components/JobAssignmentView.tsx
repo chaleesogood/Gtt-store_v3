@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Job, Employee, JobProject, DailyReport, normalizeModules, Bom } from '../types';
+import { Job, Employee, JobProject, DailyReport, normalizeModules, Bom, MediaFile } from '../types';
 import Logo from './Logo';
 import { 
   Briefcase, 
@@ -48,6 +48,7 @@ interface JobAssignmentViewProps {
   onDeleteDailyReport: (id: string) => void;
   
   boms?: Bom[];
+  onAddMediaFile?: (data: Omit<MediaFile, 'id' | 'createdAt'>) => Promise<MediaFile>;
 }
 
 type ActiveTab = 'tasks' | 'daily_reports';
@@ -69,7 +70,8 @@ export default function JobAssignmentView({
   onAddDailyReport,
   onEditDailyReport,
   onDeleteDailyReport,
-  boms
+  boms,
+  onAddMediaFile
 }: JobAssignmentViewProps) {
   
   // Navigation tabs
@@ -1108,7 +1110,19 @@ export default function JobAssignmentView({
                             if (!file) return;
                             const reader = new FileReader();
                             reader.onloadend = () => {
-                              setTaskImageUrl(reader.result as string);
+                              const base64 = reader.result as string;
+                              setTaskImageUrl(base64);
+                              if (onAddMediaFile && base64) {
+                                onAddMediaFile({
+                                  name: taskTitle ? `รูปงาน: ${taskTitle}` : `รูปงาน ${file.name}`,
+                                  type: 'image',
+                                  url: base64,
+                                  category: 'รูปงาน / หน้างาน',
+                                  refName: taskProjectName || taskEmployeeName || undefined,
+                                  size: file.size,
+                                  fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
+                                });
+                              }
                             };
                             reader.readAsDataURL(file);
                           }}
@@ -1382,7 +1396,19 @@ export default function JobAssignmentView({
                             if (!file) return;
                             const reader = new FileReader();
                             reader.onloadend = () => {
-                              setTaskImageUrl(reader.result as string);
+                              const base64 = reader.result as string;
+                              setTaskImageUrl(base64);
+                              if (onAddMediaFile && base64) {
+                                onAddMediaFile({
+                                  name: taskTitle ? `รูปงาน: ${taskTitle}` : `รูปงาน ${file.name}`,
+                                  type: 'image',
+                                  url: base64,
+                                  category: 'รูปงาน / หน้างาน',
+                                  refName: taskProjectName || taskEmployeeName || undefined,
+                                  size: file.size,
+                                  fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
+                                });
+                              }
                             };
                             reader.readAsDataURL(file);
                           }}
