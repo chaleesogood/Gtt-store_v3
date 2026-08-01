@@ -43,7 +43,9 @@ import {
   Paperclip,
   Filter,
   HardDrive,
-  CheckCircle
+  CheckCircle,
+  GraduationCap,
+  IdCard
 } from 'lucide-react';
 
 const getDeptBadgeStyle = (dept: string) => {
@@ -62,9 +64,20 @@ const getDeptBadgeStyle = (dept: string) => {
       return 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900/50';
     case 'Welding':
       return 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/50';
+    case 'Intern':
+    case 'Internship':
+      return 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-900/50';
     default:
       return 'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
   }
+};
+
+export const getDisplayEmpCode = (emp: Employee, index?: number) => {
+  if (emp.empCode && emp.empCode.trim()) return emp.empCode.trim();
+  if (emp.orgLevel === 'owner' || emp.department === 'Owner') return `EXEC-${String((index ?? 0) + 1).padStart(3, '0')}`;
+  if (emp.orgLevel === 'intern' || emp.department === 'Intern' || emp.department === 'Internship') return `INT-${String((index ?? 0) + 1).padStart(3, '0')}`;
+  if (emp.orgLevel === 'head') return `HD-${String((index ?? 0) + 1).padStart(3, '0')}`;
+  return `EMP-${String((index ?? 0) + 1).padStart(3, '0')}`;
 };
 
 // =========================================================================
@@ -695,6 +708,7 @@ export default function SettingsView({
   const [projImageUrl, setProjImageUrl] = useState('');
 
   // Form Fields - Employees
+  const [empCode, setEmpCode] = useState('');
   const [empName, setEmpName] = useState('');
   const [empNickname, setEmpNickname] = useState('');
   const [empEmail, setEmpEmail] = useState('');
@@ -817,6 +831,7 @@ export default function SettingsView({
     return employees.filter(e => {
       const search = empSearch.toLowerCase().trim();
       return (
+        (e.empCode || '').toLowerCase().includes(search) ||
         (e.name || '').toLowerCase().includes(search) ||
         (e.nickname || '').toLowerCase().includes(search) ||
         (e.email || '').toLowerCase().includes(search) ||
@@ -921,7 +936,21 @@ export default function SettingsView({
       return;
     }
 
+    let generatedCode = empCode.trim();
+    if (!generatedCode) {
+      if (empOrgLevel === 'owner' || empDepartment === 'Owner') {
+        generatedCode = `EXEC-${String(employees.length + 1).padStart(3, '0')}`;
+      } else if (empOrgLevel === 'intern' || empDepartment === 'Intern' || empDepartment === 'Internship') {
+        generatedCode = `INT-${String(employees.length + 1).padStart(3, '0')}`;
+      } else if (empOrgLevel === 'head') {
+        generatedCode = `HD-${String(employees.length + 1).padStart(3, '0')}`;
+      } else {
+        generatedCode = `EMP-${String(employees.length + 1).padStart(3, '0')}`;
+      }
+    }
+
     await onAddEmployee({
+      empCode: generatedCode,
       name: empName.trim(),
       nickname: empNickname.trim(),
       email: empEmail.trim(),
@@ -934,6 +963,7 @@ export default function SettingsView({
     });
 
     setIsEmpAddModalOpen(false);
+    setEmpCode('');
     setEmpName('');
     setEmpNickname('');
     setEmpEmail('');
@@ -948,6 +978,7 @@ export default function SettingsView({
   // Handle Employee Edit opens
   const openEmpEdit = (emp: Employee) => {
     setSelectedEmp(emp);
+    setEmpCode(emp.empCode || getDisplayEmpCode(emp, employees.indexOf(emp)));
     setEmpName(emp.name);
     setEmpNickname(emp.nickname || '');
     setEmpEmail(emp.email || '');
@@ -965,6 +996,7 @@ export default function SettingsView({
     if (!selectedEmp) return;
 
     await onEditEmployee(selectedEmp.id, {
+      empCode: empCode.trim() || selectedEmp.empCode || getDisplayEmpCode(selectedEmp),
       name: empName.trim(),
       nickname: empNickname.trim(),
       email: empEmail.trim(),
@@ -1776,47 +1808,52 @@ export default function SettingsView({
                   </button>
                 ) : (
                   <div className="flex flex-wrap justify-center gap-4 w-full">
-                    {employees.filter(e => e.orgLevel === 'owner' || e.department === 'Owner').map(emp => {
+                    {employees.filter(e => e.orgLevel === 'owner' || e.department === 'Owner').map((emp, idx) => {
                       const assignedJobsCount = jobs.filter(j => j.assignee === emp.name && j.status !== 'completed' && j.status !== 'cancelled').length;
                       return (
                         <div
                           key={emp.id}
-                          className={`w-full max-w-sm rounded-2xl border p-4 shadow-3xs flex flex-col gap-3 transition-all relative ${
+                          className={`w-full max-w-md rounded-2xl border p-4 shadow-sm flex flex-col gap-3 transition-all relative ${
                             emp.cardColor || 'border-purple-250 bg-purple-50/15'
                           }`}
                         >
-                          <div className="flex items-start gap-3">
-                            <div className="relative group/empimg h-12 w-12 rounded-xl border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0 shadow-2xs">
+                          <div className="flex items-start gap-4">
+                            <div className="relative group/empimg h-20 w-20 sm:h-24 sm:w-24 rounded-2xl border-2 border-purple-200 dark:border-purple-800 overflow-hidden bg-white dark:bg-slate-900 flex items-center justify-center shrink-0 shadow-md">
                               {emp.imageUrl ? (
                                 <img src={emp.imageUrl} alt={emp.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                               ) : (
-                                <div className="h-full w-full bg-purple-50 flex items-center justify-center text-purple-700 text-xs font-black font-sans uppercase">
+                                <div className="h-full w-full bg-purple-100 dark:bg-purple-950/40 flex items-center justify-center text-purple-700 dark:text-purple-300 text-lg font-black font-sans uppercase">
                                   {emp.name.slice(0, 2)}
                                 </div>
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 font-sans truncate flex items-center gap-1">
-                                  {emp.name}
-                                  {emp.nickname && <span className="text-indigo-600 dark:text-indigo-400">({emp.nickname})</span>}
-                                </h4>
-                                <span className="px-1.5 py-0.2 bg-purple-100 text-[8px] font-black text-purple-700 border border-purple-200 rounded leading-none flex items-center gap-0.5">
-                                  <Crown className="h-2 w-2" /> Owner
+                                <span className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-950/60 text-[10px] font-mono font-black text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md">
+                                  #{getDisplayEmpCode(emp, idx)}
+                                </span>
+                                <span className="px-1.5 py-0.5 bg-purple-100 text-[9px] font-black text-purple-700 border border-purple-200 rounded-md leading-none flex items-center gap-0.5">
+                                  <Crown className="h-2.5 w-2.5" /> Owner
                                 </span>
                               </div>
-                              <p className="text-[10px] text-purple-700 font-extrabold mt-0.5">{emp.role || 'ประธานกรรมการบริหาร (Owner)'}</p>
                               
-                              <div className="mt-2 space-y-1 text-[9.5px] text-slate-500 font-sans">
+                              <h4 className="text-sm font-black text-slate-800 dark:text-slate-100 font-sans truncate mt-1">
+                                {emp.name}
+                                {emp.nickname && <span className="text-indigo-600 dark:text-indigo-400 font-black ml-1.5">({emp.nickname})</span>}
+                              </h4>
+                              
+                              <p className="text-[11px] text-purple-700 dark:text-purple-300 font-extrabold mt-0.5">{emp.role || 'ประธานกรรมการบริหาร (Owner)'}</p>
+                              
+                              <div className="mt-2 space-y-1 text-[10px] text-slate-500 font-sans">
                                 {emp.email && (
                                   <p className="flex items-center gap-1 font-semibold text-slate-600 dark:text-slate-400">
-                                    <Mail className="h-2.5 w-2.5 text-slate-400" />
+                                    <Mail className="h-3 w-3 text-slate-400" />
                                     <span className="truncate">{emp.email}</span>
                                   </p>
                                 )}
                                 {emp.phone && (
                                   <p className="flex items-center gap-1 font-semibold text-slate-600 dark:text-slate-400">
-                                    <Phone className="h-2.5 w-2.5 text-slate-400" />
+                                    <Phone className="h-3 w-3 text-slate-400" />
                                     <a href={`tel:${emp.phone}`} className="hover:underline font-mono">{emp.phone}</a>
                                   </p>
                                 )}
@@ -1895,15 +1932,21 @@ export default function SettingsView({
                   { id: 'Machine Shop', nameTh: 'แผนกกลึงและแปรรูปเหล็ก', nameEn: 'Machine Shop', icon: Layers, color: 'blue', borderClass: 'border-t-4 border-blue-500' },
                   { id: 'Assembly', nameTh: 'แผนกประกอบเครื่องกล', nameEn: 'Assembly', icon: Users, color: 'amber', borderClass: 'border-t-4 border-amber-500' },
                   { id: 'Accounting', nameTh: 'แผนกบัญชีและการเงิน', nameEn: 'Accounting', icon: ClipboardList, color: 'emerald', borderClass: 'border-t-4 border-emerald-500' },
+                  { id: 'Intern', nameTh: 'กลุ่มน้องฝึกงาน / นักศึกษาฝึกงาน', nameEn: 'Interns & Trainees', icon: GraduationCap, color: 'teal', borderClass: 'border-t-4 border-teal-500' },
                 ].map((dept) => {
-                  const deptEmps = employees.filter(e => e.department === dept.id && e.orgLevel !== 'owner');
+                  const deptEmps = employees.filter(e => {
+                    if (dept.id === 'Intern') {
+                      return (e.department === 'Intern' || e.department === 'Internship' || e.orgLevel === 'intern') && e.orgLevel !== 'owner';
+                    }
+                    return e.department === dept.id && e.orgLevel !== 'owner';
+                  });
                   const heads = deptEmps.filter(e => e.orgLevel === 'head');
-                  const teamMembers = deptEmps.filter(e => e.orgLevel === 'team' || !e.orgLevel);
+                  const teamMembers = deptEmps.filter(e => e.orgLevel === 'team' || e.orgLevel === 'intern' || !e.orgLevel);
                   
                   const DeptIcon = dept.icon;
 
                   return (
-                    <div key={dept.id} className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col h-full overflow-hidden ${dept.borderClass}`}>
+                    <div key={dept.id} className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col h-full overflow-hidden ${dept.borderClass}`}>
                       {/* Department Header */}
                       <div className="p-3.5 bg-slate-50/70 dark:bg-slate-950/20 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -1916,7 +1959,7 @@ export default function SettingsView({
                           </div>
                         </div>
 
-                        <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md text-[9px] font-black text-slate-500">
+                        <span className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-150 dark:border-indigo-800 rounded-md text-[10px] font-black text-indigo-600 dark:text-indigo-400">
                           {deptEmps.length} คน
                         </span>
                       </div>
@@ -1951,34 +1994,40 @@ export default function SettingsView({
                             </button>
                           ) : (
                             <div className="space-y-2">
-                              {heads.map(emp => {
+                              {heads.map((emp, idx) => {
                                 const assignedJobsCount = jobs.filter(j => j.assignee === emp.name && j.status !== 'completed' && j.status !== 'cancelled').length;
                                 return (
                                   <div
                                     key={emp.id}
-                                    className={`rounded-xl border p-3 shadow-3xs flex flex-col gap-2 transition-all relative ${
+                                    className={`rounded-2xl border p-3.5 shadow-2xs flex flex-col gap-2 transition-all relative ${
                                       emp.cardColor || 'border-indigo-150 bg-indigo-50/10'
                                     }`}
                                   >
-                                    <div className="flex items-start gap-2.5">
-                                      <div className="relative group/empimg h-10 w-10 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0 shadow-3xs">
+                                    <div className="flex items-start gap-3">
+                                      <div className="relative group/empimg h-16 w-16 sm:h-18 sm:w-18 rounded-2xl border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0 shadow-xs">
                                         {emp.imageUrl ? (
                                           <img src={emp.imageUrl} alt={emp.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                                         ) : (
-                                          <div className="h-full w-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-black font-sans uppercase flex items-center justify-center">
+                                          <div className="h-full w-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-black font-sans uppercase flex items-center justify-center">
                                             {emp.name.slice(0, 2)}
                                           </div>
                                         )}
                                       </div>
 
                                       <div className="flex-1 min-w-0">
-                                        <h6 className="text-[11px] font-black text-slate-800 dark:text-slate-100 font-sans truncate flex items-center gap-1">
+                                        <div className="flex items-center gap-1 flex-wrap">
+                                          <span className="px-1.5 py-0.2 bg-indigo-100 dark:bg-indigo-950/60 text-[9px] font-mono font-black text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded">
+                                            #{getDisplayEmpCode(emp, idx)}
+                                          </span>
+                                        </div>
+
+                                        <h6 className="text-xs font-black text-slate-800 dark:text-slate-100 font-sans truncate mt-0.5">
                                           {emp.name}
-                                          {emp.nickname && <span className="text-indigo-600 dark:text-indigo-400">({emp.nickname})</span>}
+                                          {emp.nickname && <span className="text-indigo-600 dark:text-indigo-400 font-black ml-1">({emp.nickname})</span>}
                                         </h6>
-                                        <p className="text-[9.5px] font-extrabold text-slate-500 leading-tight">{emp.role || 'หัวหน้าช่างประจำแผนก'}</p>
+                                        <p className="text-[10px] font-extrabold text-slate-500 leading-tight">{emp.role || 'หัวหน้าประจำแผนก'}</p>
                                         
-                                        <div className="mt-1.5 space-y-0.5 text-[9px] text-slate-400 font-sans">
+                                        <div className="mt-1 space-y-0.5 text-[9px] text-slate-400 font-sans">
                                           {emp.email && (
                                             <p className="flex items-center gap-1 font-semibold text-slate-600 dark:text-slate-400 truncate">
                                               <Mail className="h-2.5 w-2.5 text-slate-400" />
@@ -1999,7 +2048,7 @@ export default function SettingsView({
 
                                       <div className="flex flex-col gap-1 shrink-0">
                                         <button onClick={() => openEmpEdit(emp)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded border border-slate-150/60 cursor-pointer" title="แก้ไข">
-                                          <Edit3 className="h-2.5 w-2.5" />
+                                          <Edit3 className="h-3 w-3" />
                                         </button>
                                         <button
                                           onClick={() => {
@@ -2021,7 +2070,7 @@ export default function SettingsView({
                                           className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded border border-slate-150/60 cursor-pointer"
                                           title="ลบ"
                                         >
-                                          <Trash2 className="h-2.5 w-2.5" />
+                                          <Trash2 className="h-3 w-3" />
                                         </button>
                                       </div>
                                     </div>
@@ -2062,49 +2111,55 @@ export default function SettingsView({
                         {/* B. TEAM MEMBERS SECTION */}
                         <div className="space-y-1.5 pt-1">
                           <span className="text-[9px] font-extrabold text-slate-400 tracking-wider uppercase flex items-center gap-1">
-                            <Users className="h-3 w-3 text-slate-400" /> ลูกทีม / ช่างปฏิบัติงาน (Team Members)
+                            <Users className="h-3 w-3 text-slate-400" /> ลูกทีม / ช่างปฏิบัติงาน / น้องฝึกงาน
                           </span>
 
                           {teamMembers.length === 0 ? (
-                            <p className="text-[10px] text-slate-400 italic py-2 pl-1 bg-slate-50/50 dark:bg-slate-950/10 rounded-lg">ยังไม่มีข้อมูลช่างสังกัดแผนกนี้</p>
+                            <p className="text-[10px] text-slate-400 italic py-2 pl-1 bg-slate-50/50 dark:bg-slate-950/10 rounded-lg">ยังไม่มีข้อมูลช่างหรือน้องฝึกงานสังกัดแผนกนี้</p>
                           ) : (
                             <div className="space-y-2">
-                              {teamMembers.map(emp => {
+                              {teamMembers.map((emp, idx) => {
                                 const assignedJobsCount = jobs.filter(j => j.assignee === emp.name && j.status !== 'completed' && j.status !== 'cancelled').length;
                                 return (
                                   <div
                                     key={emp.id}
-                                    className={`rounded-xl border p-2.5 shadow-3xs flex flex-col gap-1.5 transition-all relative ${
+                                    className={`rounded-xl border p-3 shadow-3xs flex flex-col gap-1.5 transition-all relative ${
                                       emp.cardColor || 'border-slate-200 bg-white dark:bg-slate-900 text-slate-800'
                                     }`}
                                   >
-                                    <div className="flex items-start gap-2">
-                                      <div className="relative group/empimg h-8 w-8 rounded border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0 shadow-3xs">
+                                    <div className="flex items-start gap-2.5">
+                                      <div className="relative group/empimg h-14 w-14 sm:h-16 sm:w-16 rounded-xl border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0 shadow-xs">
                                         {emp.imageUrl ? (
                                           <img src={emp.imageUrl} alt={emp.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                                         ) : (
-                                          <div className="h-full w-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-[9px] font-black font-sans uppercase flex items-center justify-center">
+                                          <div className="h-full w-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs font-black font-sans uppercase flex items-center justify-center">
                                             {emp.name.slice(0, 2)}
                                           </div>
                                         )}
                                       </div>
 
                                       <div className="flex-1 min-w-0">
-                                        <h6 className="text-[10.5px] font-extrabold text-slate-800 dark:text-slate-100 font-sans truncate">
+                                        <div className="flex items-center gap-1 flex-wrap">
+                                          <span className="px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-[8.5px] font-mono font-black text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded">
+                                            #{getDisplayEmpCode(emp, idx)}
+                                          </span>
+                                        </div>
+
+                                        <h6 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-100 font-sans truncate mt-0.5">
                                           {emp.name}
                                           {emp.nickname && <span className="text-slate-500 dark:text-slate-400 font-bold ml-1">({emp.nickname})</span>}
                                         </h6>
-                                        <p className="text-[8.5px] font-bold text-slate-500 leading-none">{emp.role || 'ช่างประจำแผนก'}</p>
+                                        <p className="text-[9px] font-bold text-slate-500 leading-none mt-0.5">{emp.role || 'ช่างประจำแผนก'}</p>
                                         
-                                        <div className="mt-1 space-y-0.5 text-[8px] text-slate-400 font-mono">
-                                          {emp.email && <p className="truncate flex items-center gap-0.5"><Mail className="h-2 w-2" />{emp.email}</p>}
-                                          {emp.phone && <p className="flex items-center gap-0.5"><Phone className="h-2 w-2" />{emp.phone}</p>}
+                                        <div className="mt-1 space-y-0.5 text-[8.5px] text-slate-400 font-mono">
+                                          {emp.email && <p className="truncate flex items-center gap-0.5"><Mail className="h-2.5 w-2.5" />{emp.email}</p>}
+                                          {emp.phone && <p className="flex items-center gap-0.5"><Phone className="h-2.5 w-2.5" />{emp.phone}</p>}
                                         </div>
                                       </div>
 
                                       <div className="flex items-center gap-1 shrink-0">
-                                        <button onClick={() => openEmpEdit(emp)} className="p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded" title="แก้ไข">
-                                          <Edit3 className="h-2.5 w-2.5" />
+                                        <button onClick={() => openEmpEdit(emp)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded cursor-pointer" title="แก้ไข">
+                                          <Edit3 className="h-3 w-3" />
                                         </button>
                                         <button
                                           onClick={() => {
@@ -2123,10 +2178,10 @@ export default function SettingsView({
                                               onDeleteEmployee(emp.id);
                                             }
                                           }}
-                                          className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
+                                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
                                           title="ลบ"
                                         >
-                                          <Trash2 className="h-2.5 w-2.5" />
+                                          <Trash2 className="h-3 w-3" />
                                         </button>
                                       </div>
                                     </div>
@@ -2228,28 +2283,28 @@ export default function SettingsView({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {filteredEmployees.map(emp => {
+                  {filteredEmployees.map((emp, idx) => {
                     const assignedJobsCount = jobs.filter(j => j.assignee === emp.name && j.status !== 'completed' && j.status !== 'cancelled').length;
 
                     return (
                       <div
                         key={emp.id}
-                        className={`rounded-2xl border p-4 shadow-3xs flex flex-col gap-3 hover:border-slate-400 dark:hover:border-slate-700 transition-all ${
+                        className={`rounded-2xl border p-4 shadow-xs flex flex-col gap-3 hover:border-slate-400 dark:hover:border-slate-700 transition-all ${
                           emp.cardColor || 'border-slate-200 bg-white dark:bg-slate-900'
                         }`}
                       >
                         <div className="flex items-start gap-3.5">
                           {/* Employee Profile Image */}
-                          <div className="relative group/empimg h-12 w-12 rounded-xl border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0 shadow-2xs">
+                          <div className="relative group/empimg h-18 w-18 sm:h-22 sm:w-22 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0 shadow-xs">
                             {emp.imageUrl ? (
                               <>
                                 <img src={emp.imageUrl} alt={emp.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/empimg:opacity-100 flex items-center justify-center transition-opacity">
-                                  <Camera className="h-3.5 w-3.5 text-white" />
+                                  <Camera className="h-4 w-4 text-white" />
                                 </div>
                               </>
                             ) : (
-                              <div className="h-full w-full bg-indigo-50 dark:bg-indigo-950/20 flex items-center justify-center text-indigo-700 text-xs font-black font-sans uppercase">
+                              <div className="h-full w-full bg-indigo-50 dark:bg-indigo-950/20 flex items-center justify-center text-indigo-700 dark:text-indigo-300 text-sm font-black font-sans uppercase">
                                 {emp.name.slice(0, 2)}
                               </div>
                             )}
@@ -2281,6 +2336,11 @@ export default function SettingsView({
                           {/* Employee Details */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
+                              {/* Code Badge */}
+                              <span className="px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-[9.5px] font-mono font-black text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md">
+                                #{getDisplayEmpCode(emp, idx)}
+                              </span>
+
                               <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 font-sans truncate">
                                 {emp.name}
                                 {emp.nickname && <span className="text-indigo-600 dark:text-indigo-400 font-black ml-1">({emp.nickname})</span>}
@@ -2295,14 +2355,16 @@ export default function SettingsView({
                                    emp.department === 'Assembly' ? 'ประกอบ (Assembly)' :
                                    emp.department === 'Machine Shop' ? 'กลึง (Machine Shop)' :
                                    emp.department === 'Design' ? 'เขียนแบบ (Design)' :
-                                   emp.department === 'Welding' ? 'เชื่อมเหล็ก (Welding)' : emp.department}
+                                   emp.department === 'Welding' ? 'เชื่อมเหล็ก (Welding)' :
+                                   emp.department === 'Intern' ? 'ฝึกงาน (Intern)' : emp.department}
                                 </span>
                               )}
 
                               {/* Level Badge */}
                               <span className="px-1.5 py-0.2 bg-emerald-50 text-[8.5px] font-bold text-emerald-700 border border-emerald-150 rounded leading-none">
                                 {emp.orgLevel === 'owner' ? 'เจ้าของบริษัท' : 
-                                 emp.orgLevel === 'head' ? 'หัวหน้าแผนก' : 'ลูกทีม'}
+                                 emp.orgLevel === 'head' ? 'หัวหน้าแผนก' :
+                                 emp.orgLevel === 'intern' ? 'น้องฝึกงาน' : 'ลูกทีม'}
                               </span>
                             </div>
 
@@ -2626,6 +2688,21 @@ export default function SettingsView({
             <form onSubmit={handleEmpAddSubmit}>
               <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
                 
+                {/* Employee Code Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block flex items-center gap-1">
+                    <IdCard className="h-3 w-3 text-indigo-500" />
+                    <span>รหัสพนักงาน (Employee ID Code)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={empCode}
+                    onChange={(e) => setEmpCode(e.target.value)}
+                    placeholder="เช่น EMP-001 หรือ INT-001 (เว้นว่างไว้หากต้องการให้ระบบสร้างให้อัตโนมัติ)"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono font-bold text-indigo-700 dark:text-indigo-300 focus:outline-hidden"
+                  />
+                </div>
+
                 {/* Name & Nickname Grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -2678,11 +2755,12 @@ export default function SettingsView({
                 {/* Org Level Toggles */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-500 block">ระดับระดับองค์กร (Organization Level) <span className="text-rose-500">*</span></label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
                       { id: 'owner', label: 'Owner / เจ้าของ' },
                       { id: 'head', label: 'Head / หัวหน้า' },
-                      { id: 'team', label: 'Team / ลูกทีม' }
+                      { id: 'team', label: 'Team / ลูกทีม' },
+                      { id: 'intern', label: 'Intern / ฝึกงาน' }
                     ].map((lvl) => (
                       <button
                         key={lvl.id}
@@ -2691,6 +2769,8 @@ export default function SettingsView({
                           setEmpOrgLevel(lvl.id);
                           if (lvl.id === 'owner') {
                             setEmpDepartment('Owner');
+                          } else if (lvl.id === 'intern') {
+                            setEmpDepartment('Intern');
                           }
                         }}
                         className={`px-2 py-2 rounded-xl border text-[11px] font-black transition-all cursor-pointer text-center ${
@@ -2708,14 +2788,15 @@ export default function SettingsView({
                 {/* Department Select Buttons */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-500 block">แผนกงาน (Department Selection) <span className="text-rose-500">*</span></label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                     {[
-                      'Accounting',
-                      'Electrical',
-                      'Assembly',
-                      'Machine Shop',
                       'Design',
+                      'Electrical',
                       'Welding',
+                      'Machine Shop',
+                      'Assembly',
+                      'Accounting',
+                      'Intern',
                       'Owner'
                     ].map((dept) => (
                       <button
@@ -2881,6 +2962,21 @@ export default function SettingsView({
             <form onSubmit={handleEmpEditSubmit}>
               <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
                 
+                {/* Employee Code Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 block flex items-center gap-1">
+                    <IdCard className="h-3 w-3 text-indigo-500" />
+                    <span>รหัสพนักงาน (Employee ID Code)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={empCode}
+                    onChange={(e) => setEmpCode(e.target.value)}
+                    placeholder="เช่น EMP-001 หรือ INT-001"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono font-bold text-indigo-700 dark:text-indigo-300 focus:outline-hidden"
+                  />
+                </div>
+
                 {/* Name & Nickname Grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -2930,11 +3026,12 @@ export default function SettingsView({
                 {/* Org Level Toggles */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-500 block">ระดับระดับองค์กร (Organization Level) <span className="text-rose-500">*</span></label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
                       { id: 'owner', label: 'Owner / เจ้าของ' },
                       { id: 'head', label: 'Head / หัวหน้า' },
-                      { id: 'team', label: 'Team / ลูกทีม' }
+                      { id: 'team', label: 'Team / ลูกทีม' },
+                      { id: 'intern', label: 'Intern / ฝึกงาน' }
                     ].map((lvl) => (
                       <button
                         key={lvl.id}
@@ -2943,6 +3040,8 @@ export default function SettingsView({
                           setEmpOrgLevel(lvl.id);
                           if (lvl.id === 'owner') {
                             setEmpDepartment('Owner');
+                          } else if (lvl.id === 'intern') {
+                            setEmpDepartment('Intern');
                           }
                         }}
                         className={`px-2 py-2 rounded-xl border text-[11px] font-black transition-all cursor-pointer text-center ${
@@ -2960,14 +3059,15 @@ export default function SettingsView({
                 {/* Department Select Buttons */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-500 block">แผนกงาน (Department Selection) <span className="text-rose-500">*</span></label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                     {[
-                      'Accounting',
-                      'Electrical',
-                      'Assembly',
-                      'Machine Shop',
                       'Design',
+                      'Electrical',
                       'Welding',
+                      'Machine Shop',
+                      'Assembly',
+                      'Accounting',
+                      'Intern',
                       'Owner'
                     ].map((dept) => (
                       <button

@@ -2132,6 +2132,34 @@ export default function App() {
 
   // -------------------- PRODUCTS WORKFLOWS --------------------
 
+  const getEditorInfo = () => {
+    const activeUser = currentUser || auth.currentUser;
+    const uid = activeUser?.uid || (window as any).currentUserUid || '';
+    const email = (
+      activeUser?.email || 
+      (window as any).currentUserEmail || 
+      localStorage.getItem('admin_email') || 
+      ''
+    ).trim();
+
+    let name = activeUser?.displayName || '';
+    if (!name || name === 'system') {
+      if (email) {
+        if (email.toLowerCase() === 'chaleesogood@gmail.com') {
+          name = 'Chalee So Good';
+        } else {
+          name = email.split('@')[0];
+        }
+      } else {
+        name = 'ระบบคลังสินค้า (System)';
+      }
+    }
+
+    const photo = activeUser?.photoURL || '';
+
+    return { userId: uid, userName: name, userEmail: email, creatorEmail: email, userPhotoUrl: photo };
+  };
+
   const handleAddProduct = async (newProd: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
     const productId = `prod-${Math.random().toString(36).substring(2, 9)}`;
     const product: Product = {
@@ -2142,6 +2170,7 @@ export default function App() {
     };
 
     // Log Activity
+    const editorInfo = getEditorInfo();
     const activity: StockActivity = {
       id: `act-${Math.random().toString(36).substring(2, 9)}`,
       productId: product.id,
@@ -2152,6 +2181,12 @@ export default function App() {
       newQuantity: product.quantity,
       reason: 'ขึ้นทะเบียนนำเข้าสินค้าใหม่ในระบบ',
       timestamp: new Date().toISOString(),
+      userId: editorInfo.userId,
+      userName: editorInfo.userName,
+      userEmail: editorInfo.userEmail,
+      creatorEmail: editorInfo.creatorEmail,
+      userPhotoUrl: editorInfo.userPhotoUrl,
+      productImage: product.image || '',
     };
 
     // Optimistic Update
@@ -2183,6 +2218,7 @@ export default function App() {
     // Log manual changes if price or sku changes
     let activity: StockActivity | null = null;
     if (updatedFields.costPrice !== undefined && updatedFields.costPrice !== p.costPrice) {
+      const editorInfo = getEditorInfo();
       activity = {
         id: `act-${Math.random().toString(36).substring(2, 9)}`,
         productId: p.id,
@@ -2193,6 +2229,12 @@ export default function App() {
         newQuantity: p.quantity,
         reason: `แก้ไขราคาทุนจาก ฿${p.costPrice} เป็น ฿${updatedFields.costPrice}`,
         timestamp: new Date().toISOString(),
+        userId: editorInfo.userId,
+        userName: editorInfo.userName,
+        userEmail: editorInfo.userEmail,
+        creatorEmail: editorInfo.creatorEmail,
+        userPhotoUrl: editorInfo.userPhotoUrl,
+        productImage: p.image || '',
       };
     }
 
@@ -2275,6 +2317,7 @@ export default function App() {
       `คุณแน่ใจหรือไม่ที่จะลบสินค้า "${productToDelete.name}" ออกจากระบบถาวร?`,
       async () => {
         // Log deletion
+        const editorInfo = getEditorInfo();
         const activity: StockActivity = {
           id: `act-${Math.random().toString(36).substring(2, 9)}`,
           productId: id,
@@ -2285,6 +2328,12 @@ export default function App() {
           newQuantity: 0,
           reason: 'ลบรายการสินค้าถาวรออกจากระบบคลังสินค้า',
           timestamp: new Date().toISOString(),
+          userId: editorInfo.userId,
+          userName: editorInfo.userName,
+          userEmail: editorInfo.userEmail,
+          creatorEmail: editorInfo.creatorEmail,
+          userPhotoUrl: editorInfo.userPhotoUrl,
+          productImage: productToDelete.image || '',
         };
 
         // Optimistic Update
@@ -2308,13 +2357,15 @@ export default function App() {
   };
 
   // CORE REAL-TIME STOCK ADJUSTMENT ENGINE
-  const handleAdjustStock = async (id: string, change: number, reason: string) => {
+  const handleAdjustStock = async (id: string, change: number, reason: string, imageUrl?: string) => {
     const p = products.find((prod) => prod.id === id);
     if (!p) return;
 
     const oldQty = p.quantity;
     const newQty = Math.max(0, p.quantity + change);
     if (oldQty === newQty) return;
+
+    const editorInfo = getEditorInfo();
 
     // Build activity
     const activity: StockActivity = {
@@ -2327,6 +2378,13 @@ export default function App() {
       newQuantity: newQty,
       reason: reason,
       timestamp: new Date().toISOString(),
+      userId: editorInfo.userId,
+      userName: editorInfo.userName,
+      userEmail: editorInfo.userEmail,
+      creatorEmail: editorInfo.creatorEmail,
+      userPhotoUrl: editorInfo.userPhotoUrl,
+      productImage: p.image || '',
+      imageUrl: imageUrl || '',
     };
 
     // Optimistic Update
@@ -3083,7 +3141,7 @@ export default function App() {
           />
         );
       case 'logs':
-        return <ActivityLogView activities={activities} onClearLogs={handleClearLogs} />;
+        return <ActivityLogView activities={activities} products={products} currentUser={currentUser} onClearLogs={handleClearLogs} />;
       case 'projects_bom':
         return (
           <ProjectBomView

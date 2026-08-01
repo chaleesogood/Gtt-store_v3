@@ -671,8 +671,9 @@ export default function UserManagementView({
                 className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-xs"
               >
                 <div className="space-y-1 min-w-0">
-                  <div className="font-bold text-slate-800 dark:text-slate-200 truncate text-xs sm:text-sm">
-                    {emp.name} {emp.nickname ? `(${emp.nickname})` : ''}
+                  <div className="font-bold text-slate-800 dark:text-slate-200 truncate text-xs sm:text-sm flex items-center gap-1.5">
+                    {emp.empCode && <span className="font-mono text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded font-black">#{emp.empCode}</span>}
+                    <span>{emp.name} {emp.nickname ? `(${emp.nickname})` : ''}</span>
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-mono">
                     {emp.email}
@@ -1486,8 +1487,9 @@ export default function UserManagementView({
                   className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-xs"
                 >
                   <div className="space-y-1 min-w-0">
-                    <div className="font-bold text-slate-800 dark:text-slate-200 truncate text-xs sm:text-sm">
-                      {emp.name} {emp.nickname ? `(${emp.nickname})` : ''}
+                    <div className="font-bold text-slate-800 dark:text-slate-200 truncate text-xs sm:text-sm flex items-center gap-1.5">
+                      {emp.empCode && <span className="font-mono text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded font-black">#{emp.empCode}</span>}
+                      <span>{emp.name} {emp.nickname ? `(${emp.nickname})` : ''}</span>
                     </div>
                     <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-mono">
                       {emp.email}

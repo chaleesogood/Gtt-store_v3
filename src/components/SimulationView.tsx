@@ -5,7 +5,7 @@ import { ShoppingBag, PlusCircle, AlertTriangle, Play, RefreshCw, ShoppingCart, 
 interface SimulationViewProps {
   products: Product[];
   categories: Category[];
-  onAdjustStock: (id: string, change: number, reason: string) => void;
+  onAdjustStock: (id: string, change: number, reason: string, imageUrl?: string) => void;
 }
 
 export default function SimulationView({ products, categories, onAdjustStock }: SimulationViewProps) {

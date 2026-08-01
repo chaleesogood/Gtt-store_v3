@@ -28,7 +28,7 @@ import {
   Briefcase
 } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { db, cleanUndefined } from '../firebase';
+import { db, cleanUndefined, auth } from '../firebase';
 
 interface ProjectBomViewProps {
   products: Product[];
@@ -1235,6 +1235,9 @@ export default function ProjectBomView({
 
           const actId = `act-${Math.random().toString(36).substring(2, 9)}`;
           const actRef = doc(db, 'activities', actId);
+          const activeUser = auth.currentUser;
+          const userMail = activeUser?.email || localStorage.getItem('admin_email') || 'system';
+          const uid = activeUser?.uid || (window as any).currentUserUid || '';
           batch.set(actRef, {
             id: actId,
             productId: item.productId,
@@ -1244,8 +1247,12 @@ export default function ProjectBomView({
             oldQuantity: oldQty,
             newQuantity: newQty,
             reason: `เบิกตัดยอดประกอบในใบงาน BOM: ${bom.name} (Job: ${bom.jobNo || 'ไม่ระบุ'})`,
-            createdAt: new Date().toISOString(),
-            creatorEmail: localStorage.getItem('admin_email') || 'system'
+            timestamp: new Date().toISOString(),
+            userId: uid,
+            userName: activeUser?.displayName || (userMail.includes('@') ? userMail.split('@')[0] : userMail),
+            userEmail: userMail,
+            creatorEmail: userMail,
+            productImage: currentProd?.image || ''
           });
         }
 

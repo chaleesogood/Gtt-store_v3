@@ -148,9 +148,10 @@ export function prepareAllSheetsData(data: AllAppData) {
   ]);
 
   // 6. Employees
-  const employeesHeader = ['id', 'name', 'nickname', 'email', 'department', 'role', 'orgLevel', 'phone', 'createdAt'];
+  const employeesHeader = ['id', 'empCode', 'name', 'nickname', 'email', 'department', 'role', 'orgLevel', 'phone', 'createdAt'];
   const employeesRows = data.employees.map(e => [
     e.id || '',
+    e.empCode || '',
     e.name || '',
     e.nickname || '',
     e.email || '',
@@ -187,7 +188,7 @@ export function prepareAllSheetsData(data: AllAppData) {
   ]);
 
   // 9. Activities
-  const activitiesHeader = ['id', 'productId', 'productName', 'type', 'quantityChange', 'oldQuantity', 'newQuantity', 'reason', 'timestamp'];
+  const activitiesHeader = ['id', 'productId', 'productName', 'type', 'quantityChange', 'oldQuantity', 'newQuantity', 'reason', 'timestamp', 'userName', 'userEmail', 'userPhotoUrl', 'imageUrl', 'productImage'];
   const activitiesRows = data.activities.map(a => [
     a.id || '',
     a.productId || '',
@@ -197,7 +198,12 @@ export function prepareAllSheetsData(data: AllAppData) {
     a.oldQuantity ?? 0,
     a.newQuantity ?? 0,
     a.reason || '',
-    a.timestamp || ''
+    a.timestamp || '',
+    a.userName || '',
+    a.userEmail || a.creatorEmail || '',
+    a.userPhotoUrl || '',
+    a.imageUrl || '',
+    a.productImage || ''
   ]);
 
   // 10. User Roles
@@ -552,14 +558,15 @@ export const importFromGoogleSheets = async (
   const employeesRows = getRows('Employees');
   const parsedEmployees: Employee[] = employeesRows.map((r, i) => ({
     id: r[0] || `emp_${Date.now()}_${i}`,
-    name: r[1] || 'พนักงาน',
-    nickname: r[2] || '',
-    email: r[3] || '',
-    department: r[4] || '',
-    role: r[5] || '',
-    orgLevel: r[6] || 'team',
-    phone: r[7] || '',
-    createdAt: r[8] || new Date().toISOString()
+    empCode: r[1] && r[1] !== 'name' ? r[1] : '',
+    name: r[1] === 'name' ? (r[2] || 'พนักงาน') : (r[1] || 'พนักงาน'),
+    nickname: r[3] || '',
+    email: r[4] || '',
+    department: r[5] || '',
+    role: r[6] || '',
+    orgLevel: r[7] || 'team',
+    phone: r[8] || '',
+    createdAt: r[9] || new Date().toISOString()
   }));
   const employees = hasTab('Employees') ? parsedEmployees : (currentAppData?.employees || []);
 
@@ -601,7 +608,13 @@ export const importFromGoogleSheets = async (
     oldQuantity: parseFloat(r[5]) || 0,
     newQuantity: parseFloat(r[6]) || 0,
     reason: r[7] || '',
-    timestamp: r[8] || new Date().toISOString()
+    timestamp: r[8] || new Date().toISOString(),
+    userName: r[9] || '',
+    userEmail: r[10] || '',
+    creatorEmail: r[10] || '',
+    userPhotoUrl: r[11] || '',
+    imageUrl: r[12] || '',
+    productImage: r[13] || ''
   }));
   const activities = hasTab('Activities') ? parsedActivities : (currentAppData?.activities || []);
 

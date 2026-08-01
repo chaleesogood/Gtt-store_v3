@@ -72,6 +72,13 @@ export interface StockActivity {
   newQuantity: number;
   reason: string;
   timestamp: string;
+  userId?: string; // UID/ID ผู้ใช้งานที่เข้าสู่ระบบ
+  userName?: string; // ชื่อผู้ทำรายการ/ผู้แก้ไข
+  userEmail?: string; // อีเมลผู้แก้ไข
+  creatorEmail?: string; // อีเมลผู้สร้างรายการ
+  userPhotoUrl?: string; // รูปโปรไฟล์ผู้แก้ไข
+  imageUrl?: string; // รูปแนบหลักฐานการทำรายการ/สลิป
+  productImage?: string; // รูปสินค้าขณะทำรายการ
 }
 
 export interface BomItem {
@@ -163,11 +170,12 @@ export interface Job {
 
 export interface Employee {
   id: string;
+  empCode?: string;  // รหัสพนักงาน (e.g. EMP-001, INT-001)
   name: string;
   nickname?: string; // ชื่อเล่น พนักงาน
   email?: string;    // Email พนักงาน
-  department?: 'Accounting' | 'Electrical' | 'Assembly' | 'Machine Shop' | 'Design' | 'Welding' | 'Owner' | string; // แผนกงาน
-  orgLevel?: 'owner' | 'head' | 'team' | string; // ลำดับขั้น: เจ้าของบริษัท / หัวหน้าแผนก / ลูกทีม
+  department?: 'Accounting' | 'Electrical' | 'Assembly' | 'Machine Shop' | 'Design' | 'Welding' | 'Owner' | 'Intern' | string; // แผนกงาน
+  orgLevel?: 'owner' | 'head' | 'team' | 'intern' | string; // ลำดับขั้น: เจ้าของบริษัท / หัวหน้าแผนก / ลูกทีม / น้องฝึกงาน
   role?: string;     // ตำแหน่งงาน
   phone?: string;
   createdAt: string;

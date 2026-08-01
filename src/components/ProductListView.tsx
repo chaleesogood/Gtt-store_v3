@@ -14,7 +14,7 @@ interface ProductListViewProps {
   onEditProduct: (id: string, updated: Partial<Product>) => void;
   onBulkEditProducts?: (updates: { id: string; updatedFields: Partial<Product> }[]) => Promise<void>;
   onDeleteProduct: (id: string) => void;
-  onAdjustStock: (id: string, change: number, reason: string) => any;
+  onAdjustStock: (id: string, change: number, reason: string, imageUrl?: string) => any;
   statusFilter: string;
   onSetStatusFilter: (filter: string) => void;
   onAddCategory: (category: Omit<Category, 'id'> & { id?: string }) => void;
@@ -366,6 +366,7 @@ export default function ProductListView({
   const [adjustAmount, setAdjustAmount] = useState(1);
   const [adjustReason, setAdjustReason] = useState('รับของเข้า / ปรับปรุงสต็อก');
   const [adjustType, setAdjustType] = useState<'in' | 'out'>('in');
+  const [adjustImage, setAdjustImage] = useState('');
 
   // Reorder and Auto-format actions
   const handleMoveProduct = async (productId: string, direction: 'up' | 'down') => {
@@ -687,6 +688,7 @@ export default function ProductListView({
     setAdjustAmount(1);
     setAdjustType('in');
     setAdjustReason(p.quantity === 0 ? 'นำสินค้าเข้าสต็อกล็อตใหม่' : 'ปรับเปลี่ยนคลังสินค้าประจำวัน');
+    setAdjustImage('');
   };
 
   const handleAdjustSubmit = (e: React.FormEvent) => {
@@ -700,7 +702,7 @@ export default function ProductListView({
       return;
     }
 
-    onAdjustStock(adjustingProduct.id, finalAmount, adjustReason);
+    onAdjustStock(adjustingProduct.id, finalAmount, adjustReason, adjustImage);
     setAdjustingProduct(null);
   };
 
@@ -2330,6 +2332,56 @@ export default function ProductListView({
                   value={adjustReason}
                   onChange={(e) => setAdjustReason(e.target.value)}
                 />
+              </div>
+
+              {/* Optional Proof Image / Slip */}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 font-sans flex items-center justify-between">
+                  <span>แนบรูปภาพหลักฐาน / สลิป / รูปถ่ายสต็อก (ตัวเลือก)</span>
+                  {adjustImage && (
+                    <button
+                      type="button"
+                      onClick={() => setAdjustImage('')}
+                      className="text-[10px] text-rose-500 hover:underline cursor-pointer"
+                    >
+                      ลบรูปภาพ
+                    </button>
+                  )}
+                </label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    placeholder="วาง URL รูปภาพ หรือ อัปโหลดจากเครื่อง..."
+                    className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans"
+                    value={adjustImage}
+                    onChange={(e) => setAdjustImage(e.target.value)}
+                  />
+                  <label className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 cursor-pointer shrink-0 transition-colors">
+                    📁 เลือกไฟล์
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (evt) => {
+                            if (evt.target?.result) {
+                              setAdjustImage(evt.target.result as string);
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {adjustImage && (
+                  <div className="mt-1.5 relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 shadow-xs">
+                    <img src={adjustImage} alt="Proof preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
               </div>
 
               {/* Actions */}

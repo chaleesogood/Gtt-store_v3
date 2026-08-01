@@ -30,7 +30,7 @@ import {
 interface OrderingSystemViewProps {
   products: Product[];
   addToast: (type: 'success' | 'warning' | 'info', title: string, message: string) => void;
-  onAdjustStock: (productId: string, change: number, reason: string) => Promise<void>;
+  onAdjustStock: (productId: string, change: number, reason: string, imageUrl?: string) => Promise<void>;
   preselectedProductId?: string;
   onClearPreselectedProductId?: () => void;
   employees: Employee[];
