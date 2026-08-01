@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Job, Employee, JobProject, normalizeModules, Brand, UserRole, MediaFile } from '../types';
+import { BusinessCardModal } from './BusinessCardModal';
 import { 
   FolderGit2, 
   Users, 
@@ -699,6 +700,10 @@ export default function SettingsView({
   const [isEmpAddModalOpen, setIsEmpAddModalOpen] = useState(false);
   const [isEmpEditModalOpen, setIsEmpEditModalOpen] = useState(false);
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
+
+  // Business Card Modal State
+  const [isBusinessCardModalOpen, setIsBusinessCardModalOpen] = useState(false);
+  const [selectedEmpForCard, setSelectedEmpForCard] = useState<Employee | null>(null);
 
   // Form Fields - Projects
   const [projJobNo, setProjJobNo] = useState('');
@@ -1750,25 +1755,40 @@ export default function SettingsView({
                 </button>
               </div>
 
-              <button
-                onClick={() => {
-                  setEmpName('');
-                  setEmpNickname('');
-                  setEmpEmail('');
-                  setEmpPhone('');
-                  setEmpImageUrl('');
-                  setEmpDepartment('Electrical');
-                  setEmpOrgLevel('team');
-                  setEmpRole('');
-                  setEmpCardColor('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100');
-                  setIsEmpAddModalOpen(true);
-                }}
-                className="flex items-center justify-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-indigo-600/15 transition-all cursor-pointer shrink-0"
-                id="btn-add-employee-settings"
-              >
-                <UserPlus className="h-4 w-4" />
-                <span>เพิ่มรายชื่อพนักงาน</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedEmpForCard(employees.length > 0 ? employees[0] : null);
+                    setIsBusinessCardModalOpen(true);
+                  }}
+                  className="flex items-center justify-center gap-2 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white font-black text-xs rounded-xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer border border-blue-400/30"
+                  id="btn-generate-business-card"
+                >
+                  <IdCard className="h-4 w-4 text-blue-100 animate-pulse" />
+                  <span>สร้างนามบัตรพนักงาน</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setEmpName('');
+                    setEmpNickname('');
+                    setEmpEmail('');
+                    setEmpPhone('');
+                    setEmpImageUrl('');
+                    setEmpDepartment('Electrical');
+                    setEmpOrgLevel('team');
+                    setEmpRole('');
+                    setEmpCardColor('border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100');
+                    setIsEmpAddModalOpen(true);
+                  }}
+                  className="flex items-center justify-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-indigo-600/15 transition-all cursor-pointer"
+                  id="btn-add-employee-settings"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  <span>เพิ่มรายชื่อพนักงาน</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1862,6 +1882,16 @@ export default function SettingsView({
 
                             {/* Actions panel */}
                             <div className="flex flex-col gap-1.5 shrink-0">
+                              <button
+                                onClick={() => {
+                                  setSelectedEmpForCard(emp);
+                                  setIsBusinessCardModalOpen(true);
+                                }}
+                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded border border-slate-150/60 cursor-pointer"
+                                title="สร้างนามบัตรพนักงาน"
+                              >
+                                <IdCard className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                              </button>
                               <button onClick={() => openEmpEdit(emp)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded border border-slate-150/60 cursor-pointer" title="แก้ไข">
                                 <Edit3 className="h-3 w-3" />
                               </button>
@@ -2047,6 +2077,16 @@ export default function SettingsView({
                                       </div>
 
                                       <div className="flex flex-col gap-1 shrink-0">
+                                        <button
+                                          onClick={() => {
+                                            setSelectedEmpForCard(emp);
+                                            setIsBusinessCardModalOpen(true);
+                                          }}
+                                          className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded border border-slate-150/60 cursor-pointer"
+                                          title="สร้างนามบัตรพนักงาน"
+                                        >
+                                          <IdCard className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                                        </button>
                                         <button onClick={() => openEmpEdit(emp)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded border border-slate-150/60 cursor-pointer" title="แก้ไข">
                                           <Edit3 className="h-3 w-3" />
                                         </button>
@@ -2158,6 +2198,16 @@ export default function SettingsView({
                                       </div>
 
                                       <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                          onClick={() => {
+                                            setSelectedEmpForCard(emp);
+                                            setIsBusinessCardModalOpen(true);
+                                          }}
+                                          className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded cursor-pointer"
+                                          title="สร้างนามบัตรพนักงาน"
+                                        >
+                                          <IdCard className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                                        </button>
                                         <button onClick={() => openEmpEdit(emp)} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded cursor-pointer" title="แก้ไข">
                                           <Edit3 className="h-3 w-3" />
                                         </button>
@@ -2395,6 +2445,16 @@ export default function SettingsView({
 
                           {/* Actions Panel */}
                           <div className="flex flex-col gap-1.5 justify-start">
+                            <button
+                              onClick={() => {
+                                setSelectedEmpForCard(emp);
+                                setIsBusinessCardModalOpen(true);
+                              }}
+                              className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-md border border-slate-150/60 cursor-pointer"
+                              title="สร้างนามบัตรพนักงาน"
+                            >
+                              <IdCard className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                            </button>
                             <button
                               onClick={() => openEmpEdit(emp)}
                               className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-md border border-slate-150/60 cursor-pointer"
@@ -4661,6 +4721,14 @@ export default function SettingsView({
           </div>
         </div>
       )}
+
+      {/* Employee Business Card Generator Modal */}
+      <BusinessCardModal
+        isOpen={isBusinessCardModalOpen}
+        onClose={() => setIsBusinessCardModalOpen(false)}
+        employees={employees}
+        selectedEmployee={selectedEmpForCard}
+      />
 
     </div>
   );
