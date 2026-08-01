@@ -1114,11 +1114,11 @@ export default function JobAssignmentView({
                               setTaskImageUrl(base64);
                               if (onAddMediaFile && base64) {
                                 onAddMediaFile({
-                                  name: taskTitle ? `รูปงาน: ${taskTitle}` : `รูปงาน ${file.name}`,
+                                  name: taskModule ? `รูปงาน: ${taskModule}` : `รูปงาน ${file.name}`,
                                   type: 'image',
                                   url: base64,
                                   category: 'รูปงาน / หน้างาน',
-                                  refName: taskProjectName || taskEmployeeName || undefined,
+                                  refName: taskJobNo || taskAssignee || undefined,
                                   size: file.size,
                                   fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
                                 });
@@ -1400,11 +1400,11 @@ export default function JobAssignmentView({
                               setTaskImageUrl(base64);
                               if (onAddMediaFile && base64) {
                                 onAddMediaFile({
-                                  name: taskTitle ? `รูปงาน: ${taskTitle}` : `รูปงาน ${file.name}`,
+                                  name: taskModule ? `รูปงาน: ${taskModule}` : `รูปงาน ${file.name}`,
                                   type: 'image',
                                   url: base64,
                                   category: 'รูปงาน / หน้างาน',
-                                  refName: taskProjectName || taskEmployeeName || undefined,
+                                  refName: taskJobNo || taskAssignee || undefined,
                                   size: file.size,
                                   fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
                                 });

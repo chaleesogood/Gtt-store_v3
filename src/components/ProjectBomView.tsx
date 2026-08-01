@@ -271,9 +271,10 @@ interface ProjectModulesManagerProps {
   proj: JobProject;
   onEditJobProject: (id: string, updatedFields: Partial<JobProject>) => Promise<void>;
   addToast: (type: 'success' | 'warning' | 'info', title: string, message: string) => void;
+  onAddMediaFile?: (data: any) => Promise<any>;
 }
 
-function ProjectModulesManager({ proj, onEditJobProject, addToast }: ProjectModulesManagerProps) {
+function ProjectModulesManager({ proj, onEditJobProject, addToast, onAddMediaFile }: ProjectModulesManagerProps) {
   const modules = normalizeModules(proj.modules);
 
   const [newCode, setNewCode] = useState('');
@@ -438,7 +439,7 @@ function ProjectModulesManager({ proj, onEditJobProject, addToast }: ProjectModu
                                 type: 'image',
                                 url: base64,
                                 category: 'เอกสารโครงการ',
-                                refName: selectedBom?.projectName || m.code,
+                                refName: proj.projectName || proj.jobNo || m.code,
                                 size: file.size,
                                 fileType: file.name.split('.').pop()?.toUpperCase() || 'PNG'
                               });

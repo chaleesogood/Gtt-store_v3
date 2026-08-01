@@ -606,7 +606,7 @@ export default function CategoryView({
                                         setSeriesImageInput(base64);
                                         if (onAddMediaFile && base64) {
                                           onAddMediaFile({
-                                            name: seriesNameInput ? `รูปซีรีส์: ${seriesNameInput}` : `รูปซีรีส์ ${file.name}`,
+                                            name: seriesInput ? `รูปซีรีส์: ${seriesInput}` : `รูปซีรีส์ ${file.name}`,
                                             type: 'image',
                                             url: base64,
                                             category: 'รูปหมวดหมู่',
@@ -656,7 +656,7 @@ export default function CategoryView({
                                         setSeriesPdfInput(base64);
                                         if (onAddMediaFile && base64) {
                                           onAddMediaFile({
-                                            name: seriesNameInput ? `แคตตาล็อก/คู่มือ: ${seriesNameInput}` : `คู่มือ PDF ${file.name}`,
+                                            name: seriesInput ? `แคตตาล็อก/คู่มือ: ${seriesInput}` : `คู่มือ PDF ${file.name}`,
                                             type: 'document',
                                             url: base64,
                                             category: 'แคตตาล็อกสินค้า',

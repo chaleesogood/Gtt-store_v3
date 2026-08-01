@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand, MediaFile, sortProducts } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_ACTIVITIES } from './initialData';
 import Toast, { ToastMessage } from './components/Toast';
@@ -15,8 +15,8 @@ import SettingsView from './components/SettingsView';
 import { CatalogView } from './components/CatalogView';
 import UserManagementView from './components/UserManagementView';
 import { GoogleSheetsView } from './components/GoogleSheetsView';
-import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles, Database, CloudUpload, RefreshCw, FileSpreadsheet, Clock, Lock, Mail, LogOut, Loader2, UserCheck, UserPlus, Copy, Fingerprint } from 'lucide-react';
-import { collection, doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs, getDocsFromServer } from 'firebase/firestore';
+import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, X, CheckCircle, AlertTriangle, FolderKanban, ShoppingCart, BarChart3, Briefcase, ClipboardList, Sun, Moon, BookOpen, ExternalLink, Download, Upload, Shield, Sparkles, Database, CloudUpload, RefreshCw, FileSpreadsheet, Clock, Lock, Mail, LogOut, Loader2, UserCheck, UserPlus, Copy, Fingerprint, Eye } from 'lucide-react';
+import { collection, doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs, getDocsFromServer, where, limit } from 'firebase/firestore';
 import { db, cleanUndefined, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from './firebase';
 import { UserRole } from './types';
 
@@ -155,6 +155,7 @@ export default function App() {
     if (deleteMissing) {
       try {
         const snapshot = await getDocs(query(collection(db, collectionName)));
+        if ((window as any).__recordFirestoreReads) (window as any).__recordFirestoreReads(snapshot.size || 1);
         snapshot.forEach((docSnap) => existingDocIds.push(docSnap.id));
       } catch (e) {
         console.warn(`Error fetching existing docs for deletion check in ${collectionName}:`, e);
@@ -183,6 +184,7 @@ export default function App() {
       });
       if (count > 0) {
         await withTimeout(batch.commit(), 5000);
+        if ((window as any).__recordFirestoreWrites) (window as any).__recordFirestoreWrites(count);
       }
     }
 
@@ -194,6 +196,7 @@ export default function App() {
         const batch = writeBatch(db);
         chunk.forEach(id => batch.delete(doc(db, collectionName, id)));
         await withTimeout(batch.commit(), 5000);
+        if ((window as any).__recordFirestoreWrites) (window as any).__recordFirestoreWrites(chunk.length);
       }
     }
   };
@@ -646,6 +649,111 @@ export default function App() {
   // Firestore status / Quota state
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
 
+  // Cloud Firestore Free Tier Daily Quota Tracker (50,000 Reads / 20,000 Writes)
+  const FIRESTORE_READ_LIMIT = 50000;
+  const FIRESTORE_WRITE_LIMIT = 20000;
+
+  const [firestoreReads, setFirestoreReads] = useState<number>(() => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const saved = localStorage.getItem(`fs_reads_${today}`);
+      return saved ? parseInt(saved, 10) : 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  const [firestoreWrites, setFirestoreWrites] = useState<number>(() => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const saved = localStorage.getItem(`fs_writes_${today}`);
+      return saved ? parseInt(saved, 10) : 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  const recordFirestoreReads = useCallback((count: number) => {
+    if (!count || count <= 0) return;
+    setFirestoreReads((prev) => {
+      const today = new Date().toISOString().split('T')[0];
+      const saved = localStorage.getItem(`fs_reads_${today}`);
+      const base = saved ? parseInt(saved, 10) : 0;
+      const next = base + count;
+      try {
+        localStorage.setItem(`fs_reads_${today}`, next.toString());
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const recordFirestoreWrites = useCallback((count: number) => {
+    if (!count || count <= 0) return;
+    setFirestoreWrites((prev) => {
+      const today = new Date().toISOString().split('T')[0];
+      const saved = localStorage.getItem(`fs_writes_${today}`);
+      const base = saved ? parseInt(saved, 10) : 0;
+      const next = base + count;
+      try {
+        localStorage.setItem(`fs_writes_${today}`, next.toString());
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    (window as any).__recordFirestoreReads = recordFirestoreReads;
+    (window as any).__recordFirestoreWrites = recordFirestoreWrites;
+  }, [recordFirestoreReads, recordFirestoreWrites]);
+
+  // Automatically check for midnight (00:00 AM) and reset counters
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const checkMidnight = () => {
+      const now = new Date();
+      const currentToday = now.toISOString().split('T')[0];
+      
+      const storedToday = localStorage.getItem('fs_last_checked_date') || todayStr;
+      if (currentToday !== storedToday) {
+        localStorage.setItem('fs_last_checked_date', currentToday);
+        setFirestoreReads(0);
+        setFirestoreWrites(0);
+        addToast('info', 'เริ่มวันใหม่ 00:00 AM', 'ระบบได้ทำการรีเซ็ตจำนวนการเชื่อมต่อ Firebase Cloud Firestore เรียบร้อยแล้ว');
+      }
+    };
+
+    if (!localStorage.getItem('fs_last_checked_date')) {
+      localStorage.setItem('fs_last_checked_date', todayStr);
+    }
+
+    // Check every 10 seconds to detect system wake-up and midnight rollover precisely
+    const interval = setInterval(checkMidnight, 10000);
+    checkMidnight();
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const readPercentage = Math.min(100, Number(((firestoreReads / FIRESTORE_READ_LIMIT) * 100).toFixed(1)));
+  const writePercentage = Math.min(100, Number(((firestoreWrites / FIRESTORE_WRITE_LIMIT) * 100).toFixed(1)));
+
+  const [isSyncingQuota, setIsSyncingQuota] = useState(false);
+
+  const handleSyncFirebaseQuota = async () => {
+    setIsSyncingQuota(true);
+    try {
+      // Force a direct server fetch from Firebase Firestore to verify live server connection & sync real counts
+      const rolesSnap = await getDocsFromServer(query(collection(db, 'user_roles')));
+      const count = rolesSnap.size || 1;
+      recordFirestoreReads(count);
+      addToast('success', 'ซิงค์ข้อมูลกับ Firebase เรียบร้อย', `เชื่อมต่อ Cloud Firestore สำเร็จ (อ่านข้อมูล ${count} รายการล่าสุด)`);
+    } catch (err: any) {
+      console.warn("Manual Firebase sync check warning:", err);
+      checkFirestoreQuotaError(err);
+    } finally {
+      setTimeout(() => setIsSyncingQuota(false), 500);
+    }
+  };
+
   // Listen to Auth State Changes
   useEffect(() => {
     let unsubscribeRole: (() => void) | null = null;
@@ -664,6 +772,7 @@ export default function App() {
         // Fetch/Listen to this user's specific role in 'user_roles'
         const userRoleRef = doc(db, 'user_roles', user.uid);
         unsubscribeRole = onSnapshot(userRoleRef, async (docSnap) => {
+          recordFirestoreReads(docSnap.exists() ? 1 : 0);
           const userEmailClean = (user.email || '').trim().toLowerCase();
           const isDeveloper = ['chaleesogood@gmail.com', 'chalee@gtt2013.com'].includes(userEmailClean);
           const isGoogleUser = user.providerData?.some(p => p.providerId === 'google.com') || false;
@@ -703,17 +812,15 @@ export default function App() {
           } else {
             // Document doesn't exist, let's check if there is an existing role record with the same email!
             try {
-              const q = query(collection(db, 'user_roles'));
+              const q = query(collection(db, 'user_roles'), where('email', '==', userEmailClean));
               const querySnapshot = await getDocs(q);
               let existingRoleRecord: UserRole | null = null;
               let existingDocId: string | null = null;
               
               querySnapshot.forEach((docSnap) => {
                 const data = docSnap.data() as UserRole;
-                if (data.email && data.email.trim().toLowerCase() === userEmailClean) {
-                  existingRoleRecord = data;
-                  existingDocId = docSnap.id;
-                }
+                existingRoleRecord = data;
+                existingDocId = docSnap.id;
               });
 
               if (existingRoleRecord && existingDocId) {
@@ -818,6 +925,7 @@ export default function App() {
     if (currentUser) {
       const q = query(collection(db, 'user_roles'));
       const unsubscribe = onSnapshot(q, async (snapshot) => {
+        recordFirestoreReads(snapshot.size || 1);
         const list: UserRole[] = [];
         let hasChaleeGtt = false;
         let hasChaleeGood = false;
@@ -1016,8 +1124,11 @@ export default function App() {
 
   // Sync products from Firestore (Central Shared Database)
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'products'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
       const firestoreList: Product[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Product);
@@ -1042,12 +1153,15 @@ export default function App() {
       setProducts(saved ? sortProducts(JSON.parse(saved)) : sortProducts(INITIAL_PRODUCTS));
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync categories from Firestore (Central Shared Database)
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'categories'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
       const firestoreList: Category[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Category);
@@ -1071,7 +1185,7 @@ export default function App() {
       setCategories(saved ? JSON.parse(saved) : INITIAL_CATEGORIES);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Auto-delete cat-2t7zj33 on startup if present as requested by user
   useEffect(() => {
@@ -1106,63 +1220,20 @@ export default function App() {
     }
   }, [categories, products]);
 
-  // Synchronize state on user auth change (fetch fresh data directly from database on every login)
+  // Synchronize state on user auth change (rely on dynamic real-time listeners for active tabs to save Firestore quota)
   useEffect(() => {
-    const prepareSync = async () => {
-      try {
-        await handlePullFreshFromDatabase(false);
-      } catch (err: any) {
-        console.warn("Prepare sync error:", err);
-      } finally {
-        setIsSyncComplete(true);
-      }
-    };
-    prepareSync();
+    setIsSyncComplete(true);
   }, [currentUser?.uid]);
 
-  // Sync and heal database: Ensure any category referenced by any product is defined in the categories collection
-  useEffect(() => {
-    if (products.length === 0 || categories.length === 0) return;
-    
-    const categoryIds = new Set(categories.map(c => c.id));
-    const productCategoryIds = Array.from(new Set(products.map(p => p.category).filter(Boolean))) as string[];
-    
-    productCategoryIds.forEach(async (catId) => {
-      if (recentlyDeletedCategories.current.has(catId)) return;
-      
-      if (!categoryIds.has(catId)) {
-        // Look up if we have a seed template for this category
-        const defaultCat = INITIAL_CATEGORIES.find(c => c.id === catId);
-        
-        let fallbackName = `กลุ่มสินค้า ${catId}`;
-        if (catId === 'cat-9uc8blz') {
-          fallbackName = 'กลุ่มจัดซื้อเฉพาะกิจ (BOM/Procurement)';
-        }
-        
-        const fallbackDesc = 'หมวดหมู่สินค้าที่สร้างขึ้นโดยอัตโนมัติเพื่อให้สอดคล้องกับคลังสินค้า';
-        const fallbackColor = 'bg-slate-100 text-slate-800 border-slate-200';
-        
-        const newCat: Category = {
-          id: catId,
-          name: defaultCat?.name || fallbackName,
-          description: defaultCat?.description || fallbackDesc,
-          color: defaultCat?.color || fallbackColor,
-        };
-        
-        try {
-          await setDoc(doc(db, 'categories', catId), cleanUndefined(newCat));
-          console.log(`Auto-created missing category document in Firestore: ${catId}`);
-        } catch (err) {
-          console.error("Auto-create category error:", err);
-        }
-      }
-    });
-  }, [products, categories]);
+
 
   // Sync activities from Firestore (Central Shared Database)
   useEffect(() => {
-    const q = query(collection(db, 'activities'), orderBy('timestamp', 'desc'));
+    if (!currentUser) return;
+
+    const q = query(collection(db, 'activities'), orderBy('timestamp', 'desc'), limit(100));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
       const firestoreList: StockActivity[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as StockActivity);
@@ -1188,12 +1259,15 @@ export default function App() {
       setActivities(saved ? JSON.parse(saved) : INITIAL_ACTIVITIES);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync boms from Firestore
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'boms'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
       const firestoreList: Bom[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Bom);
@@ -1222,12 +1296,15 @@ export default function App() {
       setBoms(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync projects from Firestore
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'projects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
       const firestoreList: Project[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Project);
@@ -1256,12 +1333,15 @@ export default function App() {
       setProjects(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync jobs from Firestore
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'jobs'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
       const firestoreList: Job[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Job);
@@ -1290,12 +1370,15 @@ export default function App() {
       setJobs(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync employees from Firestore
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'employees'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
       const firestoreList: Employee[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Employee);
@@ -1311,7 +1394,7 @@ export default function App() {
         localStorage.setItem('stock_manager_employees_list', JSON.stringify(merged));
       } else {
         if (localList.length > 0) {
-          localList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+          localList.sort((a, b) => (a.name || '').localeCompare(a.name || '', 'th'));
           setEmployees(localList);
           uploadListToFirestoreInBatches('employees', localList);
         } else {
@@ -1325,14 +1408,15 @@ export default function App() {
       setEmployees(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
-
-  // Sync brands from Firestore
+  }, [currentUser]);
   const isBrandsInitializedRef = useRef(false);
 
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'brands'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
       const firestoreList: Brand[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as Brand);
@@ -1343,13 +1427,13 @@ export default function App() {
 
       if (firestoreList.length > 0) {
         isBrandsInitializedRef.current = true;
-        firestoreList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+        firestoreList.sort((a, b) => (a.name || '').localeCompare(a.name || '', 'th'));
         setBrands(firestoreList);
         localStorage.setItem('stock_manager_brands_list', JSON.stringify(firestoreList));
       } else {
         if (!isBrandsInitializedRef.current && localList.length > 0) {
           isBrandsInitializedRef.current = true;
-          localList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+          localList.sort((a, b) => (a.name || '').localeCompare(a.name || '', 'th'));
           setBrands(localList);
           uploadListToFirestoreInBatches('brands', localList);
         } else {
@@ -1364,12 +1448,15 @@ export default function App() {
       setBrands(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync job projects from Firestore
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'jobProjects'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
       const firestoreList: JobProject[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as JobProject);
@@ -1384,7 +1471,7 @@ export default function App() {
         localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(firestoreList));
       } else {
         if (localList.length > 0) {
-          localList.sort((a, b) => (b.jobNo || '').localeCompare(a.jobNo || ''));
+          localList.sort((a, b) => (b.jobNo || '').localeCompare(b.jobNo || ''));
           setJobProjects(localList);
           uploadListToFirestoreInBatches('jobProjects', localList);
         } else {
@@ -1398,12 +1485,13 @@ export default function App() {
       setJobProjects(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
-
-  // Sync daily reports from Firestore
+  }, [currentUser]);
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'dailyReports'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
       const firestoreList: DailyReport[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as DailyReport);
@@ -1413,12 +1501,12 @@ export default function App() {
       const localList: DailyReport[] = savedStr ? JSON.parse(savedStr) : [];
 
       if (firestoreList.length > 0) {
-        firestoreList.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        firestoreList.sort((a, b) => (b.date || '').localeCompare(b.date || ''));
         setDailyReports(firestoreList);
         localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(firestoreList));
       } else {
         if (localList.length > 0) {
-          localList.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          localList.sort((a, b) => (b.date || '').localeCompare(b.date || ''));
           setDailyReports(localList);
           uploadListToFirestoreInBatches('dailyReports', localList);
         } else {
@@ -1432,14 +1520,17 @@ export default function App() {
       setDailyReports(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Sync media files from Firestore
   const isMediaFilesInitializedRef = useRef(false);
 
   useEffect(() => {
+    if (!currentUser) return;
+
     const q = query(collection(db, 'media_files'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
       const firestoreList: MediaFile[] = [];
       snapshot.forEach((document) => {
         firestoreList.push({ id: document.id, ...document.data() } as MediaFile);
@@ -1450,13 +1541,13 @@ export default function App() {
 
       if (firestoreList.length > 0) {
         isMediaFilesInitializedRef.current = true;
-        firestoreList.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        firestoreList.sort((a, b) => (b.createdAt || '').localeCompare(b.createdAt || ''));
         setMediaFiles(firestoreList);
         localStorage.setItem('stock_manager_media_files_list', JSON.stringify(firestoreList));
       } else {
         if (!isMediaFilesInitializedRef.current && localList.length > 0) {
           isMediaFilesInitializedRef.current = true;
-          localList.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          localList.sort((a, b) => (b.createdAt || '').localeCompare(b.createdAt || ''));
           setMediaFiles(localList);
           uploadListToFirestoreInBatches('media_files', localList);
         } else {
@@ -1471,8 +1562,7 @@ export default function App() {
       setMediaFiles(saved ? JSON.parse(saved) : []);
     });
     return () => unsubscribe();
-  }, []);
-
+  }, [currentUser]);
 
 
   // Toast Helpers
@@ -3974,6 +4064,31 @@ export default function App() {
         </div>
       </header>
 
+      {/* Mobile Sub-Header: Firestore Daily Quota Bar */}
+      <div className="md:hidden bg-slate-900/95 border-b border-slate-800 px-4 py-2 flex items-center justify-between text-xs sticky top-[65px] z-20 backdrop-blur-xs">
+        <div className="flex items-center gap-1.5 text-indigo-400 font-bold">
+          <Database className="h-3.5 w-3.5 shrink-0 text-indigo-400 animate-pulse" />
+          <span className="text-[10px] uppercase font-black tracking-wide text-slate-300">Firestore Limit</span>
+        </div>
+        <div className="flex items-center gap-2.5 font-mono font-bold text-[10px]">
+          <span className="flex items-center gap-1 text-slate-300" title="Reads (การอ่านข้อมูลต่อวัน)">
+            <span className="text-slate-400 text-[9px]">R:</span>
+            <span>{firestoreReads.toLocaleString()}</span>
+            <span className={`px-1 py-0.2 rounded text-[9px] font-black ${
+              readPercentage >= 90 ? 'bg-rose-500 text-white' : 'bg-indigo-900/90 text-indigo-300'
+            }`}>{readPercentage}%</span>
+          </span>
+          <span className="text-slate-700">|</span>
+          <span className="flex items-center gap-1 text-slate-300" title="Writes (การเขียนข้อมูลต่อวัน)">
+            <span className="text-slate-400 text-[9px]">W:</span>
+            <span>{firestoreWrites.toLocaleString()}</span>
+            <span className={`px-1 py-0.2 rounded text-[9px] font-black ${
+              writePercentage >= 90 ? 'bg-rose-500 text-white' : 'bg-emerald-900/90 text-emerald-300'
+            }`}>{writePercentage}%</span>
+          </span>
+        </div>
+      </div>
+
       {/* Mobile Drawer Navigation */}
       {isMobileMenuOpen && (
         <div className="md:hidden fixed inset-0 top-[60px] bg-slate-950/85 backdrop-blur-xs z-30 animate-in fade-in duration-200">
@@ -4164,9 +4279,103 @@ export default function App() {
         )}
 
         {/* TOP STATUS BAR (DESKTOP HEADER INSET) */}
-        <header className="hidden md:flex items-center justify-between pb-3 mb-4 border-b border-slate-200/60 dark:border-slate-800">
+        <header className="hidden md:flex items-center justify-between pb-3 mb-5 border-b border-slate-200/60 dark:border-slate-800/80 gap-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold font-sans text-slate-800 dark:text-slate-100">ระบบจัดการคลังสินค้าอัจฉริยะ</h1>
+            <h1 className="text-xl font-extrabold font-sans tracking-tight text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              ระบบจัดการคลังสินค้าอัจฉริยะ
+            </h1>
+          </div>
+
+          {/* Cloud Firestore Limits Indicator Widget (Reads & Writes - Live Synced & Resets Daily) */}
+          <div className="flex items-center gap-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/90 rounded-2xl px-3.5 py-1.5 shadow-sm text-xs backdrop-blur-sm transition-all hover:border-slate-300 dark:hover:border-slate-700">
+            {/* Live Sync Status */}
+            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold border-r border-slate-100 dark:border-slate-800 pr-3 shrink-0" title="เชื่อมต่อ Firebase Cloud Firestore และเริ่มใหม่ทุกๆ 00:00 น.">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <Database className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                Firestore
+              </span>
+            </div>
+
+            {/* Reads Metric with Miniature Progress Gauge */}
+            <div className="flex items-center gap-2" title="โควต้าการอ่านข้อมูล (Reads) ต่อวัน (สูงสุด 50,000 Reads/วัน)">
+              <Eye className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-slate-400 font-bold">Reads:</span>
+                  <span className="font-mono font-black text-[11px] text-slate-800 dark:text-slate-100">
+                    {firestoreReads.toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-mono">/50k</span>
+                  <span className={`px-1 rounded-sm text-[8px] font-black font-mono shrink-0 leading-normal ${
+                    readPercentage >= 90
+                      ? 'bg-rose-500 text-white animate-pulse'
+                      : readPercentage >= 70
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300'
+                  }`}>
+                    {readPercentage}%
+                  </span>
+                </div>
+                {/* Slim gauge bar */}
+                <div className="w-16 h-1 bg-slate-100 dark:bg-slate-800 rounded-full mt-0.5 overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      readPercentage >= 90 ? 'bg-rose-500 animate-pulse' : readPercentage >= 70 ? 'bg-amber-500' : 'bg-indigo-500'
+                    }`}
+                    style={{ width: `${readPercentage}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 shrink-0"></div>
+
+            {/* Writes Metric with Miniature Progress Gauge */}
+            <div className="flex items-center gap-2" title="โควต้าการเขียนข้อมูล (Writes) ต่อวัน (สูงสุด 20,000 Writes/วัน)">
+              <CloudUpload className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-slate-400 font-bold">Writes:</span>
+                  <span className="font-mono font-black text-[11px] text-slate-800 dark:text-slate-100">
+                    {firestoreWrites.toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-mono">/20k</span>
+                  <span className={`px-1 rounded-sm text-[8px] font-black font-mono shrink-0 leading-normal ${
+                    writePercentage >= 90
+                      ? 'bg-rose-500 text-white animate-pulse'
+                      : writePercentage >= 70
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300'
+                  }`}>
+                    {writePercentage}%
+                  </span>
+                </div>
+                {/* Slim gauge bar */}
+                <div className="w-16 h-1 bg-slate-100 dark:bg-slate-800 rounded-full mt-0.5 overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      writePercentage >= 90 ? 'bg-rose-500 animate-pulse' : writePercentage >= 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${writePercentage}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Manual Sync / Refresh Button */}
+            <button
+              type="button"
+              onClick={handleSyncFirebaseQuota}
+              disabled={isSyncingQuota}
+              className="ml-1 p-1 bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/50 dark:border-slate-800 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-all cursor-pointer disabled:opacity-50"
+              title="กดเพื่อซิงค์ข้อมูลกับ Firebase ทันที"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isSyncingQuota ? 'animate-spin text-indigo-500' : ''}`} />
+            </button>
           </div>
 
           <div className="flex items-center gap-3 relative">

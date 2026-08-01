@@ -482,24 +482,10 @@ export default function ProductListView({
   // Build a merged list of categories to handle any missing category definitions in the DB gracefully
   const mergedCategories = React.useMemo(() => {
     const list = [...categories];
-    // Find all unique product category IDs
-    const productCategoryIds = Array.from(new Set(products.map((p) => p.category).filter(Boolean)));
-    
-    productCategoryIds.forEach((catId) => {
-      if (!list.some((c) => c.id === catId)) {
-        const defaultCat = INITIAL_CATEGORIES.find((c) => c.id === catId);
-        list.push({
-          id: catId,
-          name: defaultCat?.name || (catId === 'cat-9uc8blz' ? 'กลุ่มจัดซื้อเฉพาะกิจ' : `กลุ่มสินค้า ${catId}`),
-          description: defaultCat?.description || 'หมวดหมู่สินค้าอ้างอิงจากข้อมูลผลิตภัณฑ์ในระบบ',
-          color: defaultCat?.color || 'bg-slate-100 text-slate-800 border-slate-200',
-        });
-      }
-    });
     // Sort alphabetically and numerically ascending (natural sorting)
     list.sort((a, b) => (a?.name || '').localeCompare(b?.name || '', 'th', { numeric: true, sensitivity: 'base' }));
     return list;
-  }, [categories, products]);
+  }, [categories]);
 
   const getCategoryName = (catId: string) => {
     const cat = mergedCategories.find((c) => c.id === catId);
