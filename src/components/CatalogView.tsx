@@ -264,6 +264,41 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
     return result;
   }, [filteredProducts, categories]);
 
+  // Compute available Sub-series for the active category filter
+  const subSeriesForActiveCategory = useMemo(() => {
+    const targetProducts = selectedCategory === 'all'
+      ? products
+      : products.filter(p => p.category === selectedCategory);
+    
+    const seriesMap = new Map<string, number>();
+    targetProducts.forEach(p => {
+      if (p.series && p.series.trim()) {
+        const sName = p.series.trim();
+        seriesMap.set(sName, (seriesMap.get(sName) || 0) + 1);
+      }
+    });
+
+    if (selectedCategory !== 'all') {
+      const activeCatObj = categories.find(c => c.id === selectedCategory);
+      if (activeCatObj) {
+        const definedSub = activeCatObj.subSeries || [];
+        definedSub.forEach(sub => {
+          if (!seriesMap.has(sub.name)) {
+            seriesMap.set(sub.name, 0);
+          }
+        });
+        const definedList = activeCatObj.series || [];
+        definedList.forEach(sName => {
+          if (!seriesMap.has(sName)) {
+            seriesMap.set(sName, 0);
+          }
+        });
+      }
+    }
+
+    return Array.from(seriesMap.entries()).map(([name, count]) => ({ name, count }));
+  }, [products, categories, selectedCategory]);
+
   // Open Category Edit/Manage Modal
   const handleOpenCatModal = (cat: Category, defaultTab: 'info' | 'series' = 'info') => {
     setCatModal(cat);
@@ -731,6 +766,51 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
             );
           })}
         </div>
+
+        {/* SUB-CATEGORY / SERIES YOY PILLS BAR */}
+        {subSeriesForActiveCategory.length > 0 && (
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 text-xs">
+            <span className="text-[11px] font-black text-slate-500 dark:text-slate-400 shrink-0 flex items-center gap-1 pl-1">
+              <Layers className="h-3 w-3 text-indigo-500" />
+              <span>หมวดหมู่ย่อย / Series:</span>
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setSelectedSeries('all')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer shrink-0 border ${
+                selectedSeries === 'all'
+                  ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800'
+                  : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100'
+              }`}
+            >
+              ทั้งหมด
+            </button>
+
+            {subSeriesForActiveCategory.map((sub) => {
+              const isSubSelected = selectedSeries === sub.name;
+              return (
+                <button
+                  key={sub.name}
+                  type="button"
+                  onClick={() => setSelectedSeries(sub.name)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1 border ${
+                    isSubSelected
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-2xs font-extrabold'
+                      : 'bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-purple-50 dark:hover:bg-purple-950/40'
+                  }`}
+                >
+                  <span>{sub.name}</span>
+                  <span className={`px-1.5 py-0.2 text-[9.5px] rounded-md font-black ${
+                    isSubSelected ? 'bg-purple-500/90 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                  }`}>
+                    {sub.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* PRODUCTS DISPLAY SECTION */}
@@ -847,7 +927,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
                     </div>
 
                     {/* Products Grid for this Series */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-2.5">
                       {seriesProds.map((prod) => (
                         <ProductCard
                           key={prod.id}
@@ -875,7 +955,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
         </div>
       ) : viewMode === 'grid' ? (
         /* ================= STANDARD GRID VIEW ================= */
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-2.5">
           {filteredProducts.map((prod) => {
             const catObj = categories.find((c) => c.id === prod.category);
             return (
@@ -1915,9 +1995,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const isOutOfStock = product.quantity <= 0;
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col group text-left">
+    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800/80 shadow-2xs hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col group text-left">
       {/* Card Image Container */}
-      <div className="relative aspect-4/3 bg-slate-100 dark:bg-slate-950 overflow-hidden border-b border-slate-100 dark:border-slate-800/80">
+      <div className="relative h-28 sm:h-32 bg-slate-100 dark:bg-slate-950 overflow-hidden border-b border-slate-100 dark:border-slate-800/80">
         {product.image ? (
           <img
             src={product.image}
@@ -1927,26 +2007,26 @@ const ProductCard: React.FC<ProductCardProps> = ({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-700">
-            <Package className="h-10 w-10" />
+            <Package className="h-8 w-8" />
           </div>
         )}
 
         {/* Top Badges */}
-        <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1 pointer-events-none">
+        <div className="absolute top-1.5 left-1.5 right-1.5 flex items-center justify-between gap-1 pointer-events-none">
           {category && (
-            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black border shadow-2xs backdrop-blur-md ${category.color || PRESET_COLORS[0].value}`}>
+            <span className={`px-1.5 py-0.2 rounded-md text-[9px] font-black border shadow-2xs backdrop-blur-md truncate max-w-[80px] ${category.color || PRESET_COLORS[0].value}`}>
               {category.name}
             </span>
           )}
 
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shadow-2xs ${
+          <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-black shadow-2xs ml-auto ${
             isOutOfStock
               ? 'bg-rose-500 text-white'
               : isLowStock
               ? 'bg-amber-500 text-white'
               : 'bg-emerald-500 text-white'
           }`}>
-            {isOutOfStock ? 'หมด' : `คลัง ${product.quantity} ${product.unit || 'ชิ้น'}`}
+            {isOutOfStock ? 'หมด' : `คลัง ${product.quantity}`}
           </span>
         </div>
 
@@ -1954,20 +2034,20 @@ const ProductCard: React.FC<ProductCardProps> = ({
         <button
           type="button"
           onClick={onDetail}
-          className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white font-extrabold text-xs cursor-pointer backdrop-blur-3xs"
+          className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 text-white font-extrabold text-[11px] cursor-pointer backdrop-blur-3xs"
         >
-          <Eye className="h-4 w-4" />
-          <span>ดูสเปกพัสดุ</span>
+          <Eye className="h-3.5 w-3.5" />
+          <span>ดูสเปก</span>
         </button>
       </div>
 
       {/* Card Body */}
-      <div className="p-3.5 space-y-2.5 flex-1 flex flex-col justify-between">
+      <div className="p-2 sm:p-2.5 space-y-1.5 flex-1 flex flex-col justify-between">
         <div className="space-y-1">
-          <div className="flex items-center justify-between gap-1 text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">
-            <span>SKU: {product.sku}</span>
+          <div className="flex items-center justify-between gap-1 text-[10px] font-mono font-bold text-indigo-600 dark:text-indigo-400">
+            <span className="truncate">SKU: {product.sku}</span>
             {product.brand && (
-              <span className="text-[10px] text-slate-400 font-sans font-semibold">
+              <span className="text-[9px] text-slate-400 font-sans font-semibold shrink-0">
                 {product.brand}
               </span>
             )}
@@ -1975,7 +2055,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
           <h3
             onClick={onDetail}
-            className="text-xs font-black text-slate-900 dark:text-slate-100 font-sans line-clamp-2 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors leading-snug"
+            className="text-[11.5px] font-bold text-slate-900 dark:text-slate-100 font-sans line-clamp-2 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors leading-tight min-h-[2.1rem]"
             title={product.name}
           >
             {product.name}
@@ -1983,33 +2063,33 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
           <div className="flex flex-wrap gap-1 items-center pt-0.5">
             {product.series && (
-              <span className="inline-block px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md text-[10px] font-bold font-sans">
-                Series ย่อย: {product.series}
+              <span className="inline-block px-1.5 py-0.2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded text-[9px] font-bold font-sans truncate max-w-[100px]">
+                {product.series}
               </span>
             )}
             {product.supplier && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-150 dark:border-indigo-850 rounded-md text-[10px] font-bold font-sans">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-150 dark:border-indigo-850 rounded text-[9px] font-bold font-sans">
                 {product.supplierLogoUrl ? (
-                  <img src={product.supplierLogoUrl} alt={product.supplier} className="h-3.5 object-contain" referrerPolicy="no-referrer" />
+                  <img src={product.supplierLogoUrl} alt={product.supplier} className="h-3 object-contain" referrerPolicy="no-referrer" />
                 ) : (
                   <span>🏬 {product.supplier}</span>
                 )}
               </span>
             )}
             {(product.subStore || product.subStoreLogoUrl) && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-150 dark:border-rose-850 rounded-md text-[10px] font-bold font-sans">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-150 dark:border-rose-850 rounded text-[9px] font-bold font-sans">
                 {product.subStoreLogoUrl ? (
-                  <img src={product.subStoreLogoUrl} alt={product.subStore || ''} className="h-3.5 object-contain" referrerPolicy="no-referrer" />
+                  <img src={product.subStoreLogoUrl} alt={product.subStore || ''} className="h-3 object-contain" referrerPolicy="no-referrer" />
                 ) : (
-                  <span>🛒 {product.subStore || 'ร้านค้าย่อย'}</span>
+                  <span>🛒</span>
                 )}
-                {product.subStore && product.subStoreLogoUrl && <span>{product.subStore}</span>}
+                {product.subStore && <span className="truncate max-w-[70px]">{product.subStore}</span>}
                 {product.subStoreLink && (
                   <a
                     href={product.subStoreLink.startsWith('http') ? product.subStoreLink : `https://${product.subStoreLink}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="ml-0.5 p-0.5 bg-rose-600 text-white rounded hover:bg-rose-500 transition-colors inline-flex"
+                    className="p-0.5 bg-rose-600 text-white rounded hover:bg-rose-500 transition-colors inline-flex"
                     title="เปิดลิงก์ร้านค้าย่อย E-commerce"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -2022,10 +2102,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
         </div>
 
         {/* Price & Action Footer */}
-        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+        <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-1">
           <div>
-            <span className="text-[10px] text-slate-400 font-bold block leading-none">ราคา/หน่วย</span>
-            <span className="text-sm font-black text-slate-900 dark:text-slate-100 font-sans">
+            <span className="text-[9px] text-slate-400 font-bold block leading-none">ราคา/หน่วย</span>
+            <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100 font-sans">
               ฿{(product.price || 0).toLocaleString('th-TH')}
             </span>
           </div>
@@ -2034,18 +2114,18 @@ const ProductCard: React.FC<ProductCardProps> = ({
             <button
               type="button"
               onClick={onAddToBom}
-              className="p-1.5 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/80 rounded-xl transition-all cursor-pointer shadow-3xs"
+              className="p-1 sm:p-1.5 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/80 rounded-lg transition-all cursor-pointer shadow-3xs"
               title="ใส่ใน BOM โครงการ"
             >
-              <ShoppingCart className="h-3.5 w-3.5" />
+              <ShoppingCart className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
             </button>
             <button
               type="button"
               onClick={onEdit}
-              className="p-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl transition-all cursor-pointer"
+              className="p-1 sm:p-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-lg transition-all cursor-pointer"
               title="แก้ไขข้อมูลพัสดุ"
             >
-              <Edit3 className="h-3.5 w-3.5" />
+              <Edit3 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
             </button>
           </div>
         </div>

@@ -32,7 +32,8 @@ import {
   FileText,
   ShoppingBag,
   Store,
-  ExternalLink
+  ExternalLink,
+  Save
 } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db, cleanUndefined, auth } from '../firebase';
@@ -713,8 +714,96 @@ export default function ProjectBomView({
     }
   }, [reqSelectedProductId, products]);
 
-  // Viewing Order states
+  // Viewing & Editing Order states
   const [viewingOrder, setViewingOrder] = useState<ProductOrder | null>(null);
+  const [editingOrder, setEditingOrder] = useState<ProductOrder | null>(null);
+  const [editOrderTitle, setEditOrderTitle] = useState('');
+  const [editOrderPrNo, setEditOrderPrNo] = useState('');
+  const [editOrderPoNo, setEditOrderPoNo] = useState('');
+  const [editOrderQty, setEditOrderQty] = useState<number>(1);
+  const [editOrderUnit, setEditOrderUnit] = useState('ชิ้น');
+  const [editOrderPriceUnit, setEditOrderPriceUnit] = useState<number>(0);
+  const [editOrderSupplier, setEditOrderSupplier] = useState('');
+  const [editOrderQuotationNo, setEditOrderQuotationNo] = useState('');
+  const [editOrderApprover, setEditOrderApprover] = useState('');
+  const [editOrderPaymentRef, setEditOrderPaymentRef] = useState('');
+  const [editOrderRemark, setEditOrderRemark] = useState('');
+  const [editOrderStatus, setEditOrderStatus] = useState<ProductOrder['status']>('pending');
+
+  const handleOpenEditOrder = (order: ProductOrder, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setEditingOrder(order);
+    setEditOrderTitle(order.orderTitle || order.productName || '');
+    setEditOrderPrNo(order.prNo || '');
+    setEditOrderPoNo(order.poNo || '');
+    setEditOrderQty(order.quantity || 1);
+    setEditOrderUnit(order.unit || 'ชิ้น');
+    setEditOrderPriceUnit(order.pricePerUnit || (order.totalPrice && order.quantity ? order.totalPrice / order.quantity : 0));
+    setEditOrderSupplier(order.supplier || '');
+    setEditOrderQuotationNo(order.quotationNo || '');
+    setEditOrderApprover(order.approverName || '');
+    setEditOrderPaymentRef(order.paymentRef || '');
+    setEditOrderRemark(order.remark || '');
+    setEditOrderStatus(order.status || 'pending');
+  };
+
+  const handleSaveEditOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrder) return;
+
+    const updates: Partial<ProductOrder> = {
+      orderTitle: editOrderTitle.trim(),
+      prNo: editOrderPrNo.trim(),
+      poNo: editOrderPoNo.trim(),
+      quantity: editOrderQty,
+      unit: editOrderUnit.trim() || 'ชิ้น',
+      pricePerUnit: editOrderPriceUnit,
+      totalPrice: editOrderPriceUnit * editOrderQty,
+      supplier: editOrderSupplier.trim(),
+      quotationNo: editOrderQuotationNo.trim(),
+      approverName: editOrderApprover.trim(),
+      paymentRef: editOrderPaymentRef.trim(),
+      remark: editOrderRemark.trim(),
+      status: editOrderStatus,
+      updatedAt: new Date().toISOString()
+    };
+
+    const updatedOrder = { ...editingOrder, ...updates };
+    const updatedOrders = orders.map(o => o.id === editingOrder.id ? updatedOrder : o);
+    setOrders(updatedOrders);
+    localStorage.setItem('stock_manager_orders_list', JSON.stringify(updatedOrders));
+
+    try {
+      await updateDoc(doc(db, 'orders', editingOrder.id), cleanUndefined(updates));
+      addToast('success', 'แก้ไขรายการสั่งซื้อสำเร็จ', `อัปเดตข้อมูลการจัดซื้อ "${editOrderTitle}" เรียบร้อยแล้ว`);
+      setEditingOrder(null);
+    } catch (err: any) {
+      console.error('Error editing order:', err);
+      addToast('success', 'จำลองแก้ไขสำเร็จ (Offline)', 'อัปเดตข้อมูลการสั่งซื้อชั่วคราวสำเร็จ');
+      setEditingOrder(null);
+    }
+  };
+
+  const handleReorderFromOrder = (order: ProductOrder, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const savedRequester = localStorage.getItem('last_selected_requester');
+    const savedPurchaser = localStorage.getItem('last_selected_purchaser');
+
+    setReqItemIndex(null);
+    setReqQty(order.quantity || 1);
+    setReqPriceUnit(order.pricePerUnit || (order.totalPrice && order.quantity ? order.totalPrice / order.quantity : 0));
+    setReqRequester(savedRequester || order.requesterName || '');
+    setReqPurchaserName(savedPurchaser || order.purchaserName || '');
+    setReqJobNo(order.jobNo || activeBom?.jobNo || '');
+    setReqJobName(order.jobName || activeBom?.name || '');
+    setReqSelectedProductId(order.productId || '');
+    setReqOrderTitle(order.orderTitle || order.productName || '');
+    setReqUnit(order.unit || 'ชิ้น');
+    setReqPrNo(`PR-${order.jobNo || activeBom?.jobNo || 'BOM'}-${Math.floor(1000 + Math.random() * 9000)}`);
+    setReqRemark(`สั่งซื้ออีกครั้งสำหรับงาน: ${order.jobNo || activeBom?.jobNo || ''} (${order.orderTitle || order.productName})`);
+
+    setIsRequisitionModalOpen(true);
+  };
 
   // Handle updating order status directly from BOM Workspace status tracker
   const handleUpdateOrderStatus = async (
@@ -2424,18 +2513,6 @@ export default function ProjectBomView({
                                               case 'cancelled': statusStepIndex = -1; break;
                                             }
 
-                                            if (statusStepIndex === -1) {
-                                              return (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => setViewingOrder(firstOrder)}
-                                                  className="text-[10.5px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded cursor-pointer w-full text-center hover:bg-rose-100 transition-colors"
-                                                >
-                                                  ยกเลิกจัดซื้อ
-                                                </button>
-                                              );
-                                            }
-
                                             const steps = [
                                               { step: 1, key: 'pending', label: 'ขอซื้อ' },
                                               { step: 2, key: 'quotation', label: 'เสนอราคา' },
@@ -2446,8 +2523,8 @@ export default function ProjectBomView({
                                             ];
 
                                             return (
-                                              <div className="flex flex-col gap-1 items-center min-w-[260px]">
-                                                {/* Top Bar: Status Dropdown + View Detail Button */}
+                                              <div className="flex flex-col gap-1 items-center min-w-[270px]">
+                                                {/* Top Bar: Status Dropdown + Action Buttons */}
                                                 <div className="flex items-center gap-1 w-full justify-between">
                                                   <select
                                                     className={`text-[10px] font-black py-0.5 px-1.5 rounded border cursor-pointer focus:outline-none ${
@@ -2470,18 +2547,39 @@ export default function ProjectBomView({
                                                     <option value="cancelled">❌ ยกเลิกจัดซื้อ (Cancelled)</option>
                                                   </select>
 
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => setViewingOrder(firstOrder)}
-                                                    className="px-1.5 py-0.5 text-[9.5px] font-bold text-slate-500 hover:text-indigo-600 bg-white hover:bg-slate-100 border border-slate-200 rounded flex items-center gap-0.5 cursor-pointer shrink-0"
-                                                    title="ดูรายละเอียดใบสั่งซื้อ"
-                                                  >
-                                                    <Eye className="h-2.5 w-2.5 text-indigo-500" />
-                                                    <span>รายละเอียด</span>
-                                                  </button>
+                                                  <div className="flex items-center gap-1 shrink-0">
+                                                    <button
+                                                      type="button"
+                                                      onClick={(e) => handleOpenEditOrder(firstOrder, e)}
+                                                      className="px-1.5 py-0.5 text-[9.5px] font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded flex items-center gap-0.5 cursor-pointer"
+                                                      title="แก้ไขข้อมูลคำสั่งซื้อใน BOM"
+                                                    >
+                                                      <Edit3 className="h-2.5 w-2.5" />
+                                                      <span>แก้ไข</span>
+                                                    </button>
+
+                                                    <button
+                                                      type="button"
+                                                      onClick={(e) => handleReorderFromOrder(firstOrder, e)}
+                                                      className="px-1.5 py-0.5 text-[9.5px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded flex items-center gap-0.5 cursor-pointer"
+                                                      title="สั่งซื้อพัสดุชิ้นนี้อีกครั้ง"
+                                                    >
+                                                      <ShoppingCart className="h-2.5 w-2.5" />
+                                                      <span>ซื้ออีกครับ</span>
+                                                    </button>
+
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setViewingOrder(firstOrder)}
+                                                      className="px-1.5 py-0.5 text-[9.5px] font-bold text-slate-500 hover:text-indigo-600 bg-white hover:bg-slate-100 border border-slate-200 rounded flex items-center gap-0.5 cursor-pointer"
+                                                      title="ดูรายละเอียดใบสั่งซื้อ"
+                                                    >
+                                                      <Eye className="h-2.5 w-2.5 text-indigo-500" />
+                                                    </button>
+                                                  </div>
                                                 </div>
 
-                                                {/* Interactive Steps Bar */}
+                                                {/* Interactive Steps Bar or Cancelled Banner */}
                                                 {firstOrder.status !== 'cancelled' ? (
                                                   <div 
                                                     className="flex items-center justify-center gap-0.5 bg-slate-50 border border-slate-200/80 p-0.5 rounded-md select-none w-full"
@@ -2514,8 +2612,18 @@ export default function ProjectBomView({
                                                     })}
                                                   </div>
                                                 ) : (
-                                                  <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded w-full text-center">
-                                                    ยกเลิกจัดซื้อแล้ว
+                                                  <div className="flex items-center justify-between gap-1.5 bg-rose-50 border border-rose-200 p-1 px-2 rounded-md w-full">
+                                                    <span className="text-[10px] font-bold text-rose-700 flex items-center gap-1">
+                                                      ❌ ยกเลิกจัดซื้อแล้ว
+                                                    </span>
+                                                    <button
+                                                      type="button"
+                                                      onClick={(e) => handleReorderFromOrder(firstOrder, e)}
+                                                      className="px-2 py-0.5 text-[9.5px] font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded cursor-pointer shadow-3xs flex items-center gap-0.5"
+                                                    >
+                                                      <ShoppingCart className="h-2.5 w-2.5" />
+                                                      <span>ซื้ออีกครับ</span>
+                                                    </button>
                                                   </div>
                                                 )}
                                               </div>
@@ -3153,30 +3261,246 @@ export default function ProjectBomView({
       {/* Modal: View Order Details */}
       {viewingOrder && (
         <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-              <span className="text-xs font-black text-slate-800">📦 รายละเอียดการจัดซื้อและจัดส่งของ</span>
-              <button onClick={() => setViewingOrder(null)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xl max-w-sm w-full text-left space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                <FileText className="h-4 w-4 text-indigo-600" />
+                <span>รายละเอียดการจัดซื้อและจัดส่งของ</span>
+              </span>
+              <button onClick={() => setViewingOrder(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-4 w-4" />
+              </button>
             </div>
             <div className="space-y-2 text-[11px] font-sans text-slate-700">
-              <div className="p-2 bg-slate-50 border border-slate-100 rounded">
-                <div className="font-bold text-slate-900 text-xs">{viewingOrder.orderTitle}</div>
-                <div className="text-[10px] text-slate-400 font-bold mt-0.5">
-                  PR No: <span className="font-mono text-indigo-700 font-extrabold">{viewingOrder.prNo || '-'}</span> | PO No: <span className="font-mono text-purple-700 font-extrabold">{viewingOrder.poNo || '-'}</span>
+              <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1">
+                <div className="font-extrabold text-slate-900 text-xs">{viewingOrder.orderTitle}</div>
+                <div className="text-[10.5px] text-slate-500 font-bold flex flex-wrap gap-2">
+                  <span>PR No: <strong className="font-mono text-indigo-700">{viewingOrder.prNo || '-'}</strong></span>
+                  <span>PO No: <strong className="font-mono text-purple-700">{viewingOrder.poNo || '-'}</strong></span>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-[10.5px]">
+              <div className="grid grid-cols-2 gap-2 text-[10.5px] bg-slate-50/50 p-2 rounded-lg border border-slate-100">
                 <div>ผู้ขอซื้อ: <strong className="text-slate-800">{viewingOrder.requesterName}</strong></div>
                 <div>สถานะจัดซื้อ: <strong className="text-indigo-600">{getOrderThaiLabel(viewingOrder.status)}</strong></div>
                 <div>จำนวน: <strong className="text-slate-800">{viewingOrder.quantity} {viewingOrder.unit || 'ชิ้น'}</strong></div>
                 <div>ราคาประเมิน: <strong className="text-slate-800">฿{viewingOrder.totalPrice?.toLocaleString('th-TH') || '-'}</strong></div>
+                {viewingOrder.supplier && <div className="col-span-2">ร้านค้า/ซัพพลายเออร์: <strong className="text-slate-800">{viewingOrder.supplier}</strong></div>}
+                {viewingOrder.quotationNo && <div>เลข QT: <strong className="text-slate-800 font-mono">{viewingOrder.quotationNo}</strong></div>}
+                {viewingOrder.approverName && <div>ผู้อนุมัติ: <strong className="text-slate-800">{viewingOrder.approverName}</strong></div>}
               </div>
               {viewingOrder.remark && (
-                <div className="text-[10px] text-slate-500 italic mt-1">
+                <div className="text-[10px] text-slate-500 italic bg-amber-50/50 p-2 rounded border border-amber-100">
                   หมายเหตุจัดซื้อ: {viewingOrder.remark}
                 </div>
               )}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const order = viewingOrder;
+                    setViewingOrder(null);
+                    handleOpenEditOrder(order, e);
+                  }}
+                  className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg font-bold text-xs flex items-center gap-1 cursor-pointer"
+                >
+                  <Edit3 className="h-3 w-3" />
+                  <span>แก้ไขสั่งซื้อ</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const order = viewingOrder;
+                    setViewingOrder(null);
+                    handleReorderFromOrder(order, e);
+                  }}
+                  className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs flex items-center gap-1 cursor-pointer shadow-3xs"
+                >
+                  <ShoppingCart className="h-3 w-3" />
+                  <span>ซื้ออีกครับ</span>
+                </button>
+              </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Order Item inside BOM */}
+      {editingOrder && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xl max-w-lg w-full text-left space-y-3 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                <Edit3 className="h-4 w-4 text-amber-600" />
+                <span>แก้ไขรายการสั่งซื้อพัสดุใน BOM</span>
+              </span>
+              <button onClick={() => setEditingOrder(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditOrder} className="space-y-3 text-[11px] font-sans">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600">ชื่อรายการสั่งซื้อ *</label>
+                <input
+                  type="text"
+                  required
+                  value={editOrderTitle}
+                  onChange={(e) => setEditOrderTitle(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">เลขที่ PR (PR No.)</label>
+                  <input
+                    type="text"
+                    value={editOrderPrNo}
+                    onChange={(e) => setEditOrderPrNo(e.target.value)}
+                    placeholder="PR-2026-xxx"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">เลขที่ PO (PO No.)</label>
+                  <input
+                    type="text"
+                    value={editOrderPoNo}
+                    onChange={(e) => setEditOrderPoNo(e.target.value)}
+                    placeholder="PO-2026-xxx"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-purple-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">จำนวน *</label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    value={editOrderQty}
+                    onChange={(e) => setEditOrderQty(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">หน่วยนับ</label>
+                  <input
+                    type="text"
+                    value={editOrderUnit}
+                    onChange={(e) => setEditOrderUnit(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">ราคาต่อหน่วย (฿)</label>
+                  <input
+                    type="number"
+                    value={editOrderPriceUnit}
+                    onChange={(e) => setEditOrderPriceUnit(parseFloat(e.target.value) || 0)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">ร้านค้า / ซัพพลายเออร์</label>
+                  <input
+                    type="text"
+                    value={editOrderSupplier}
+                    onChange={(e) => setEditOrderSupplier(e.target.value)}
+                    placeholder="เช่น ไทวัสดุ, RS Components"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">เลขใบเสนอราคา (QT No.)</label>
+                  <input
+                    type="text"
+                    value={editOrderQuotationNo}
+                    onChange={(e) => setEditOrderQuotationNo(e.target.value)}
+                    placeholder="QT-2026-xxx"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">สถานะจัดซื้อ *</label>
+                  <select
+                    value={editOrderStatus}
+                    onChange={(e) => setEditOrderStatus(e.target.value as any)}
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    <option value="pending">1. ขอซื้อ (Pending)</option>
+                    <option value="quotation">2. ใบเสนอราคา (Quotation)</option>
+                    <option value="ordered">3. ออก PR/PO (Ordered)</option>
+                    <option value="approved">4. อนุมัติแล้ว (Approved)</option>
+                    <option value="paid">5. โอนเงินแล้ว (Paid)</option>
+                    <option value="received">6. รับพัสดุสำเร็จ (Received)</option>
+                    <option value="cancelled">❌ ยกเลิกจัดซื้อ (Cancelled)</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-600">ผู้อนุมัติจัดซื้อ</label>
+                  <input
+                    type="text"
+                    value={editOrderApprover}
+                    onChange={(e) => setEditOrderApprover(e.target.value)}
+                    placeholder="ชื่อผู้อนุมัติ"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600">อ้างอิงการชำระเงิน / สลิปโอน</label>
+                <input
+                  type="text"
+                  value={editOrderPaymentRef}
+                  onChange={(e) => setEditOrderPaymentRef(e.target.value)}
+                  placeholder="เช่น เลขสลิปโอนเงิน / เลขที่เช็ค"
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-600">หมายเหตุเพิ่มเติม</label>
+                <textarea
+                  rows={2}
+                  value={editOrderRemark}
+                  onChange={(e) => setEditOrderRemark(e.target.value)}
+                  placeholder="หมายเหตุการสั่งซื้อ..."
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                <div className="text-[11px] font-black text-indigo-700">
+                  ราคารวมสุทธิ: ฿{(editOrderQty * editOrderPriceUnit).toLocaleString('th-TH')}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingOrder(null)}
+                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-lg text-xs cursor-pointer"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-lg text-xs cursor-pointer shadow-3xs flex items-center gap-1"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    <span>บันทึกการแก้ไข</span>
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}

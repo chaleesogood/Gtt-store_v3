@@ -1,12 +1,15 @@
-import React from 'react';
-import { Product, Category, StockActivity } from '../types';
-import { Package, AlertTriangle, TrendingUp, DollarSign, Plus, ArrowRight, Cpu, HardDrive, RefreshCw, Users, Database, CheckCircle2, Cloud } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Product, Category, StockActivity, JobProject, Bom } from '../types';
+import { Package, AlertTriangle, TrendingUp, DollarSign, Plus, ArrowRight, Cpu, HardDrive, RefreshCw, Users, Database, CheckCircle2, Cloud, FolderKanban, Briefcase, Search, ChevronRight, Layers, Building2 } from 'lucide-react';
 import DatabaseStatusBar from './DatabaseStatusBar';
 
 interface DashboardViewProps {
   products: Product[];
   categories: Category[];
   activities: StockActivity[];
+  jobProjects?: JobProject[];
+  boms?: Bom[];
+  projects?: any[];
   onQuickRestock: (productId: string, amount: number) => void;
   onNavigateToTab: (tab: string) => void;
   onSetStatusFilter: (filter: string) => void;
@@ -23,6 +26,9 @@ export default function DashboardView({
   products,
   categories,
   activities,
+  jobProjects = [],
+  boms = [],
+  projects = [],
   onQuickRestock,
   onNavigateToTab,
   onSetStatusFilter,
@@ -35,6 +41,7 @@ export default function DashboardView({
   isPullingFreshDb = false,
 }: DashboardViewProps) {
   const [isOnline, setIsOnline] = React.useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [projectSearch, setProjectSearch] = useState('');
 
   React.useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -172,6 +179,104 @@ export default function DashboardView({
   const recentActivities = [...activities]
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 4);
+
+  // Project Financial Value Calculation
+  const projectValueStats = useMemo(() => {
+    const map = new Map<string, {
+      id: string;
+      jobNo: string;
+      projectName: string;
+      customer: string;
+      status: string;
+      totalBomCost: number;
+      totalItemsCount: number;
+      bomCount: number;
+      createdAt?: string;
+    }>();
+
+    // 1. Map registered jobProjects
+    (jobProjects || []).forEach((jp) => {
+      const key = (jp.jobNo || jp.id || '').trim();
+      if (!key) return;
+      map.set(key, {
+        id: jp.id,
+        jobNo: jp.jobNo || '-',
+        projectName: jp.projectName || 'โครงการไม่มีชื่อ',
+        customer: jp.customer || '-',
+        status: 'in_progress',
+        totalBomCost: 0,
+        totalItemsCount: 0,
+        bomCount: 0,
+        createdAt: jp.createdAt,
+      });
+    });
+
+    // 2. Accumulate BOM costs into associated jobProjects or add standalone BOM projects
+    (boms || []).forEach((bom) => {
+      const jobKey = (bom.jobNo || '').trim();
+      let entry = jobKey ? map.get(jobKey) : undefined;
+
+      // Calculate individual BOM total cost
+      let bomItemsCost = 0;
+      let itemsQty = 0;
+      (bom.items || []).forEach((item) => {
+        const qty = item.quantity || 0;
+        itemsQty += qty;
+        let unitCost = item.priceUnit || 0;
+        if (!unitCost && item.productId) {
+          const matchedProd = products.find((p) => p.id === item.productId);
+          if (matchedProd) {
+            unitCost = matchedProd.costPrice || matchedProd.price || 0;
+          }
+        }
+        bomItemsCost += qty * unitCost;
+      });
+
+      const requiredQty = bom.requiredQuantity || 1;
+      const totalBomValue = bomItemsCost * requiredQty;
+
+      if (!entry) {
+        const fallbackKey = jobKey || bom.id;
+        entry = {
+          id: bom.id,
+          jobNo: bom.jobNo || 'BOM-' + bom.id.slice(-4),
+          projectName: bom.name || 'ไม่มีชื่อ BOM',
+          customer: '-',
+          status: bom.status || 'in_progress',
+          totalBomCost: 0,
+          totalItemsCount: 0,
+          bomCount: 0,
+          createdAt: bom.createdAt,
+        };
+        map.set(fallbackKey, entry);
+      } else {
+        if (bom.status === 'completed') {
+          entry.status = 'completed';
+        }
+      }
+
+      entry.totalBomCost += totalBomValue;
+      entry.totalItemsCount += itemsQty * requiredQty;
+      entry.bomCount += 1;
+    });
+
+    const list = Array.from(map.values()).sort((a, b) => b.totalBomCost - a.totalBomCost);
+    const grandTotalCost = list.reduce((sum, item) => sum + item.totalBomCost, 0);
+
+    return { list, grandTotalCost };
+  }, [jobProjects, boms, products]);
+
+  // Filter projects based on search query
+  const filteredProjects = useMemo(() => {
+    if (!projectSearch.trim()) return projectValueStats.list;
+    const q = projectSearch.trim().toLowerCase();
+    return projectValueStats.list.filter(
+      (p) =>
+        p.jobNo.toLowerCase().includes(q) ||
+        p.projectName.toLowerCase().includes(q) ||
+        p.customer.toLowerCase().includes(q)
+    );
+  }, [projectValueStats.list, projectSearch]);
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('th-TH').format(num);
@@ -316,6 +421,143 @@ export default function DashboardView({
               </h3>
             </div>
           </button>
+        )}
+      </div>
+
+      {/* Project Financial Values & BOM Cost Overview Section */}
+      <div className="bg-slate-900/95 border border-slate-800 rounded-xl p-3 text-slate-100 shadow-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2 mb-2.5">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 rounded-lg">
+              <FolderKanban className="h-4 w-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-black text-white font-sans flex items-center gap-1.5">
+                มูลค่าแต่ละโปรเจ็ค (Project Values & BOM Costs)
+              </h3>
+              <p className="text-[10px] text-slate-400 font-sans">
+                สรุปคำนวณมูลค่าราคาทุนรวมพัสดุประกอบรายโครงการ (JOB No.)
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Search box */}
+            <div className="relative min-w-[170px]">
+              <Search className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={projectSearch}
+                onChange={(e) => setProjectSearch(e.target.value)}
+                placeholder="ค้นหา JOB / โปรเจ็ค..."
+                className="w-full pl-8 pr-2.5 py-1 bg-slate-950 border border-slate-800 rounded-lg text-[11px] font-sans text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <button
+              onClick={() => onNavigateToTab('projects_bom')}
+              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[11px] font-bold font-sans flex items-center gap-1 cursor-pointer transition-all shrink-0"
+              title="เปิดหน้าจัดการโปรเจ็คและ BOM"
+            >
+              <span>จัดการ BOM</span>
+              <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+
+        {/* Project KPI Summary Mini Cards Row */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2.5">
+          <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+            <span className="text-[9px] text-slate-400 font-sans block">จำนวนโปรเจ็คทั้งหมด</span>
+            <span className="text-xs sm:text-sm font-black text-white font-sans">
+              {projectValueStats.list.length} <span className="text-[9px] font-normal text-slate-400">โครงการ</span>
+            </span>
+          </div>
+
+          <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80">
+            <span className="text-[9px] text-slate-400 font-sans block">มูลค่าพัสดุ BOM รวมทุกโปรเจ็ค</span>
+            <span className="text-xs sm:text-sm font-black text-emerald-400 font-sans">
+              ฿{formatNumber(projectValueStats.grandTotalCost)}
+            </span>
+          </div>
+
+          <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/80 col-span-2 sm:col-span-1">
+            <span className="text-[9px] text-slate-400 font-sans block">มูลค่าเฉลี่ยต่อโปรเจ็ค</span>
+            <span className="text-xs sm:text-sm font-black text-indigo-300 font-sans">
+              ฿{formatNumber(Math.round(projectValueStats.grandTotalCost / (projectValueStats.list.length || 1)))}
+            </span>
+          </div>
+        </div>
+
+        {/* Projects List Grid */}
+        {filteredProjects.length === 0 ? (
+          <div className="py-6 text-center text-slate-500 font-sans text-xs bg-slate-950/40 rounded-lg border border-dashed border-slate-800">
+            <Briefcase className="h-6 w-6 text-slate-600 mx-auto mb-1.5" />
+            <p>ไม่พบรายการโปรเจ็คหรือไม่มี BOM ที่ตรงกับคำค้นหา</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-[280px] overflow-y-auto pr-1">
+            {filteredProjects.map((proj) => {
+              const sharePercentage = projectValueStats.grandTotalCost > 0
+                ? Math.min(100, Math.round((proj.totalBomCost / projectValueStats.grandTotalCost) * 100))
+                : 0;
+
+              return (
+                <div
+                  key={proj.id || proj.jobNo}
+                  className="bg-slate-950/90 border border-slate-800/90 hover:border-indigo-500/50 p-2.5 rounded-lg transition-all text-left flex flex-col justify-between space-y-2"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="px-1.5 py-0.5 bg-indigo-950 text-indigo-300 border border-indigo-800/60 rounded text-[9px] font-mono font-bold">
+                        {proj.jobNo}
+                      </span>
+                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded ${
+                        proj.status === 'completed'
+                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/50'
+                          : 'bg-amber-950 text-amber-300 border border-amber-800/50'
+                      }`}>
+                        {proj.status === 'completed' ? '✓ เสร็จสิ้น' : '⏳ ดำเนินการ'}
+                      </span>
+                    </div>
+
+                    <h4 className="text-xs font-bold text-white font-sans line-clamp-1" title={proj.projectName}>
+                      {proj.projectName}
+                    </h4>
+
+                    {proj.customer && proj.customer !== '-' && (
+                      <p className="text-[10px] text-slate-400 font-sans flex items-center gap-1 mt-0.5">
+                        <Building2 className="h-3 w-3 text-slate-500 shrink-0" />
+                        <span className="line-clamp-1">ลูกค้า: {proj.customer}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-900 space-y-1">
+                    <div className="flex items-baseline justify-between text-xs font-sans">
+                      <span className="text-[10px] text-slate-400">มูลค่าพัสดุ BOM:</span>
+                      <span className="font-extrabold text-emerald-400 font-mono text-sm">
+                        ฿{formatNumber(proj.totalBomCost)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[9px] text-slate-400 font-sans">
+                      <span>{proj.totalItemsCount} ชิ้น ({proj.bomCount} BOM)</span>
+                      <span className="font-mono text-indigo-400 font-bold">{sharePercentage}% ของพอร์ต</span>
+                    </div>
+
+                    {/* Progress Bar of Portfolio Share */}
+                    <div className="h-1 w-full bg-slate-900 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                        style={{ width: `${sharePercentage}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 

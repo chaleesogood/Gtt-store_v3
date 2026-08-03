@@ -196,6 +196,7 @@ export interface ProductOrder {
   receivedAt?: string; // Step 6: ส่งของ / รับเข้าคลัง
   receivedQty?: number; // จำนวนที่รับของเข้า
   cancelledAt?: string; // เวลาที่ยกเลิกรายการ
+  updatedAt?: string; // เวลาอัปเดตล่าสุด
 }
 
 export interface Job {
@@ -236,6 +237,28 @@ export interface ProjectModule {
   imageUrl?: string;  // รูปภาพโมดูล
 }
 
+export interface EngineeringPhaseSchedule {
+  id: string;
+  jobNo: string;            // JOB No.
+  projectName?: string;     // ชื่อโปรเจกต์
+  moduleCode?: string;      // รหัสโมดูล
+  moduleName: string;       // ชื่อโมดูล / ระบบงาน
+  subModuleName?: string;   // Sub Module / หัวข้อย่อย
+  isBypassed?: boolean;     // สถานะ Bypass (ไม่ต้องมีสถานะ / ข้ามโมดูลนี้)
+  addressIo?: string;       // Address IO (e.g. "I:0.0 / O:1.2" หรือรายละเอียด IO)
+  imageUrl?: string;        // รูปภาพโมดูล / ภาพประกอบ
+  installStatus: 'pending' | 'in_progress' | 'completed' | 'bypassed';  // Install (ติดตั้ง)
+  wiringStatus: 'pending' | 'in_progress' | 'completed' | 'bypassed';   // Wiring (เดินสายไฟ)
+  testIoStatus: 'pending' | 'in_progress' | 'completed' | 'bypassed';   // Test IO (ทดสอบ IO)
+  manualHmiStatus: 'pending' | 'in_progress' | 'completed' | 'bypassed';// Manual HMI (ทดสอบ Manual)
+  semiAutoStatus: 'pending' | 'in_progress' | 'completed' | 'bypassed'; // Semi-Auto (ทดสอบ Semi-Auto)
+  autoStatus: 'pending' | 'in_progress' | 'completed' | 'bypassed';     // Auto (ทดสอบ Auto สมบูรณ์)
+  assignee: string;         // ผู้รับผิดชอบ (Responsible person)
+  remark: string;           // Remark / หมายเหตุ
+  targetDate?: string;      // กำหนดเสร็จ
+  updatedAt: string;
+}
+
 export interface JobProject {
   id: string;
   jobNo: string; // JOB No.
@@ -245,6 +268,7 @@ export interface JobProject {
   createdAt: string;
   modules?: ProjectModule[]; // โมดูลงานประจำโปรเจกต์
   projectImageUrl?: string; // รูปภาพโครงการ
+  googleSheetUrl?: string; // ไฟล์ Google Sheet ประจำโครงการสำหรับแก้ไขรายละเอียด
 }
 
 export function normalizeModules(modules: any[] | undefined): ProjectModule[] {

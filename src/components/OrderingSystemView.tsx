@@ -91,6 +91,10 @@ export default function OrderingSystemView({
   const [pricePerUnit, setPricePerUnit] = useState<number>(0);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [remark, setRemark] = useState('');
+  const [prNo, setPrNo] = useState('');
+  const [poNo, setPoNo] = useState('');
+  const [supplierName, setSupplierName] = useState('');
+  const [quotationNo, setQuotationNo] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   // Edit Modal States
@@ -259,6 +263,18 @@ export default function OrderingSystemView({
     if (remark.trim()) {
       newOrder.remark = remark.trim();
     }
+    if (prNo.trim()) {
+      newOrder.prNo = prNo.trim();
+    }
+    if (poNo.trim()) {
+      newOrder.poNo = poNo.trim();
+    }
+    if (supplierName.trim()) {
+      newOrder.supplier = supplierName.trim();
+    }
+    if (quotationNo.trim()) {
+      newOrder.quotationNo = quotationNo.trim();
+    }
 
     const path = `orders/${orderId}`;
     
@@ -283,6 +299,10 @@ export default function OrderingSystemView({
       setPricePerUnit(0);
       setSelectedProductId('');
       setRemark('');
+      setPrNo('');
+      setPoNo('');
+      setSupplierName('');
+      setQuotationNo('');
       setIsFormOpen(false);
     }
   };
@@ -644,6 +664,12 @@ export default function OrderingSystemView({
       const matchesSearch = 
         (o.orderTitle || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (o.requesterName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.purchaserName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.prNo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.poNo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.supplier || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.quotationNo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.jobNo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (o.remark && o.remark.toLowerCase().includes(searchTerm.toLowerCase()));
       
       let matchesStatusTab = true;
@@ -1031,8 +1057,56 @@ export default function OrderingSystemView({
               />
             </div>
 
-            {/* Remark / Link */}
+            {/* PR No. */}
             <div className="space-y-0.5">
+              <label className="font-bold text-slate-500">เลขที่ PR (PR No.)</label>
+              <input
+                type="text"
+                placeholder="เช่น PR-2026-001 (ว่างเพื่อเจนอัตโนมัติ)"
+                className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] font-mono font-bold"
+                value={prNo || ''}
+                onChange={(e) => setPrNo(e.target.value)}
+              />
+            </div>
+
+            {/* PO No. */}
+            <div className="space-y-0.5">
+              <label className="font-bold text-slate-500">เลขที่ PO (PO No.)</label>
+              <input
+                type="text"
+                placeholder="เช่น PO-2026-001"
+                className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] font-mono font-bold text-indigo-900"
+                value={poNo || ''}
+                onChange={(e) => setPoNo(e.target.value)}
+              />
+            </div>
+
+            {/* Supplier / Store */}
+            <div className="space-y-0.5">
+              <label className="font-bold text-slate-500">ร้านค้า / ซัพพลายเออร์ (Supplier)</label>
+              <input
+                type="text"
+                placeholder="ระบุชื่อบริษัท/ร้านค้า"
+                className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
+                value={supplierName || ''}
+                onChange={(e) => setSupplierName(e.target.value)}
+              />
+            </div>
+
+            {/* Quotation No */}
+            <div className="space-y-0.5">
+              <label className="font-bold text-slate-500">เลขใบเสนอราคา (QT No.)</label>
+              <input
+                type="text"
+                placeholder="เช่น QT-2026-001"
+                className="w-full px-2 py-0.5 bg-white border border-slate-255 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] font-mono"
+                value={quotationNo || ''}
+                onChange={(e) => setQuotationNo(e.target.value)}
+              />
+            </div>
+
+            {/* Remark / Link */}
+            <div className="space-y-0.5 md:col-span-3">
               <label className="font-bold text-slate-500">หมายเหตุ / ลิงก์ร้านค้า</label>
               <input
                 type="text"
@@ -1189,7 +1263,7 @@ export default function OrderingSystemView({
           <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
               <tr className="bg-slate-100/30 border-b border-slate-150 text-[9px] font-bold text-slate-400 uppercase tracking-wider font-sans">
-                <th className="py-1 px-1.5 w-[110px]">เลขที่เอกสาร PR</th>
+                <th className="py-1 px-1.5 w-[130px]">เลขที่ PR / PO</th>
                 <th className="py-1 px-1.5 min-w-[200px]">พัสดุที่จัดซื้อ / โครงการ</th>
                 <th className="py-1 px-1.5 text-center w-[300px]">สถานะ / อัปเดตคืบหน้าด่วน</th>
                 <th className="py-1 px-1.5 w-[120px]">ผู้ขอเสนอ / ดำเนินการ</th>
@@ -1259,11 +1333,24 @@ export default function OrderingSystemView({
                         return (
                           <tr key={order.id} className="hover:bg-slate-50/40 transition-colors group">
                             
-                            {/* PR No */}
+                            {/* PR & PO No */}
                             <td className="py-0.5 px-1.5">
-                              <span className="font-mono text-[9px] font-bold text-slate-600 bg-slate-150/60 px-1.5 py-0.2 rounded border border-slate-200/50">
-                                {prNumber}
-                              </span>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-mono text-[9px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200/80 inline-flex items-center gap-1" title="เลขที่ใบขอซื้อ (PR)">
+                                  <span className="text-[8px] bg-slate-200 text-slate-600 px-1 rounded-xs font-sans">PR</span>
+                                  <span>{order.prNo || prNumber}</span>
+                                </span>
+                                {order.poNo ? (
+                                  <span className="font-mono text-[9px] font-bold text-indigo-800 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200 inline-flex items-center gap-1" title="เลขที่ใบสั่งซื้อ (PO)">
+                                    <span className="text-[8px] bg-indigo-200 text-indigo-800 px-1 rounded-xs font-sans">PO</span>
+                                    <span>{order.poNo}</span>
+                                  </span>
+                                ) : (
+                                  <span className="font-mono text-[8.5px] text-slate-400 italic px-1">
+                                    PO: -
+                                  </span>
+                                )}
+                              </div>
                             </td>
 
                             {/* Title & Remarks */}
@@ -1391,11 +1478,24 @@ export default function OrderingSystemView({
                   return (
                     <tr key={order.id} className="hover:bg-slate-50/40 transition-colors group">
                       
-                      {/* PR No */}
+                      {/* PR & PO No */}
                       <td className="py-0.5 px-1.5">
-                        <span className="font-mono text-[9px] font-bold text-slate-600 bg-slate-150/60 px-1.5 py-0.2 rounded border border-slate-200/50">
-                          {prNumber}
-                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono text-[9px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200/80 inline-flex items-center gap-1" title="เลขที่ใบขอซื้อ (PR)">
+                            <span className="text-[8px] bg-slate-200 text-slate-600 px-1 rounded-xs font-sans">PR</span>
+                            <span>{order.prNo || prNumber}</span>
+                          </span>
+                          {order.poNo ? (
+                            <span className="font-mono text-[9px] font-bold text-indigo-800 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200 inline-flex items-center gap-1" title="เลขที่ใบสั่งซื้อ (PO)">
+                              <span className="text-[8px] bg-indigo-200 text-indigo-800 px-1 rounded-xs font-sans">PO</span>
+                              <span>{order.poNo}</span>
+                            </span>
+                          ) : (
+                            <span className="font-mono text-[8.5px] text-slate-400 italic px-1">
+                              PO: -
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Title, Job & Remarks */}
@@ -1711,8 +1811,80 @@ export default function OrderingSystemView({
                   />
                 </div>
 
-                {/* Remark */}
+                {/* PR No */}
                 <div className="space-y-0.5">
+                  <label className="font-bold text-slate-500">เลขที่ PR (PR No.)</label>
+                  <input
+                    type="text"
+                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] font-mono font-bold"
+                    value={editPrNo || ''}
+                    onChange={(e) => setEditPrNo(e.target.value)}
+                    placeholder="เช่น PR-2026-001"
+                  />
+                </div>
+
+                {/* PO No */}
+                <div className="space-y-0.5">
+                  <label className="font-bold text-slate-500">เลขที่ PO (PO No.)</label>
+                  <input
+                    type="text"
+                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] font-mono font-bold text-indigo-900"
+                    value={editPoNo || ''}
+                    onChange={(e) => setEditPoNo(e.target.value)}
+                    placeholder="เช่น PO-2026-001"
+                  />
+                </div>
+
+                {/* Supplier */}
+                <div className="space-y-0.5">
+                  <label className="font-bold text-slate-500">ร้านค้า / ซัพพลายเออร์ (Supplier)</label>
+                  <input
+                    type="text"
+                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
+                    value={editSupplier || ''}
+                    onChange={(e) => setEditSupplier(e.target.value)}
+                    placeholder="ระบุชื่อบริษัท/ร้านค้า"
+                  />
+                </div>
+
+                {/* Quotation No */}
+                <div className="space-y-0.5">
+                  <label className="font-bold text-slate-500">เลขใบเสนอราคา (QT No.)</label>
+                  <input
+                    type="text"
+                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] font-mono"
+                    value={editQuotationNo || ''}
+                    onChange={(e) => setEditQuotationNo(e.target.value)}
+                    placeholder="เช่น QT-2026-001"
+                  />
+                </div>
+
+                {/* Approver Name */}
+                <div className="space-y-0.5">
+                  <label className="font-bold text-slate-500">ผู้อนุมัติ (Approver)</label>
+                  <input
+                    type="text"
+                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px]"
+                    value={editApproverName || ''}
+                    onChange={(e) => setEditApproverName(e.target.value)}
+                    placeholder="ระบุชื่อผู้อนุมัติ"
+                  />
+                </div>
+
+                {/* Payment Ref */}
+                <div className="space-y-0.5">
+                  <label className="font-bold text-slate-500">อ้างอิงชำระเงิน (Payment Ref)</label>
+                  <input
+                    type="text"
+                    className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] font-mono"
+                    value={editPaymentRef || ''}
+                    onChange={(e) => setEditPaymentRef(e.target.value)}
+                    placeholder="สลิป / อ้างอิงชำระเงิน"
+                  />
+                </div>
+
+                {/* Remark */}
+                <div className="space-y-0.5 col-span-2">
                   <label className="font-bold text-slate-500">หมายเหตุ / ลิงก์</label>
                   <input
                     type="text"

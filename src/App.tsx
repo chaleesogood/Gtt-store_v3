@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand, Supplier, MediaFile, CompanyProfile, sortProducts } from './types';
+import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand, Supplier, MediaFile, CompanyProfile, EngineeringPhaseSchedule, sortProducts } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_ACTIVITIES } from './initialData';
 import Toast, { ToastMessage } from './components/Toast';
 import DashboardView from './components/DashboardView';
@@ -98,6 +98,10 @@ export default function App() {
   });
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>(() => {
     const saved = window.localStorage.getItem('stock_manager_media_files_list');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [engineeringSchedules, setEngineeringSchedules] = useState<EngineeringPhaseSchedule[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_engineering_schedules_list');
     return saved ? JSON.parse(saved) : [];
   });
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(() => {
@@ -241,6 +245,7 @@ export default function App() {
         localStorage.setItem('stock_manager_jobs_list', JSON.stringify(jobs));
         localStorage.setItem('stock_manager_employees_list', JSON.stringify(employees));
         localStorage.setItem('stock_manager_brands_list', JSON.stringify(brands));
+        localStorage.setItem('stock_manager_suppliers_list', JSON.stringify(suppliers));
         localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(jobProjects));
         localStorage.setItem('stock_manager_daily_reports_list', JSON.stringify(dailyReports));
       } catch (e) {
@@ -257,6 +262,7 @@ export default function App() {
         { name: 'jobs', data: jobs },
         { name: 'employees', data: employees },
         { name: 'brands', data: brands },
+        { name: 'suppliers', data: suppliers },
         { name: 'jobProjects', data: jobProjects },
         { name: 'dailyReports', data: dailyReports },
       ];
@@ -328,6 +334,7 @@ export default function App() {
         freshJobs,
         freshEmployees,
         freshBrands,
+        freshSuppliers,
         freshJobProjects,
         freshDailyReports
       ] = await Promise.all([
@@ -339,6 +346,7 @@ export default function App() {
         fetchColFresh<Job>('jobs'),
         fetchColFresh<Employee>('employees'),
         fetchColFresh<Brand>('brands'),
+        fetchColFresh<Supplier>('suppliers'),
         fetchColFresh<JobProject>('jobProjects'),
         fetchColFresh<DailyReport>('dailyReports')
       ]);
@@ -352,6 +360,7 @@ export default function App() {
       const localJobs: Job[] = JSON.parse(localStorage.getItem('stock_manager_jobs_list') || '[]');
       const localEmployees: Employee[] = JSON.parse(localStorage.getItem('stock_manager_employees_list') || '[]');
       const localBrands: Brand[] = JSON.parse(localStorage.getItem('stock_manager_brands_list') || '[]');
+      const localSuppliers: Supplier[] = JSON.parse(localStorage.getItem('stock_manager_suppliers_list') || '[]');
       const localJobProjects: JobProject[] = JSON.parse(localStorage.getItem('stock_manager_job_projects_list') || '[]');
       const localDailyReports: DailyReport[] = JSON.parse(localStorage.getItem('stock_manager_daily_reports_list') || '[]');
 
@@ -428,6 +437,15 @@ export default function App() {
       finalBrands.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
       setBrands(finalBrands);
       localStorage.setItem('stock_manager_brands_list', JSON.stringify(finalBrands));
+
+      // Merge Suppliers (Stores)
+      const { merged: finalSuppliers, missingFromPrimary: missingSuppliers } = mergeListsById(freshSuppliers, localSuppliers);
+      if (missingSuppliers.length > 0) {
+        uploadListToFirestoreInBatches('suppliers', missingSuppliers);
+      }
+      finalSuppliers.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+      setSuppliers(finalSuppliers);
+      localStorage.setItem('stock_manager_suppliers_list', JSON.stringify(finalSuppliers));
 
       // Merge JobProjects
       const { merged: finalJobProjects, missingFromPrimary: missingJobProjects } = mergeListsById(freshJobProjects, localJobProjects);
@@ -760,11 +778,19 @@ export default function App() {
   const handleSyncFirebaseQuota = async () => {
     setIsSyncingQuota(true);
     try {
-      // Force a direct server fetch from Firebase Firestore to verify live server connection & sync real counts
-      const rolesSnap = await getDocsFromServer(query(collection(db, 'user_roles')));
-      const count = rolesSnap.size || 1;
-      recordFirestoreReads(count);
-      addToast('success', 'ซิงค์ข้อมูลกับ Firebase เรียบร้อย', `เชื่อมต่อ Cloud Firestore สำเร็จ (อ่านข้อมูล ${count} รายการล่าสุด)`);
+      // Force a direct server fetch from Firebase Firestore to verify live server connection & sync real counts for roles and suppliers
+      const [rolesSnap, suppliersSnap] = await Promise.all([
+        getDocsFromServer(query(collection(db, 'user_roles'))).catch(() => null),
+        getDocsFromServer(query(collection(db, 'suppliers'))).catch(() => null)
+      ]);
+      const count = (rolesSnap?.size || 0) + (suppliersSnap?.size || 0);
+      recordFirestoreReads(count > 0 ? count : 1);
+
+      if (currentUser) {
+        await handlePullFreshFromDatabase(false);
+      }
+
+      addToast('success', 'ซิงค์ข้อมูลร้านค้ากับ Firebase เรียบร้อย', `เชื่อมต่อและซิงค์ข้อมูลร้านค้าหลัก/ย่อย (อ่านข้อมูล ${count} รายการล่าสุด)`);
     } catch (err: any) {
       console.warn("Manual Firebase sync check warning:", err);
       checkFirestoreQuotaError(err);
@@ -1456,6 +1482,41 @@ export default function App() {
     });
     return () => unsubscribe();
   }, [currentUser]);
+
+  // Sync engineering_schedules from Firestore
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const q = query(collection(db, 'engineering_schedules'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
+      const firestoreList: EngineeringPhaseSchedule[] = [];
+      snapshot.forEach((document) => {
+        firestoreList.push({ id: document.id, ...document.data() } as EngineeringPhaseSchedule);
+      });
+
+      const savedStr = localStorage.getItem('stock_manager_engineering_schedules_list');
+      const localList: EngineeringPhaseSchedule[] = savedStr ? JSON.parse(savedStr) : [];
+
+      if (firestoreList.length > 0) {
+        setEngineeringSchedules(firestoreList);
+        localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(firestoreList));
+      } else {
+        if (localList.length > 0) {
+          setEngineeringSchedules(localList);
+          uploadListToFirestoreInBatches('engineering_schedules', localList);
+        } else {
+          setEngineeringSchedules([]);
+          localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify([]));
+        }
+      }
+    }, (error) => {
+      handleFirestoreError("Firestore engineering schedules sync error", error);
+      const saved = localStorage.getItem('stock_manager_engineering_schedules_list');
+      setEngineeringSchedules(saved ? JSON.parse(saved) : []);
+    });
+    return () => unsubscribe();
+  }, [currentUser]);
   const isBrandsInitializedRef = useRef(false);
 
   useEffect(() => {
@@ -1696,6 +1757,7 @@ export default function App() {
         'stock_manager_jobs_list',
         'stock_manager_employees_list',
         'stock_manager_brands_list',
+        'stock_manager_suppliers_list',
         'stock_manager_job_projects_list',
         'stock_manager_daily_reports_list'
       ];
@@ -1764,6 +1826,7 @@ export default function App() {
           'stock_manager_jobs_list': ['stock_manager_jobs_list', 'stock_manager_jobs', 'jobs', 'jobs_list', 'job'],
           'stock_manager_employees_list': ['stock_manager_employees_list', 'stock_manager_employees', 'employees', 'employees_list', 'employee', 'staff'],
           'stock_manager_brands_list': ['stock_manager_brands_list', 'stock_manager_brands', 'brands', 'brands_list', 'brand'],
+          'stock_manager_suppliers_list': ['stock_manager_suppliers_list', 'stock_manager_suppliers', 'suppliers', 'suppliers_list', 'supplier', 'store', 'stores', 'shop', 'shops'],
           'stock_manager_job_projects_list': ['stock_manager_job_projects_list', 'stock_manager_job_projects', 'jobProjects', 'job_projects', 'job_projects_list'],
           'stock_manager_daily_reports_list': ['stock_manager_daily_reports_list', 'stock_manager_daily_reports', 'dailyReports', 'daily_reports', 'daily_reports_list']
         };
@@ -1884,6 +1947,9 @@ export default function App() {
         const brandVal = normalizedData['stock_manager_brands_list'] || (localStorage.getItem('stock_manager_brands_list') ? JSON.parse(localStorage.getItem('stock_manager_brands_list')!) : []);
         setBrands(brandVal);
 
+        const supVal = normalizedData['stock_manager_suppliers_list'] || (localStorage.getItem('stock_manager_suppliers_list') ? JSON.parse(localStorage.getItem('stock_manager_suppliers_list')!) : []);
+        setSuppliers(supVal);
+
         const jpVal = normalizedData['stock_manager_job_projects_list'] || (localStorage.getItem('stock_manager_job_projects_list') ? JSON.parse(localStorage.getItem('stock_manager_job_projects_list')!) : []);
         setJobProjects(jpVal);
 
@@ -1903,6 +1969,7 @@ export default function App() {
             'stock_manager_jobs_list': 'jobs',
             'stock_manager_employees_list': 'employees',
             'stock_manager_brands_list': 'brands',
+            'stock_manager_suppliers_list': 'suppliers',
             'stock_manager_job_projects_list': 'jobProjects',
             'stock_manager_daily_reports_list': 'dailyReports'
           };
@@ -1959,6 +2026,7 @@ export default function App() {
       if (mergedData['stock_manager_jobs_list']) setJobs(mergedData['stock_manager_jobs_list']);
       if (mergedData['stock_manager_employees_list']) setEmployees(mergedData['stock_manager_employees_list']);
       if (mergedData['stock_manager_brands_list']) setBrands(mergedData['stock_manager_brands_list']);
+      if (mergedData['stock_manager_suppliers_list']) setSuppliers(mergedData['stock_manager_suppliers_list']);
       if (mergedData['stock_manager_job_projects_list']) setJobProjects(mergedData['stock_manager_job_projects_list']);
       if (mergedData['stock_manager_daily_reports_list']) setDailyReports(mergedData['stock_manager_daily_reports_list']);
 
@@ -1975,6 +2043,7 @@ export default function App() {
           'stock_manager_jobs_list': 'jobs',
           'stock_manager_employees_list': 'employees',
           'stock_manager_brands_list': 'brands',
+          'stock_manager_suppliers_list': 'suppliers',
           'stock_manager_job_projects_list': 'jobProjects',
           'stock_manager_daily_reports_list': 'dailyReports'
         };
@@ -2017,6 +2086,7 @@ export default function App() {
       const savedJobs = localStorage.getItem('stock_manager_jobs_list');
       const savedEmployees = localStorage.getItem('stock_manager_employees_list');
       const savedBrands = localStorage.getItem('stock_manager_brands_list');
+      const savedSuppliers = localStorage.getItem('stock_manager_suppliers_list');
       const savedJobProjects = localStorage.getItem('stock_manager_job_projects_list');
       const savedDailyReports = localStorage.getItem('stock_manager_daily_reports_list');
 
@@ -2029,6 +2099,7 @@ export default function App() {
         !savedJobs &&
         !savedEmployees &&
         !savedBrands &&
+        !savedSuppliers &&
         !savedJobProjects &&
         !savedDailyReports
       ) {
@@ -2084,6 +2155,12 @@ export default function App() {
       if (savedBrands) {
         const brandsList = JSON.parse(savedBrands) as Brand[];
         await uploadListToFirestoreInBatches('brands', brandsList);
+      }
+
+      // Suppliers
+      if (savedSuppliers) {
+        const suppliersList = JSON.parse(savedSuppliers) as Supplier[];
+        await uploadListToFirestoreInBatches('suppliers', suppliersList);
       }
 
       // JobProjects
@@ -3250,6 +3327,36 @@ export default function App() {
     );
   };
 
+  const handleSaveEngineeringSchedule = async (schedule: EngineeringPhaseSchedule) => {
+    const existingIndex = engineeringSchedules.findIndex(s => s.id === schedule.id);
+    let updatedList: EngineeringPhaseSchedule[];
+    if (existingIndex >= 0) {
+      updatedList = engineeringSchedules.map(s => s.id === schedule.id ? schedule : s);
+    } else {
+      updatedList = [schedule, ...engineeringSchedules];
+    }
+    setEngineeringSchedules(updatedList);
+    localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(updatedList));
+
+    try {
+      await setDoc(doc(db, 'engineering_schedules', schedule.id), cleanUndefined(schedule));
+    } catch (error: any) {
+      console.warn("Firestore engineering schedule save error:", error);
+    }
+  };
+
+  const handleDeleteEngineeringSchedule = async (id: string) => {
+    const updatedList = engineeringSchedules.filter(s => s.id !== id);
+    setEngineeringSchedules(updatedList);
+    localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(updatedList));
+
+    try {
+      await deleteDoc(doc(db, 'engineering_schedules', id));
+    } catch (error: any) {
+      console.warn("Firestore engineering schedule delete error:", error);
+    }
+  };
+
   // Out of Stock & Low Stock items count for bell notification badges
   const outOfStockCount = products.filter((p) => p.quantity === 0).length;
   const lowStockCount = products.filter((p) => p.quantity > 0 && p.quantity <= p.minAlert).length;
@@ -3264,6 +3371,9 @@ export default function App() {
             products={products}
             categories={categories}
             activities={activities}
+            jobProjects={jobProjects}
+            boms={boms}
+            projects={projects}
             onQuickRestock={handleQuickRestock}
             onNavigateToTab={setCurrentTab}
             onSetStatusFilter={setStatusFilter}
@@ -3364,6 +3474,10 @@ export default function App() {
             onEditDailyReport={handleEditDailyReport}
             onDeleteDailyReport={handleDeleteDailyReport}
             onAddMediaFile={handleAddMediaFile}
+            boms={boms}
+            engineeringSchedules={engineeringSchedules}
+            onSaveEngineeringSchedule={handleSaveEngineeringSchedule}
+            onDeleteEngineeringSchedule={handleDeleteEngineeringSchedule}
           />
         );
       case 'settings':
