@@ -80,8 +80,8 @@ export default function OrderingSystemView({
   }, [preselectedProductId]);
 
   // Form states (Create)
-  const [requesterName, setRequesterName] = useState('');
-  const [purchaserName, setPurchaserName] = useState('');
+  const [requesterName, setRequesterName] = useState(() => localStorage.getItem('last_selected_requester') || '');
+  const [purchaserName, setPurchaserName] = useState(() => localStorage.getItem('last_selected_purchaser') || '');
   const [orderTitle, setOrderTitle] = useState('');
   const [jobNo, setJobNo] = useState('');
   const [jobName, setJobName] = useState('');
@@ -885,12 +885,16 @@ export default function OrderingSystemView({
                 required
                 className="w-full px-2 py-0.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
                 value={requesterName || ''}
-                onChange={(e) => setRequesterName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setRequesterName(val);
+                  if (val) localStorage.setItem('last_selected_requester', val);
+                }}
               >
                 <option value="">-- เลือกผู้ขอซื้อ --</option>
                 {employees.map((emp) => (
                   <option key={emp.id} value={emp.name}>
-                    {emp.name} ({emp.role})
+                    {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || emp.department || 'พนักงาน'})
                   </option>
                 ))}
               </select>
@@ -902,12 +906,16 @@ export default function OrderingSystemView({
               <select
                 className="w-full px-2 py-0.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
                 value={purchaserName || ''}
-                onChange={(e) => setPurchaserName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPurchaserName(val);
+                  if (val) localStorage.setItem('last_selected_purchaser', val);
+                }}
               >
                 <option value="">-- เลือกคนจัดซื้อ --</option>
                 {employees.map((emp) => (
                   <option key={emp.id} value={emp.name}>
-                    {emp.name} ({emp.role})
+                    {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || emp.department || 'พนักงาน'})
                   </option>
                 ))}
               </select>
@@ -1450,12 +1458,16 @@ export default function OrderingSystemView({
                     required
                     className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
                     value={editRequesterName || ''}
-                    onChange={(e) => setEditRequesterName(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditRequesterName(val);
+                      if (val) localStorage.setItem('last_selected_requester', val);
+                    }}
                   >
                     <option value="">-- เลือกผู้ขอซื้อ --</option>
                     {employees.map((emp) => (
                       <option key={emp.id} value={emp.name}>
-                        {emp.name} ({emp.role})
+                        {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || emp.department || 'พนักงาน'})
                       </option>
                     ))}
                   </select>
@@ -1467,12 +1479,16 @@ export default function OrderingSystemView({
                   <select
                     className="w-full px-2 py-0.5 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] cursor-pointer"
                     value={editPurchaserName || ''}
-                    onChange={(e) => setEditPurchaserName(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditPurchaserName(val);
+                      if (val) localStorage.setItem('last_selected_purchaser', val);
+                    }}
                   >
                     <option value="">-- เลือกคนจัดซื้อ --</option>
                     {employees.map((emp) => (
                       <option key={emp.id} value={emp.name}>
-                        {emp.name} ({emp.role})
+                        {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || emp.department || 'พนักงาน'})
                       </option>
                     ))}
                   </select>

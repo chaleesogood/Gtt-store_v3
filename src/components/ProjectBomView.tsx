@@ -1238,11 +1238,14 @@ export default function ProjectBomView({
     const initialQty = shortage > 0 ? shortage : requiredTotal;
     const initialCost = item.priceUnit !== undefined ? item.priceUnit : (p?.costPrice || 0);
 
+    const savedRequester = localStorage.getItem('last_selected_requester');
+    const savedPurchaser = localStorage.getItem('last_selected_purchaser');
+
     setReqItemIndex(originalIndex);
     setReqQty(initialQty);
     setReqPriceUnit(initialCost);
-    setReqRequester(localStorage.getItem('admin_email') || '');
-    setReqPurchaserName('');
+    setReqRequester(savedRequester || localStorage.getItem('admin_email') || (employees.length > 0 ? employees[0].name : ''));
+    setReqPurchaserName(savedPurchaser || '');
     setReqJobNo(activeBom.jobNo || '');
     setReqJobName(activeBom.name || '');
     setReqSelectedProductId(item.productId || '');
@@ -2809,14 +2812,18 @@ export default function ProjectBomView({
                   <label className="font-bold text-slate-600">ผู้ขอซื้อ / แผนกงาน *</label>
                   <select
                     required
-                    className="w-full px-2.5 py-1.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer font-bold text-slate-800"
                     value={reqRequester}
-                    onChange={(e) => setReqRequester(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setReqRequester(val);
+                      if (val) localStorage.setItem('last_selected_requester', val);
+                    }}
                   >
                     <option value="">-- เลือกผู้ขอซื้อ --</option>
                     {employees.map((emp) => (
                       <option key={emp.id} value={emp.name}>
-                        {emp.name} ({emp.role})
+                        {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || emp.department || 'พนักงาน'})
                       </option>
                     ))}
                   </select>
@@ -2826,14 +2833,18 @@ export default function ProjectBomView({
                 <div className="space-y-1">
                   <label className="font-bold text-slate-600">คนจัดซื้อ / ผู้ดำเนินการ</label>
                   <select
-                    className="w-full px-2.5 py-1.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-250 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs cursor-pointer font-bold text-slate-800"
                     value={reqPurchaserName}
-                    onChange={(e) => setReqPurchaserName(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setReqPurchaserName(val);
+                      if (val) localStorage.setItem('last_selected_purchaser', val);
+                    }}
                   >
                     <option value="">-- เลือกคนจัดซื้อ --</option>
                     {employees.map((emp) => (
                       <option key={emp.id} value={emp.name}>
-                        {emp.name} ({emp.role})
+                        {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || emp.department || 'พนักงาน'})
                       </option>
                     ))}
                   </select>
@@ -3171,13 +3182,17 @@ export default function ProjectBomView({
                 <select
                   required
                   value={assignAssignee || ''}
-                  onChange={(e) => setAssignAssignee(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setAssignAssignee(val);
+                    if (val) localStorage.setItem('last_selected_assignee', val);
+                  }}
                   className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                 >
                   <option value="">-- กรุณาเลือกผู้รับผิดชอบ --</option>
                   {(employees || []).map(emp => (
                     <option key={emp.id} value={emp.name}>
-                      {emp.name} ({emp.role || 'ช่าง'})
+                      {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || 'ช่าง'})
                     </option>
                   ))}
                 </select>

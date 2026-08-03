@@ -152,9 +152,10 @@ export default function JobAssignmentView({
   };
 
   const resetTaskForm = () => {
+    const lastAssignee = localStorage.getItem('last_selected_assignee');
     setTaskJobNo(jobProjects.length > 0 ? jobProjects[0].jobNo : '');
     setTaskModule('');
-    setTaskAssignee(employees.length > 0 ? employees[0].name : '');
+    setTaskAssignee(lastAssignee || (employees.length > 0 ? employees[0].name : ''));
     setTaskDescription('');
     setTaskStatus('pending');
     setTaskPriority('medium');
@@ -167,8 +168,9 @@ export default function JobAssignmentView({
 
   // Open task modals with default selections prefilled
   const openTaskAdd = () => {
+    const lastAssignee = localStorage.getItem('last_selected_assignee');
     setTaskJobNo(jobProjects.length > 0 ? jobProjects[0].jobNo : '');
-    setTaskAssignee(employees.length > 0 ? employees[0].name : '');
+    setTaskAssignee(lastAssignee || (employees.length > 0 ? employees[0].name : ''));
     setTaskModule('');
     setTaskDescription('');
     setTaskStatus('pending');
@@ -437,7 +439,9 @@ export default function JobAssignmentView({
                 >
                   <option value="all">พนักงานทุกคน</option>
                   {employees.map(emp => (
-                    <option key={emp.id} value={emp.name}>{emp.name}</option>
+                    <option key={emp.id} value={emp.name}>
+                      {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -1045,13 +1049,17 @@ export default function JobAssignmentView({
                       <select
                         required
                         value={taskAssignee}
-                        onChange={(e) => setTaskAssignee(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden cursor-pointer"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setTaskAssignee(val);
+                          if (val) localStorage.setItem('last_selected_assignee', val);
+                        }}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden cursor-pointer font-bold"
                       >
                         <option value="">-- เลือกผู้รับผิดชอบ --</option>
                         {employees.map(emp => (
                           <option key={emp.id} value={emp.name}>
-                            {emp.name} ({emp.role || 'ทั่วไป'})
+                            {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || 'ทั่วไป'})
                           </option>
                         ))}
                       </select>
@@ -1334,12 +1342,16 @@ export default function JobAssignmentView({
                     <select
                       required
                       value={taskAssignee}
-                      onChange={(e) => setTaskAssignee(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden cursor-pointer"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTaskAssignee(val);
+                        if (val) localStorage.setItem('last_selected_assignee', val);
+                      }}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden cursor-pointer font-bold"
                     >
                       {employees.map(emp => (
                         <option key={emp.id} value={emp.name}>
-                          {emp.name} ({emp.role || 'ช่าง'})
+                          {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || 'ช่าง'})
                         </option>
                       ))}
                     </select>

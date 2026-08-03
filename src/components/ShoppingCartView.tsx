@@ -45,8 +45,8 @@ export default function ShoppingCartView({
   setBoms,
 }: ShoppingCartViewProps) {
   // Global / Bulk form states
-  const [globalRequester, setGlobalRequester] = useState('');
-  const [globalPurchaser, setGlobalPurchaser] = useState('');
+  const [globalRequester, setGlobalRequester] = useState(() => localStorage.getItem('last_selected_requester') || '');
+  const [globalPurchaser, setGlobalPurchaser] = useState(() => localStorage.getItem('last_selected_purchaser') || '');
   const [globalJobProject, setGlobalJobProject] = useState('');
   const [globalModule, setGlobalModule] = useState('');
 
@@ -451,12 +451,16 @@ export default function ShoppingCartView({
                   <select
                     className="w-full p-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-slate-700 dark:text-slate-300 cursor-pointer"
                     value={globalRequester}
-                    onChange={(e) => setGlobalRequester(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setGlobalRequester(val);
+                      if (val) localStorage.setItem('last_selected_requester', val);
+                    }}
                   >
                     <option value="">-- เลือกพนักงาน --</option>
                     {employees.map((emp) => (
                       <option key={emp.id} value={emp.name}>
-                        {emp.name} ({emp.role})
+                        {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || emp.department || 'พนักงาน'})
                       </option>
                     ))}
                   </select>
@@ -469,12 +473,16 @@ export default function ShoppingCartView({
                   <select
                     className="w-full p-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-slate-700 dark:text-slate-300 cursor-pointer"
                     value={globalPurchaser}
-                    onChange={(e) => setGlobalPurchaser(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setGlobalPurchaser(val);
+                      if (val) localStorage.setItem('last_selected_purchaser', val);
+                    }}
                   >
                     <option value="">-- เลือกพนักงาน --</option>
                     {employees.map((emp) => (
                       <option key={emp.id} value={emp.name}>
-                        {emp.name} ({emp.role})
+                        {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || emp.department || 'พนักงาน'})
                       </option>
                     ))}
                   </select>
@@ -728,12 +736,16 @@ export default function ShoppingCartView({
                                       !hasRequester ? 'border-amber-300 bg-amber-50/10' : 'border-slate-200 dark:border-slate-700'
                                     }`}
                                     value={item.requesterName || ''}
-                                    onChange={(e) => updateItemField(item.product.id, 'requesterName', e.target.value)}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      updateItemField(item.product.id, 'requesterName', val);
+                                      if (val) localStorage.setItem('last_selected_requester', val);
+                                    }}
                                   >
                                     <option value="">-- เลือกผู้ขอจัดซื้อ --</option>
                                     {employees.map((emp) => (
                                       <option key={emp.id} value={emp.name}>
-                                        {emp.name}
+                                        {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || emp.department || 'พนักงาน'})
                                       </option>
                                     ))}
                                   </select>
@@ -746,12 +758,16 @@ export default function ShoppingCartView({
                                   <select
                                     className="w-full p-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-[11px] focus:outline-none font-sans text-slate-700 dark:text-slate-300 cursor-pointer"
                                     value={item.purchaserName || ''}
-                                    onChange={(e) => updateItemField(item.product.id, 'purchaserName', e.target.value)}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      updateItemField(item.product.id, 'purchaserName', val);
+                                      if (val) localStorage.setItem('last_selected_purchaser', val);
+                                    }}
                                   >
                                     <option value="">-- เลือกผู้จัดซื้อ --</option>
                                     {employees.map((emp) => (
                                       <option key={emp.id} value={emp.name}>
-                                        {emp.name}
+                                        {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} ({emp.role || emp.department || 'พนักงาน'})
                                       </option>
                                     ))}
                                   </select>

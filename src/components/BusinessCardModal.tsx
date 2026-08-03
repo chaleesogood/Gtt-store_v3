@@ -378,7 +378,7 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
               >
                 {employees.map((emp) => (
                   <option key={emp.id} value={emp.id}>
-                    {emp.empCode ? `[${emp.empCode}] ` : ''}{emp.name} ({emp.role || 'พนักงาน'})
+                    {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name} {emp.empCode ? `(${emp.empCode})` : ''} ({emp.role || 'พนักงาน'})
                   </option>
                 ))}
               </select>
