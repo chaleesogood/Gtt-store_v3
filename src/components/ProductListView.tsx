@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Product, Category, Employee, JobProject, Brand, sortProducts, Bom, SubSeries, MediaFile } from '../types';
-import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag, Copy, ArrowUpDown, FileText } from 'lucide-react';
+import { Product, Category, Employee, JobProject, Brand, sortProducts, Bom, BomItem, SubSeries, MediaFile, normalizeModules } from '../types';
+import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag, Copy, ArrowUpDown, FileText, Boxes, Check, Briefcase } from 'lucide-react';
 import CategoryView from './CategoryView';
 import OrderingSystemView from './OrderingSystemView';
 import ShoppingCartView from './ShoppingCartView';
 import { INITIAL_CATEGORIES } from '../initialData';
-import { auth, GoogleAuthProvider, signInWithPopup } from '../firebase';
+import { auth, GoogleAuthProvider, signInWithPopup, db, cleanUndefined } from '../firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 interface ProductListViewProps {
   products: Product[];
@@ -102,6 +103,117 @@ export default function ProductListView({
   const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const [isReorderMode, setIsReorderMode] = useState(false);
+
+  // Add To BOM Modal States
+  const [isBomModalOpen, setIsBomModalOpen] = useState(false);
+  const [bomTargetProduct, setBomTargetProduct] = useState<Product | null>(null);
+  const [bomJobNo, setBomJobNo] = useState('');
+  const [bomModuleName, setBomModuleName] = useState('');
+  const [bomQuantity, setBomQuantity] = useState<number>(1);
+  const [bomUnit, setBomUnit] = useState('ชิ้น');
+  const [bomPriceUnit, setBomPriceUnit] = useState<number>(0);
+  const [bomRemark, setBomRemark] = useState('');
+
+  const handleOpenAddToBomModal = (product: Product) => {
+    setBomTargetProduct(product);
+    const initialJob = jobProjects.length > 0 ? jobProjects[0].jobNo : '';
+    setBomJobNo(initialJob);
+    
+    const proj = jobProjects.find(p => p.jobNo === initialJob);
+    const mods = normalizeModules(proj?.modules);
+    setBomModuleName(mods.length > 0 ? `${mods[0].code} - ${mods[0].name}` : '01 - ตู้คอนโทรล');
+    
+    setBomQuantity(1);
+    setBomUnit(product.unit || 'ชิ้น');
+    setBomPriceUnit(product.costPrice || product.price || 0);
+    setBomRemark('เพิ่มจากรายการพัสดุ (Products)');
+    setIsBomModalOpen(true);
+  };
+
+  const handleConfirmAddToBom = async () => {
+    if (!bomTargetProduct) return;
+    if (!bomJobNo.trim()) {
+      addToast('warning', 'กรุณาเลือก หรือระบุ JOB No.', 'ต้องระบุรหัสโครงการที่จะเพิ่มพัสดุเข้า BOM');
+      return;
+    }
+
+    const trimmedJobNo = bomJobNo.trim();
+    const newItem: BomItem = {
+      productId: bomTargetProduct.id,
+      productName: bomTargetProduct.name,
+      quantity: Math.max(1, bomQuantity),
+      unit: bomUnit.trim() || bomTargetProduct.unit || 'ชิ้น',
+      priceUnit: Number(bomPriceUnit) || 0,
+      group: bomModuleName.trim() || bomTargetProduct.category || 'ทั่วไป',
+      brand: bomTargetProduct.brand || '',
+      remark: bomRemark.trim() || 'เพิ่มจากรายการพัสดุ'
+    };
+
+    try {
+      const currentBoms = [...(boms || [])];
+      let targetBom = currentBoms.find(b => b.jobNo === trimmedJobNo);
+
+      if (targetBom) {
+        // Update existing BOM
+        const updatedItems = [...targetBom.items];
+        const existingIdx = updatedItems.findIndex(it => it.productId === newItem.productId && it.group === newItem.group);
+        if (existingIdx > -1) {
+          updatedItems[existingIdx] = {
+            ...updatedItems[existingIdx],
+            quantity: updatedItems[existingIdx].quantity + newItem.quantity,
+            priceUnit: newItem.priceUnit,
+            remark: newItem.remark || updatedItems[existingIdx].remark
+          };
+        } else {
+          updatedItems.push(newItem);
+        }
+
+        const updatedBom: Bom = {
+          ...targetBom,
+          items: updatedItems,
+          updatedAt: new Date().toISOString()
+        };
+
+        if (setBoms) {
+          setBoms(prev => {
+            const next = prev.map(b => b.id === updatedBom.id ? updatedBom : b);
+            localStorage.setItem('stock_manager_boms', JSON.stringify(next));
+            return next;
+          });
+        }
+        await setDoc(doc(db, 'boms', updatedBom.id), cleanUndefined(updatedBom));
+      } else {
+        // Create new BOM
+        const selectedProj = jobProjects.find(p => p.jobNo === trimmedJobNo);
+        const newBom: Bom = {
+          id: `bom-${Date.now()}`,
+          jobNo: trimmedJobNo,
+          name: selectedProj ? `BOM - ${selectedProj.projectName}` : `BOM - Job ${trimmedJobNo}`,
+          requiredQuantity: 1,
+          status: 'pending',
+          items: [newItem],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        if (setBoms) {
+          setBoms(prev => {
+            const next = [newBom, ...prev];
+            localStorage.setItem('stock_manager_boms', JSON.stringify(next));
+            return next;
+          });
+        }
+        await setDoc(doc(db, 'boms', newBom.id), cleanUndefined(newBom));
+      }
+
+      addToast('success', 'เพิ่มพัสดุเข้า BOM เรียบร้อย', `เพิ่ม "${bomTargetProduct.name}" เข้าใบงาน BOM (Job: ${trimmedJobNo}) เรียบร้อยแล้ว`);
+      setIsBomModalOpen(false);
+      setBomTargetProduct(null);
+    } catch (err) {
+      console.error('Error adding item to BOM:', err);
+      addToast('warning', 'เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกข้อมูลเข้า BOM ได้');
+    }
+  };
 
   // Edit Category & SubSeries Modal States
   const [editingCatModal, setEditingCatModal] = useState<Category | null>(null);
@@ -1514,6 +1626,15 @@ export default function ProductListView({
                                               <ShoppingCart className="h-2.5 w-2.5 text-indigo-500" /> หยิบลงตะกร้า
                                             </button>
                                             <button
+                                              onClick={() => handleOpenAddToBomModal(p)}
+                                              className="px-1.5 py-0.2 text-[9px] font-black text-amber-700 bg-amber-50/80 hover:bg-amber-100 border border-amber-200 rounded cursor-pointer flex items-center gap-0.5 active:scale-95 transition-all shadow-3xs"
+                                              title="เพิ่มพัสดุนี้เข้าใบงานประกอบ BOM"
+                                              id={`btn-add-to-bom-item-grouped-${p.id}`}
+                                              type="button"
+                                            >
+                                              <Boxes className="h-2.5 w-2.5 text-amber-600" /> BOM
+                                            </button>
+                                            <button
                                               onClick={() => {
                                                 setPreselectedProductId(p.id);
                                                 setActiveSubTab('ordering');
@@ -1801,6 +1922,15 @@ export default function ProductListView({
                             type="button"
                           >
                             <ShoppingCart className="h-2.5 w-2.5 text-indigo-500" /> หยิบลงตะกร้า
+                          </button>
+                          <button
+                            onClick={() => handleOpenAddToBomModal(p)}
+                            className="px-1.5 py-0.2 text-[9px] font-black text-amber-700 bg-amber-50/80 hover:bg-amber-100 border border-amber-200 rounded cursor-pointer flex items-center gap-0.5 active:scale-95 transition-all shadow-3xs"
+                            title="เพิ่มพัสดุนี้เข้าใบงานประกอบ BOM"
+                            id={`btn-add-to-bom-item-${p.id}`}
+                            type="button"
+                          >
+                            <Boxes className="h-2.5 w-2.5 text-amber-600" /> BOM
                           </button>
                           <button
                             onClick={() => {
@@ -2801,6 +2931,200 @@ export default function ProductListView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add To BOM Popup Modal */}
+      {isBomModalOpen && bomTargetProduct && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-150">
+            {/* Header */}
+            <div className="px-5 py-4 bg-slate-900 dark:bg-slate-950 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Boxes className="h-5 w-5 text-amber-400" />
+                <div>
+                  <h3 className="font-black text-sm text-slate-100">เพิ่มพัสดุเข้าสูตรชิ้นส่วน BOM</h3>
+                  <p className="text-[11px] text-slate-400">กำหนดใบงานและรายละเอียดพัสดุเพื่อจัดเตรียมผลิต</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBomModalOpen(false);
+                  setBomTargetProduct(null);
+                }}
+                className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Product Card Info */}
+              <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 rounded-xl flex items-center gap-3">
+                {bomTargetProduct.image ? (
+                  <img src={bomTargetProduct.image} alt="" className="w-12 h-12 rounded-lg object-cover border border-amber-200 shrink-0" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0">
+                    <Package className="h-6 w-6 text-amber-700" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="font-black text-xs text-slate-800 dark:text-slate-100 truncate">{bomTargetProduct.name}</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                    Code: {bomTargetProduct.sku || '-'} | หมวด: {bomTargetProduct.category}
+                  </div>
+                  <div className="text-[10.5px] font-bold text-amber-700 dark:text-amber-400 mt-0.5">
+                    คงเหลือในคลัง: {bomTargetProduct.quantity} {bomTargetProduct.unit || 'ชิ้น'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Controls */}
+              <div className="space-y-3 text-xs font-sans">
+                {/* Select Job Project */}
+                <div>
+                  <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 mb-1">
+                    เลือกใบงาน BOM / JOB No. <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                    value={bomJobNo}
+                    onChange={(e) => {
+                      const newJob = e.target.value;
+                      setBomJobNo(newJob);
+                      const proj = jobProjects.find(p => p.jobNo === newJob);
+                      const mods = normalizeModules(proj?.modules);
+                      setBomModuleName(mods.length > 0 ? `${mods[0].code} - ${mods[0].name}` : '01 - ตู้คอนโทรล');
+                    }}
+                  >
+                    <option value="">-- เลือก JOB No. --</option>
+                    {jobProjects.map((p) => (
+                      <option key={p.id} value={p.jobNo}>
+                        {p.jobNo} - {p.projectName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Module selection */}
+                <div>
+                  <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 mb-1">
+                    โมดูล / ระบบงาน (Module)
+                  </label>
+                  <select
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                    value={bomModuleName}
+                    onChange={(e) => setBomModuleName(e.target.value)}
+                  >
+                    <option value="">-- เลือก/ระบุโมดูล --</option>
+                    {(() => {
+                      const proj = jobProjects.find((p) => p.jobNo === bomJobNo);
+                      const mods = normalizeModules(proj?.modules);
+                      if (mods.length > 0) {
+                        return mods.map((m) => (
+                          <option key={m.code} value={`${m.code} - ${m.name}`}>
+                            {m.code} - {m.name}
+                          </option>
+                        ));
+                      }
+                      return (
+                        <>
+                          <option value="01 - ตู้คอนโทรล">01 - ตู้คอนโทรล</option>
+                          <option value="02 - ระบบไฟฟ้าและสายไฟ">02 - ระบบไฟฟ้าและสายไฟ</option>
+                          <option value="03 - โครงสร้างและกลไก">03 - โครงสร้างและกลไก</option>
+                          <option value="04 - นิวแมติกและไฮดรอลิก">04 - นิวแมติกและไฮดรอลิก</option>
+                          <option value="05 - ชิ้นส่วนสิ้นเปลือง/ทั่วไป">05 - ชิ้นส่วนสิ้นเปลือง/ทั่วไป</option>
+                        </>
+                      );
+                    })()}
+                  </select>
+                </div>
+
+                {/* Qty, Unit, Price/Unit */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10.5px] font-black text-slate-600 dark:text-slate-400 mb-1">
+                      จำนวนต่อชุด
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 text-center"
+                      value={bomQuantity}
+                      onChange={(e) => setBomQuantity(parseInt(e.target.value) || 1)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10.5px] font-black text-slate-600 dark:text-slate-400 mb-1">
+                      หน่วยนับ
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 text-center"
+                      value={bomUnit}
+                      onChange={(e) => setBomUnit(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10.5px] font-black text-slate-600 dark:text-slate-400 mb-1">
+                      ราคาทุน (฿)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right"
+                      value={bomPriceUnit}
+                      onChange={(e) => setBomPriceUnit(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+
+                {/* Remark */}
+                <div>
+                  <label className="block text-[10.5px] font-black text-slate-600 dark:text-slate-400 mb-1">
+                    หมายเหตุเพิ่มเติม
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="เช่น ใช้อุปกรณ์ตัวเลือกเสริม"
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    value={bomRemark}
+                    onChange={(e) => setBomRemark(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div className="text-[11px] font-bold text-slate-500">
+                รวมราคาทุนประเมิน: <span className="text-amber-600 dark:text-amber-400 font-black font-mono">฿{(bomQuantity * bomPriceUnit).toLocaleString('th-TH')}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsBomModalOpen(false);
+                    setBomTargetProduct(null);
+                  }}
+                  className="px-3.5 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmAddToBom}
+                  className="px-4 py-1.5 text-xs font-black text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  <span>ยืนยันเพิ่มเข้า BOM</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

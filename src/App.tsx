@@ -3213,6 +3213,8 @@ export default function App() {
             onEditDailyReport={handleEditDailyReport}
             onDeleteDailyReport={handleDeleteDailyReport}
             onAddMediaFile={handleAddMediaFile}
+            onAdjustStock={handleAdjustStock}
+            setBoms={setBoms}
           />
         );
       case 'reports':

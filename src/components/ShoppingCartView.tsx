@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Product, Employee, JobProject, Bom, BomItem } from '../types';
+import { Product, Employee, JobProject, Bom, BomItem, normalizeModules } from '../types';
 import { 
   ShoppingCart, 
   Trash2, 
@@ -48,6 +48,7 @@ export default function ShoppingCartView({
   const [globalRequester, setGlobalRequester] = useState('');
   const [globalPurchaser, setGlobalPurchaser] = useState('');
   const [globalJobProject, setGlobalJobProject] = useState('');
+  const [globalModule, setGlobalModule] = useState('');
 
   // LINE states
   const [lineToken, setLineToken] = useState(() => localStorage.getItem('line_channel_token') || '');
@@ -93,8 +94,8 @@ export default function ShoppingCartView({
 
   // Bulk apply function
   const handleBulkApply = () => {
-    if (!globalRequester && !globalPurchaser && !globalJobProject) {
-      addToast('warning', 'กรุณาระบุข้อมูลสำหรับ Bulk Apply', 'กรุณาเลือกผู้ขอจัดซื้อ ผู้จัดซื้อ หรือ JOB No. เพื่อนำไปใช้งานกับทุกรายการ');
+    if (!globalRequester && !globalPurchaser && !globalJobProject && !globalModule) {
+      addToast('warning', 'กรุณาระบุข้อมูลสำหรับ Bulk Apply', 'กรุณาเลือกผู้ขอจัดซื้อ ผู้จัดซื้อ JOB No. หรือโมดูล เพื่อนำไปใช้งานกับทุกรายการ');
       return;
     }
 
@@ -109,11 +110,12 @@ export default function ShoppingCartView({
           updated.jobNo = selectedProject.jobNo;
           updated.jobName = selectedProject.projectName;
         }
+        if (globalModule) updated.module = globalModule;
         return updated;
       })
     );
 
-    addToast('success', 'ใช้งานข้อมูลแบบกลุ่มสำเร็จ', 'อัปเดตข้อมูลผู้ขอจัดซื้อ ผู้จัดซื้อ และ JOB No. ในตะกร้าทั้งหมดแล้ว');
+    addToast('success', 'ใช้งานข้อมูลแบบกลุ่มสำเร็จ', 'อัปเดตข้อมูลผู้ขอจัดซื้อ ผู้จัดซื้อ JOB No. และโมดูล ในตะกร้าทั้งหมดแล้ว');
   };
 
   // Checkout and create orders in database
@@ -210,7 +212,7 @@ export default function ShoppingCartView({
           remark: item.remark?.trim() || 'ส่งจากตะกร้าจัดซื้อ',
           brand: item.product.brand || '',
           priceUnit: Number(item.pricePerUnit) || Number(item.product.costPrice) || 0,
-          group: item.product.category || 'ทั่วไป'
+          group: item.module?.trim() || item.product.category || 'ทั่วไป'
         };
 
         if (targetBom) {
@@ -441,7 +443,7 @@ export default function ShoppingCartView({
                 <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
                 <span>ตัวช่วยกำหนดข้อมูลด่วนแบบกลุ่ม (Bulk Setup to All Items)</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                 <div>
                   <label className="block text-[10px] font-black text-slate-500 dark:text-slate-400 mb-1">
                     ผู้ขอจัดซื้อ (Requester)
@@ -485,7 +487,10 @@ export default function ShoppingCartView({
                   <select
                     className="w-full p-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-slate-700 dark:text-slate-300 cursor-pointer"
                     value={globalJobProject}
-                    onChange={(e) => setGlobalJobProject(e.target.value)}
+                    onChange={(e) => {
+                      setGlobalJobProject(e.target.value);
+                      setGlobalModule('');
+                    }}
                   >
                     <option value="">-- เลือก JOB No --</option>
                     {jobProjects.map((p) => (
@@ -493,6 +498,39 @@ export default function ShoppingCartView({
                         {p.jobNo} - {p.projectName}
                       </option>
                     ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 dark:text-slate-400 mb-1">
+                    โมดูล / ระบบงาน (Module)
+                  </label>
+                  <select
+                    className="w-full p-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans text-slate-700 dark:text-slate-300 cursor-pointer"
+                    value={globalModule}
+                    onChange={(e) => setGlobalModule(e.target.value)}
+                  >
+                    <option value="">-- เลือกโมดูล --</option>
+                    {(() => {
+                      const proj = jobProjects.find((p) => p.jobNo === globalJobProject);
+                      const mods = normalizeModules(proj?.modules);
+                      if (mods.length > 0) {
+                        return mods.map((m) => (
+                          <option key={m.code} value={`${m.code} - ${m.name}`}>
+                            {m.code} - {m.name}
+                          </option>
+                        ));
+                      }
+                      return (
+                        <>
+                          <option value="01 - ตู้คอนโทรล">01 - ตู้คอนโทรล</option>
+                          <option value="02 - ระบบไฟฟ้าและสายไฟ">02 - ระบบไฟฟ้าและสายไฟ</option>
+                          <option value="03 - โครงสร้างและกลไก">03 - โครงสร้างและกลไก</option>
+                          <option value="04 - นิวแมติกและไฮดรอลิก">04 - นิวแมติกและไฮดรอลิก</option>
+                          <option value="05 - ชิ้นส่วนสิ้นเปลือง/ทั่วไป">05 - ชิ้นส่วนสิ้นเปลือง/ทั่วไป</option>
+                        </>
+                      );
+                    })()}
                   </select>
                 </div>
               </div>
@@ -701,7 +739,7 @@ export default function ShoppingCartView({
                                   </select>
                                 </div>
 
-                                <div>
+                                 <div>
                                   <label className="block text-[9px] font-black text-slate-500 dark:text-slate-400 mb-0.5 uppercase tracking-wide">
                                     ผู้จัดซื้อ (Purchaser)
                                   </label>
@@ -720,29 +758,65 @@ export default function ShoppingCartView({
                                 </div>
                               </div>
 
-                              {/* Item Move & Remark */}
+                              {/* Item Move, Module & Remark */}
                               <div className="space-y-2">
-                                <div>
-                                  <label className="block text-[9px] font-black text-slate-500 dark:text-slate-400 mb-0.5 uppercase tracking-wide">
-                                    ย้าย JOB No. เฉพาะรายการ <span className="text-rose-500">*</span>
-                                  </label>
-                                  <select
-                                    className="w-full p-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-[11px] focus:outline-none font-sans text-slate-700 dark:text-slate-300 cursor-pointer"
-                                    value={item.jobNo || ''}
-                                    onChange={(e) => {
-                                      const projNo = e.target.value;
-                                      const selected = jobProjects.find((p) => p.jobNo === projNo);
-                                      updateItemField(item.product.id, 'jobNo', projNo);
-                                      updateItemField(item.product.id, 'jobName', selected ? selected.projectName : '');
-                                    }}
-                                  >
-                                    <option value="">-- เลือก JOB No --</option>
-                                    {jobProjects.map((p) => (
-                                      <option key={p.id} value={p.jobNo}>
-                                        {p.jobNo} - {p.projectName}
-                                      </option>
-                                    ))}
-                                  </select>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                  <div>
+                                    <label className="block text-[9px] font-black text-slate-500 dark:text-slate-400 mb-0.5 uppercase tracking-wide">
+                                      ย้าย JOB No. <span className="text-rose-500">*</span>
+                                    </label>
+                                    <select
+                                      className="w-full p-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-[11px] focus:outline-none font-sans text-slate-700 dark:text-slate-300 cursor-pointer"
+                                      value={item.jobNo || ''}
+                                      onChange={(e) => {
+                                        const projNo = e.target.value;
+                                        const selected = jobProjects.find((p) => p.jobNo === projNo);
+                                        updateItemField(item.product.id, 'jobNo', projNo);
+                                        updateItemField(item.product.id, 'jobName', selected ? selected.projectName : '');
+                                        updateItemField(item.product.id, 'module', '');
+                                      }}
+                                    >
+                                      <option value="">-- เลือก JOB No --</option>
+                                      {jobProjects.map((p) => (
+                                        <option key={p.id} value={p.jobNo}>
+                                          {p.jobNo} - {p.projectName}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[9px] font-black text-slate-500 dark:text-slate-400 mb-0.5 uppercase tracking-wide">
+                                      โมดูล / ระบบงาน (Module)
+                                    </label>
+                                    <select
+                                      className="w-full p-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-[11px] focus:outline-none font-sans text-slate-700 dark:text-slate-300 cursor-pointer"
+                                      value={item.module || ''}
+                                      onChange={(e) => updateItemField(item.product.id, 'module', e.target.value)}
+                                    >
+                                      <option value="">-- เลือก/ระบุโมดูล --</option>
+                                      {(() => {
+                                        const proj = jobProjects.find((p) => p.jobNo === item.jobNo);
+                                        const mods = normalizeModules(proj?.modules);
+                                        if (mods.length > 0) {
+                                          return mods.map((m) => (
+                                            <option key={m.code} value={`${m.code} - ${m.name}`}>
+                                              {m.code} - {m.name}
+                                            </option>
+                                          ));
+                                        }
+                                        return (
+                                          <>
+                                            <option value="01 - ตู้คอนโทรล">01 - ตู้คอนโทรล</option>
+                                            <option value="02 - ระบบไฟฟ้าและสายไฟ">02 - ระบบไฟฟ้าและสายไฟ</option>
+                                            <option value="03 - โครงสร้างและกลไก">03 - โครงสร้างและกลไก</option>
+                                            <option value="04 - นิวแมติกและไฮดรอลิก">04 - นิวแมติกและไฮดรอลิก</option>
+                                            <option value="05 - ชิ้นส่วนสิ้นเปลือง/ทั่วไป">05 - ชิ้นส่วนสิ้นเปลือง/ทั่วไป</option>
+                                          </>
+                                        );
+                                      })()}
+                                    </select>
+                                  </div>
                                 </div>
 
                                 <div>

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Product, Bom, BomItem, Category, JobProject, ProductOrder, normalizeModules, Employee, Job, DailyReport, MediaFile } from '../types';
+import { Product, Bom, BomItem, Category, JobProject, ProductOrder, normalizeModules, Employee, Job, DailyReport, MediaFile, UserRole } from '../types';
 import Logo from './Logo';
 import JobAssignmentView from './JobAssignmentView';
+import OrderingSystemView from './OrderingSystemView';
+import ShoppingCartView from './ShoppingCartView';
 import { 
   FileSpreadsheet, 
   Plus, 
@@ -25,7 +27,10 @@ import {
   Settings,
   Upload,
   ArrowUpDown,
-  Briefcase
+  Briefcase,
+  ShoppingCart,
+  FileText,
+  ShoppingBag
 } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db, cleanUndefined, auth } from '../firebase';
@@ -42,6 +47,9 @@ interface ProjectBomViewProps {
   onEditJobProject?: (id: string, updatedFields: Partial<JobProject>) => Promise<void>;
   onDeleteJobProject?: (id: string) => Promise<void>;
   employees?: Employee[];
+  currentUserRole?: string;
+  userRoles?: UserRole[];
+  onAdjustStock?: (productId: string, change: number, reason: string, imageUrl?: string) => Promise<void>;
 
   // Job assignment & daily reports props
   jobs?: Job[];
@@ -555,10 +563,30 @@ export default function ProjectBomView({
   onAddDailyReport,
   onEditDailyReport,
   onDeleteDailyReport,
-  onAddMediaFile
+  onAddMediaFile,
+  onAdjustStock
 }: ProjectBomViewProps) {
-  // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'bom' | 'planning'>('bom');
+  // Navigation tabs (BOM, Purchasing, Planning)
+  const [activeTab, setActiveTab] = useState<'bom' | 'planning' | 'purchasing'>('bom');
+  const [purchasingSubTab, setPurchasingSubTab] = useState<'orders' | 'cart'>('orders');
+  const [purchasingPreselectedProductId, setPurchasingPreselectedProductId] = useState<string>('');
+  
+  // Shopping cart items state for purchasing
+  const [cartItems, setCartItems] = useState<any[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('stock_manager_cart') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('stock_manager_cart', JSON.stringify(cartItems));
+    } catch (err) {
+      console.error('Failed saving cart', err);
+    }
+  }, [cartItems]);
 
   // Master Project setup states
   const [projSearch, setProjSearch] = useState('');
@@ -681,6 +709,89 @@ export default function ProjectBomView({
 
   // Viewing Order states
   const [viewingOrder, setViewingOrder] = useState<ProductOrder | null>(null);
+
+  // Handle updating order status directly from BOM Workspace status tracker
+  const handleUpdateOrderStatus = async (
+    orderId: string,
+    newStatus: ProductOrder['status'],
+    e?: React.MouseEvent
+  ) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    const path = `orders/${orderId}`;
+    const currentOrder = orders.find(o => o.id === orderId);
+    if (!currentOrder) return;
+
+    const nowStr = new Date().toISOString();
+    const updates: any = { status: newStatus };
+
+    if (newStatus === 'pending') {
+      updates.quotationAt = null;
+      updates.orderedAt = null;
+      updates.approvedAt = null;
+      updates.paidAt = null;
+      updates.receivedAt = null;
+      updates.receivedQty = null;
+      updates.cancelledAt = null;
+    } else if (newStatus === 'quotation') {
+      updates.quotationAt = currentOrder.quotationAt || nowStr;
+      updates.orderedAt = null;
+      updates.approvedAt = null;
+      updates.paidAt = null;
+      updates.receivedAt = null;
+      updates.receivedQty = null;
+      updates.cancelledAt = null;
+    } else if (newStatus === 'ordered') {
+      updates.quotationAt = currentOrder.quotationAt || nowStr;
+      updates.orderedAt = currentOrder.orderedAt || nowStr;
+      updates.approvedAt = null;
+      updates.paidAt = null;
+      updates.receivedAt = null;
+      updates.receivedQty = null;
+      updates.cancelledAt = null;
+    } else if (newStatus === 'approved') {
+      updates.quotationAt = currentOrder.quotationAt || nowStr;
+      updates.orderedAt = currentOrder.orderedAt || nowStr;
+      updates.approvedAt = currentOrder.approvedAt || nowStr;
+      updates.paidAt = null;
+      updates.receivedAt = null;
+      updates.receivedQty = null;
+      updates.cancelledAt = null;
+    } else if (newStatus === 'paid') {
+      updates.quotationAt = currentOrder.quotationAt || nowStr;
+      updates.orderedAt = currentOrder.orderedAt || nowStr;
+      updates.approvedAt = currentOrder.approvedAt || nowStr;
+      updates.paidAt = currentOrder.paidAt || nowStr;
+      updates.receivedAt = null;
+      updates.receivedQty = null;
+      updates.cancelledAt = null;
+    } else if (newStatus === 'received') {
+      updates.quotationAt = currentOrder.quotationAt || nowStr;
+      updates.orderedAt = currentOrder.orderedAt || nowStr;
+      updates.approvedAt = currentOrder.approvedAt || nowStr;
+      updates.paidAt = currentOrder.paidAt || nowStr;
+      updates.receivedAt = currentOrder.receivedAt || nowStr;
+      updates.receivedQty = currentOrder.receivedQty || currentOrder.quantity;
+      updates.cancelledAt = null;
+    } else if (newStatus === 'cancelled') {
+      updates.cancelledAt = currentOrder.cancelledAt || nowStr;
+    }
+
+    // Optimistic Update
+    const updatedOrder = { ...currentOrder, ...updates };
+    const updatedOrders = orders.map(o => o.id === orderId ? updatedOrder : o);
+    setOrders(updatedOrders);
+    localStorage.setItem('stock_manager_orders_list', JSON.stringify(updatedOrders));
+
+    try {
+      await updateDoc(doc(db, 'orders', orderId), updates);
+      addToast('success', 'ปรับเปลี่ยนสถานะจัดซื้อสำเร็จ', `อัปเดตสถานะเป็นเรียบร้อยแล้ว`);
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      addToast('warning', 'ปรับปรุงสถานะไม่สำเร็จ', 'บันทึกสถานะลงในระบบชั่วคราว');
+    }
+  };
 
   // Active BOM resolved
   const activeBom = selectedBom ? boms.find(b => b.id === selectedBom.id) || selectedBom : null;
@@ -1354,7 +1465,7 @@ export default function ProjectBomView({
         </div>
       </div>
 
-      {/* Tabs Switcher for BOM & Planning */}
+      {/* Tabs Switcher for BOM, Purchasing & Planning */}
       <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-2xl gap-1 shrink-0 z-10 text-xs font-sans font-bold text-slate-500 border border-slate-200 dark:border-slate-800 shadow-inner">
         <button
           onClick={() => setActiveTab('bom')}
@@ -1367,6 +1478,24 @@ export default function ProjectBomView({
           <Boxes className="h-4 w-4" />
           <span>แผนประกอบวัตถุดิบ (BOM Workspace)</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('purchasing')}
+          className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer font-sans relative ${
+            activeTab === 'purchasing'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-black'
+              : 'hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400'
+          }`}
+        >
+          <ShoppingCart className="h-4 w-4" />
+          <span>ระบบจัดซื้อ & สั่งซื้อพัสดุ (Purchasing)</span>
+          {cartItems.length > 0 && (
+            <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[9.5px] font-black rounded-full ml-1 animate-pulse">
+              {cartItems.length}
+            </span>
+          )}
+        </button>
+
         <button
           onClick={() => setActiveTab('planning')}
           className={`flex-1 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer font-sans ${
@@ -1376,7 +1505,7 @@ export default function ProjectBomView({
           }`}
         >
           <Briefcase className="h-4 w-4" />
-          <span>จ่ายงาน & รายงานประจำวัน (Job Assignment & Planning)</span>
+          <span>จ่ายงาน & รายงานประจำวัน (Planning)</span>
         </button>
       </div>
 
@@ -1905,11 +2034,21 @@ export default function ProjectBomView({
                   }
 
                   return (
-                    <div className="p-1 px-2 bg-amber-50/50 border border-amber-100 rounded text-[10px] text-amber-900 flex items-center gap-1.5">
-                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                      <span>
-                        มีพัสดุสต็อกสะสม <strong>ขาดแคลนไม่พอประกอบ {shortages.length} รายการ</strong> โปรดดำเนินการกดปุ่ม <strong>"เปิดใบติดตาม"</strong> ที่บรรทัดพัสดุข้างล่างเพื่อเสนอจัดซื้อด่วน
-                      </span>
+                    <div className="p-1.5 px-2 bg-amber-50/70 border border-amber-200 rounded-lg text-[10.5px] text-amber-900 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                        <span>
+                          มีพัสดุสต็อกสะสม <strong>ขาดแคลนไม่พอประกอบ {shortages.length} รายการ</strong> โปรดกดปุ่ม <strong>"เปิดใบติดตาม"</strong> ที่บรรทัดพัสดุข้างล่าง
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('purchasing')}
+                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] rounded-md transition-all cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs"
+                      >
+                        <ShoppingCart className="h-3 w-3" />
+                        <span>ไปยังระบบจัดซื้อ & สั่งซื้อ (Purchasing)</span>
+                      </button>
                     </div>
                   );
                 })()}
@@ -2160,43 +2299,87 @@ export default function ProjectBomView({
                                             }
 
                                             const steps = [
-                                              { step: 1, label: 'ขอซื้อ' },
-                                              { step: 2, label: 'เสนอราคา' },
-                                              { step: 3, label: 'PR/PO' },
-                                              { step: 4, label: 'อนุมัติ' },
-                                              { step: 5, label: 'โอนเงิน' },
-                                              { step: 6, label: 'รับพัสดุ' }
+                                              { step: 1, key: 'pending', label: 'ขอซื้อ' },
+                                              { step: 2, key: 'quotation', label: 'เสนอราคา' },
+                                              { step: 3, key: 'ordered', label: 'PR/PO' },
+                                              { step: 4, key: 'approved', label: 'อนุมัติ' },
+                                              { step: 5, key: 'paid', label: 'โอนเงิน' },
+                                              { step: 6, key: 'received', label: 'รับพัสดุ' }
                                             ];
 
                                             return (
-                                              <div 
-                                                className="flex items-center justify-center gap-0.5 bg-slate-50 border border-slate-100 p-0.5 rounded-md cursor-pointer hover:bg-slate-100 transition-all select-none"
-                                                onClick={() => setViewingOrder(firstOrder)}
-                                                title={`คลิกเพื่อดูรายละเอียด: ${firstOrder.orderTitle}`}
-                                              >
-                                                {steps.map((st, idx) => {
-                                                  const isCompleted = statusStepIndex >= st.step;
-                                                  const isCurrent = statusStepIndex === st.step;
-                                                  return (
-                                                    <React.Fragment key={st.step}>
-                                                      <span 
-                                                        className={`px-1 py-0.2 text-[9.5px] leading-none rounded-2xs font-sans font-black transition-all ${
-                                                          isCurrent 
-                                                            ? 'bg-indigo-600 text-white font-black border border-indigo-600 shadow-3xs'
-                                                            : isCompleted
-                                                              ? 'bg-emerald-100 text-emerald-800 font-extrabold border border-emerald-100'
-                                                              : 'bg-white text-slate-400 border border-slate-200 font-normal'
-                                                        }`}
-                                                        title={st.label}
-                                                      >
-                                                        {st.label}
-                                                      </span>
-                                                      {idx < steps.length - 1 && (
-                                                        <span className="text-[8.5px] text-slate-300 font-normal select-none">→</span>
-                                                      )}
-                                                    </React.Fragment>
-                                                  );
-                                                })}
+                                              <div className="flex flex-col gap-1 items-center min-w-[260px]">
+                                                {/* Top Bar: Status Dropdown + View Detail Button */}
+                                                <div className="flex items-center gap-1 w-full justify-between">
+                                                  <select
+                                                    className={`text-[10px] font-black py-0.5 px-1.5 rounded border cursor-pointer focus:outline-none ${
+                                                      firstOrder.status === 'received'
+                                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                                        : firstOrder.status === 'cancelled'
+                                                          ? 'bg-rose-50 text-rose-700 border-rose-300'
+                                                          : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                                    }`}
+                                                    value={firstOrder.status}
+                                                    onChange={(e) => handleUpdateOrderStatus(firstOrder.id, e.target.value as any)}
+                                                    title="เปลี่ยนสถานะจัดซื้อพัสดุนี้"
+                                                  >
+                                                    <option value="pending">1. ขอซื้อ (Pending)</option>
+                                                    <option value="quotation">2. ใบเสนอราคา (Quotation)</option>
+                                                    <option value="ordered">3. ออก PR/PO (Ordered)</option>
+                                                    <option value="approved">4. อนุมัติแล้ว (Approved)</option>
+                                                    <option value="paid">5. โอนเงินแล้ว (Paid)</option>
+                                                    <option value="received">6. รับพัสดุสำเร็จ (Received)</option>
+                                                    <option value="cancelled">❌ ยกเลิกจัดซื้อ (Cancelled)</option>
+                                                  </select>
+
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setViewingOrder(firstOrder)}
+                                                    className="px-1.5 py-0.5 text-[9.5px] font-bold text-slate-500 hover:text-indigo-600 bg-white hover:bg-slate-100 border border-slate-200 rounded flex items-center gap-0.5 cursor-pointer shrink-0"
+                                                    title="ดูรายละเอียดใบสั่งซื้อ"
+                                                  >
+                                                    <Eye className="h-2.5 w-2.5 text-indigo-500" />
+                                                    <span>รายละเอียด</span>
+                                                  </button>
+                                                </div>
+
+                                                {/* Interactive Steps Bar */}
+                                                {firstOrder.status !== 'cancelled' ? (
+                                                  <div 
+                                                    className="flex items-center justify-center gap-0.5 bg-slate-50 border border-slate-200/80 p-0.5 rounded-md select-none w-full"
+                                                    title="กดที่ขั้นตอนเพื่อปรับสถานะด่วน"
+                                                  >
+                                                    {steps.map((st, idx) => {
+                                                      const isCompleted = statusStepIndex >= st.step;
+                                                      const isCurrent = statusStepIndex === st.step;
+                                                      return (
+                                                        <React.Fragment key={st.step}>
+                                                          <button
+                                                            type="button"
+                                                            onClick={(e) => handleUpdateOrderStatus(firstOrder.id, st.key as any, e)}
+                                                            className={`px-1 py-0.2 text-[9px] leading-none rounded-2xs font-sans font-black transition-all cursor-pointer ${
+                                                              isCurrent 
+                                                                ? 'bg-indigo-600 text-white font-black border border-indigo-600 shadow-3xs scale-102'
+                                                                : isCompleted
+                                                                  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 font-extrabold border border-emerald-200'
+                                                                  : 'bg-white text-slate-400 hover:bg-slate-100 border border-slate-200 font-normal'
+                                                            }`}
+                                                            title={`เปลี่ยนเป็น: ${st.label}`}
+                                                          >
+                                                            {st.label}
+                                                          </button>
+                                                          {idx < steps.length - 1 && (
+                                                            <span className="text-[8px] text-slate-300 font-normal select-none">→</span>
+                                                          )}
+                                                        </React.Fragment>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                ) : (
+                                                  <div className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded w-full text-center">
+                                                    ยกเลิกจัดซื้อแล้ว
+                                                  </div>
+                                                )}
                                               </div>
                                             );
                                           })() : (
@@ -2294,6 +2477,85 @@ export default function ProjectBomView({
             </div>
           )}
 
+        </div>
+      ) : activeTab === 'purchasing' ? (
+        <div className="space-y-4 animate-in fade-in duration-150 text-left font-sans">
+          {/* Subtabs Header for Purchasing */}
+          <div className="bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-3xs flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 rounded-xl text-indigo-600 dark:text-indigo-400 shrink-0">
+                <ShoppingCart className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-black text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <span>ระบบจัดซื้อ & สั่งซื้อพัสดุ (Purchasing & Orders Workspace)</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-full font-bold">
+                    เชื่อมระบบ BOM
+                  </span>
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                  จัดการใบขอซื้อ (PR/PO), ตะกร้าจัดซื้อพัสดุประกอบ และอัปเดตสต็อกนำเข้าอัตโนมัติ
+                </p>
+              </div>
+            </div>
+
+            {/* Subtabs Switcher */}
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl gap-1 shrink-0 text-xs font-bold w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setPurchasingSubTab('orders')}
+                className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  purchasingSubTab === 'orders'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs font-black'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                <span>📋 รายการขอจัดซื้อ (PR/PO Orders)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPurchasingSubTab('cart')}
+                className={`flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer relative ${
+                  purchasingSubTab === 'cart'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs font-black'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <ShoppingCart className="h-3.5 w-3.5" />
+                <span>🛒 ตะกร้าจัดซื้อพัสดุ</span>
+                {cartItems.length > 0 && (
+                  <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[9.5px] font-black rounded-full ml-1">
+                    {cartItems.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Subtab View Content */}
+          {purchasingSubTab === 'orders' ? (
+            <OrderingSystemView
+              products={products}
+              addToast={addToast}
+              onAdjustStock={onAdjustStock || (async () => {})}
+              preselectedProductId={purchasingPreselectedProductId}
+              onClearPreselectedProductId={() => setPurchasingPreselectedProductId('')}
+              employees={employees}
+              jobProjects={jobProjects}
+            />
+          ) : (
+            <ShoppingCartView
+              cartItems={cartItems}
+              setCartItems={setCartItems}
+              employees={employees}
+              jobProjects={jobProjects}
+              addToast={addToast}
+              setActiveSubTab={(sub) => setPurchasingSubTab(sub === 'cart' ? 'cart' : 'orders')}
+              boms={boms}
+              setBoms={setBoms}
+            />
+          )}
         </div>
       ) : (
         <div className="animate-in fade-in duration-150">
