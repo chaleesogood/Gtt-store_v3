@@ -1,3 +1,13 @@
+export interface CompanyProfile {
+  companyTh: string;
+  companyEn: string;
+  addressTh: string;
+  addressEn: string;
+  phone: string;
+  email: string;
+  logoUrl: string;
+}
+
 export interface Product {
   id: string;
   name: string;

@@ -22,7 +22,7 @@ import {
   QrCode
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
-import { Employee } from '../types';
+import { Employee, CompanyProfile } from '../types';
 
 interface BusinessCardModalProps {
   isOpen: boolean;
@@ -30,6 +30,7 @@ interface BusinessCardModalProps {
   employees: Employee[];
   selectedEmployee?: Employee | null;
   onEditEmployee?: (id: string, updatedFields: Partial<Employee>) => Promise<void>;
+  companyProfile?: CompanyProfile;
 }
 
 // Ultra-realistic SVG representation of the official GTT Logo
@@ -111,7 +112,8 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
   onClose,
   employees,
   selectedEmployee,
-  onEditEmployee
+  onEditEmployee,
+  companyProfile
 }) => {
   // Selected Employee State
   const [currentEmpId, setCurrentEmpId] = useState<string>(
@@ -142,6 +144,10 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
   );
   const [customLogoUrl, setCustomLogoUrl] = useState<string>('');
   const [theme, setTheme] = useState<'navy' | 'blue' | 'slate' | 'emerald'>('navy');
+
+  const displayLogoUrl = companyProfile?.logoUrl || customLogoUrl || activeEmp?.companyLogoUrl || '';
+  const displayCompanyTh = companyProfile?.companyTh || companyTh;
+  const displayCompanyEn = companyProfile?.companyEn || companyEn;
   
   // UI States
   const [isZoomed, setIsZoomed] = useState(false);
@@ -633,39 +639,22 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                 </div>
 
                 {/* Company Logo Upload Box */}
-                <div className="space-y-1 sm:col-span-2 p-3 bg-slate-100/70 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-4">
-                  <div className="relative h-14 w-14 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white shrink-0 flex items-center justify-center shadow-xs p-1">
-                    {customLogoUrl ? (
-                      <img src={customLogoUrl} alt="Company Logo" className="h-full w-full object-contain" />
+                <div className="space-y-1 sm:col-span-2 p-3 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-800/80 rounded-xl flex items-center gap-4">
+                  <div className="relative h-14 w-14 rounded-xl border border-indigo-300 dark:border-indigo-700 overflow-hidden bg-white shrink-0 flex items-center justify-center shadow-xs p-1">
+                    {displayLogoUrl ? (
+                      <img src={displayLogoUrl} alt="Company Logo" className="h-full w-full object-contain" />
                     ) : (
                       <GTTLogo className="h-10 w-auto object-contain" />
                     )}
                   </div>
                   <div className="flex-1 space-y-1">
                     <label className="text-xs font-black text-slate-800 dark:text-slate-200 block flex items-center gap-1">
-                      <ImageIcon className="h-3.5 w-3.5 text-indigo-600" />
-                      <span>รูปภาพโลโก้บริษัท (Company Logo)</span>
+                      <Building2 className="h-3.5 w-3.5 text-indigo-600" />
+                      <span>โลโก้บริษัท (ดึงมาจากระบบหลัก)</span>
                     </label>
-                    <p className="text-[10.5px] text-slate-500">ใช้โลโก้บริษัทที่กำหนดเอง หรือคืนค่าเป็นโลโก้ GTT มาตรฐาน</p>
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => logoInputRef.current?.click()}
-                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
-                      >
-                        <Upload className="h-3.5 w-3.5" />
-                        <span>{customLogoUrl ? 'เปลี่ยนรูปโลโก้' : 'อัปโหลดโลโก้บริษัท'}</span>
-                      </button>
-                      {customLogoUrl && (
-                        <button
-                          type="button"
-                          onClick={() => setCustomLogoUrl('')}
-                          className="px-2.5 py-1 bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-[11px] font-bold rounded-lg hover:bg-slate-300 transition-colors cursor-pointer"
-                        >
-                          คืนค่าเป็นโลโก้ GTT มาตรฐาน
-                        </button>
-                      )}
-                    </div>
+                    <p className="text-[10.5px] text-slate-500 leading-relaxed">
+                      โลโก้นี้เชื่อมโยงกับตั้งค่าองค์กรหลัก หากต้องการอัปโหลด/เปลี่ยนโลโก้บริษัท กรุณาไปที่เมนู <strong>"ตั้งค่า &gt; องค์กร &amp; โลโก้บริษัท"</strong> ด้านนอก
+                    </p>
                   </div>
                 </div>
 
@@ -716,8 +705,8 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                   
                   <div className="my-auto flex flex-col items-center text-center space-y-3">
                     {/* GTT Official / Custom Logo */}
-                    {customLogoUrl ? (
-                      <img src={customLogoUrl} alt="Company Logo" className="h-24 sm:h-28 w-auto object-contain" />
+                    {displayLogoUrl ? (
+                      <img src={displayLogoUrl} alt="Company Logo" className="h-24 sm:h-28 w-auto object-contain max-w-[180px]" />
                     ) : (
                       <div className="flex flex-col items-center">
                         <GTTLogo className="h-28 sm:h-32 w-auto object-contain drop-shadow-xs" />
@@ -727,10 +716,10 @@ export const BusinessCardModal: React.FC<BusinessCardModalProps> = ({
                     {/* Company Name below logo */}
                     <div className="pt-1 text-center">
                       <p className="text-[11px] sm:text-[12.5px] font-black text-slate-800 leading-tight">
-                        {companyTh}
+                        {displayCompanyTh}
                       </p>
                       <p className="text-[8.5px] sm:text-[9.5px] font-extrabold text-slate-500 tracking-wider uppercase mt-1">
-                        {companyEn}
+                        {displayCompanyEn}
                       </p>
                     </div>
                   </div>

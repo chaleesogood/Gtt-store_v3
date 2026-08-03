@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Job, Employee, JobProject, normalizeModules, Brand, UserRole, MediaFile } from '../types';
+import { Job, Employee, JobProject, normalizeModules, Brand, UserRole, MediaFile, CompanyProfile } from '../types';
 import { BusinessCardModal } from './BusinessCardModal';
 import { 
   FolderGit2, 
@@ -47,7 +47,8 @@ import {
   CheckCircle,
   GraduationCap,
   IdCard,
-  QrCode
+  QrCode,
+  Building2
 } from 'lucide-react';
 
 const getDeptBadgeStyle = (dept: string) => {
@@ -531,9 +532,12 @@ interface SettingsViewProps {
   onAddMediaFile?: (data: Omit<MediaFile, 'id' | 'createdAt'>) => Promise<MediaFile>;
   onEditMediaFile?: (id: string, updatedFields: Partial<MediaFile>) => Promise<void>;
   onDeleteMediaFile?: (id: string) => Promise<void>;
+
+  companyProfile?: CompanyProfile;
+  onUpdateCompanyProfile?: (profile: CompanyProfile) => Promise<void> | void;
 }
 
-type SubTab = 'projects' | 'employees' | 'brands' | 'media' | 'database';
+type SubTab = 'company' | 'projects' | 'employees' | 'brands' | 'media' | 'database';
 
 export default function SettingsView({
   employees,
@@ -568,9 +572,61 @@ export default function SettingsView({
   mediaFiles = [],
   onAddMediaFile,
   onEditMediaFile,
-  onDeleteMediaFile
+  onDeleteMediaFile,
+  companyProfile,
+  onUpdateCompanyProfile
 }: SettingsViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<SubTab>('projects');
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>('company');
+
+  // Company Profile Form States
+  const [companyThForm, setCompanyThForm] = useState(companyProfile?.companyTh || 'บริษัท โกลบอล ทรานซิส เทคโนโลยี จำกัด');
+  const [companyEnForm, setCompanyEnForm] = useState(companyProfile?.companyEn || 'GLOBAL TRANSYS TECHNOLOGY CO., LTD.');
+  const [addressThForm, setAddressThForm] = useState(companyProfile?.addressTh || 'บริษัท โกลบอล ทรานซิส เทคโนโลยี จำกัด(สำนักงานใหญ่)\n68/253 หมู่ที่ 5 ตำบลลาดสวาย อำเภอลำลูกกา\nจังหวัดปทุมธานี 12150');
+  const [addressEnForm, setAddressEnForm] = useState(companyProfile?.addressEn || 'GLOBAL TRANSYS TECHNOLOGY CO., LTD.\n68/253 Moo 5 Ladsawai, Lamlukka, Pathumthani 12150\nTel. 02-153-8834  เลขประจำตัวผู้เสียภาษี 0-1355-56013-09-7');
+  const [phoneForm, setPhoneForm] = useState(companyProfile?.phone || '080-430-6887');
+  const [emailForm, setEmailForm] = useState(companyProfile?.email || 'globaltransystechnology@gmail.com\nchalee@gtt2013.com');
+  const [companyLogoUrl, setCompanyLogoUrl] = useState(companyProfile?.logoUrl || '');
+  const [isSavingCompanyProfile, setIsSavingCompanyProfile] = useState(false);
+
+  useEffect(() => {
+    if (companyProfile) {
+      setCompanyThForm(companyProfile.companyTh || 'บริษัท โกลบอล ทรานซิส เทคโนโลยี จำกัด');
+      setCompanyEnForm(companyProfile.companyEn || 'GLOBAL TRANSYS TECHNOLOGY CO., LTD.');
+      setAddressThForm(companyProfile.addressTh || '');
+      setAddressEnForm(companyProfile.addressEn || '');
+      setPhoneForm(companyProfile.phone || '');
+      setEmailForm(companyProfile.email || '');
+      setCompanyLogoUrl(companyProfile.logoUrl || '');
+    }
+  }, [companyProfile]);
+
+  const handleSaveCompanyProfileForm = async () => {
+    if (!onUpdateCompanyProfile) return;
+    setIsSavingCompanyProfile(true);
+    try {
+      await onUpdateCompanyProfile({
+        companyTh: companyThForm.trim(),
+        companyEn: companyEnForm.trim(),
+        addressTh: addressThForm.trim(),
+        addressEn: addressEnForm.trim(),
+        phone: phoneForm.trim(),
+        email: emailForm.trim(),
+        logoUrl: companyLogoUrl
+      });
+      if (addToast) {
+        addToast('success', 'บันทึกโลโก้และข้อมูลองค์กรสำเร็จ', 'ระบบอัปเดตโลโก้ไปยังทุกหน้าเว็บบอร์ดและนามบัตรพนักงานแล้ว');
+      } else {
+        alert('บันทึกข้อมูลองค์กรและโลโก้บริษัทสำเร็จ!');
+      }
+    } catch (err) {
+      console.warn("Save company profile error:", err);
+      if (addToast) {
+        addToast('error', 'บันทึกข้อมูลไม่สำเร็จ', 'เกิดข้อผิดพลาดในการบันทึกลงฐานข้อมูล');
+      }
+    } finally {
+      setIsSavingCompanyProfile(false);
+    }
+  };
 
   // Browser cache diagnostics and recovery states
   const [scannedGroups, setScannedGroups] = useState<Record<string, Record<string, any[]>>>({});
@@ -1245,7 +1301,19 @@ export default function SettingsView({
         </div>
 
         {/* Tab Controls */}
-        <div className="flex bg-slate-800/80 p-0.5 rounded gap-1 shrink-0 z-10">
+        <div className="flex bg-slate-800/80 p-0.5 rounded gap-1 shrink-0 z-10 flex-wrap">
+          <button
+            onClick={() => setActiveSubTab('company')}
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
+              activeSubTab === 'company' 
+                ? 'bg-indigo-600 text-white shadow-3xs' 
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            id="settings-tab-company"
+          >
+            <Building2 className="h-3 w-3 text-indigo-300" />
+            <span>องค์กร &amp; โลโก้บริษัท</span>
+          </button>
           <button
             onClick={() => setActiveSubTab('projects')}
             className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
@@ -1308,6 +1376,195 @@ export default function SettingsView({
           </button>
         </div>
       </div>
+
+      {/* ======================================================================= */}
+      {/* ==================== TAB 0: COMPANY PROFILE & LOGO ==================== */}
+      {/* ======================================================================= */}
+      {activeSubTab === 'company' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xs space-y-6">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-2xl border border-indigo-100 dark:border-indigo-900/50">
+                  <Building2 className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800 dark:text-slate-100 font-sans">
+                    ข้อมูลองค์กร &amp; โลโก้บริษัท (Company Profile &amp; Logo)
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    จัดการโลโก้ทางการและข้อมูลบริษัท ซึ่งจะแสดงผลบนแถบเว็บไซต์หลัก และนามบัตรพนักงานทุกใบในระบบ
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveCompanyProfileForm}
+                disabled={isSavingCompanyProfile}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-black text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                <span>{isSavingCompanyProfile ? 'กำลังบันทึก...' : 'บันทึกตั้งค่าองค์กร'}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              {/* Left Col: Logo Upload Box */}
+              <div className="md:col-span-1 space-y-4 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col items-center text-center">
+                <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <Camera className="h-4 w-4 text-indigo-500" />
+                  โลโก้บริษัททางการ (Official Logo)
+                </h4>
+
+                {/* Logo Preview Box */}
+                <div className="relative h-36 w-36 rounded-2xl border-2 border-indigo-500/20 dark:border-indigo-500/30 overflow-hidden bg-white shadow-md flex items-center justify-center p-3 group">
+                  {companyLogoUrl ? (
+                    <img src={companyLogoUrl} alt="Company Logo" className="h-full w-full object-contain" />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-slate-400 p-2">
+                      <Building2 className="h-10 w-10 mb-1 text-slate-300" />
+                      <span className="text-[10px] font-extrabold text-slate-400">โลโก้มาตรฐาน GTT</span>
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-slate-500 leading-relaxed px-2">
+                  ไฟล์ที่รองรับ: .png, .jpg, .svg, .webp (แนะนำรูปทรงสี่เหลี่ยม หรือพื้นหลังโปร่งใส)
+                </p>
+
+                <div className="flex flex-col w-full gap-2 pt-1">
+                  <label className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5">
+                    <Upload className="h-4 w-4" />
+                    <span>{companyLogoUrl ? 'เปลี่ยนรูปโลโก้บริษัท' : 'อัปโหลดรูปโลโก้บริษัท'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setCompanyLogoUrl(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </label>
+
+                  {companyLogoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setCompanyLogoUrl('')}
+                      className="w-full py-1.5 px-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                    >
+                      คืนค่าเป็นโลโก้ GTT มาตรฐาน
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Col: Details Form */}
+              <div className="md:col-span-2 space-y-4">
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1 sm:col-span-1">
+                    <label className="text-xs font-black text-slate-700 dark:text-slate-300 block">
+                      ชื่อบริษัท / องค์กร (ภาษาไทย)
+                    </label>
+                    <input
+                      type="text"
+                      value={companyThForm}
+                      onChange={(e) => setCompanyThForm(e.target.value)}
+                      placeholder="เช่น บริษัท โกลบอล ทรานซิส เทคโนโลยี จำกัด"
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-1">
+                    <label className="text-xs font-black text-slate-700 dark:text-slate-300 block">
+                      Company Name (English)
+                    </label>
+                    <input
+                      type="text"
+                      value={companyEnForm}
+                      onChange={(e) => setCompanyEnForm(e.target.value)}
+                      placeholder="e.g. GLOBAL TRANSYS TECHNOLOGY CO., LTD."
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-black text-slate-700 dark:text-slate-300 block">
+                      ที่อยู่บริษัท (ภาษาไทย) - สำหรับนามบัตรและเอกสาร
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={addressThForm}
+                      onChange={(e) => setAddressThForm(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-black text-slate-700 dark:text-slate-300 block">
+                      Address &amp; Tax ID (English)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={addressEnForm}
+                      onChange={(e) => setAddressEnForm(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-1">
+                    <label className="text-xs font-black text-slate-700 dark:text-slate-300 block">
+                      เบอร์โทรศัพท์กลาง / สำนักงาน
+                    </label>
+                    <input
+                      type="text"
+                      value={phoneForm}
+                      onChange={(e) => setPhoneForm(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-1">
+                    <label className="text-xs font-black text-slate-700 dark:text-slate-300 block">
+                      อีเมลติดต่อกลาง
+                    </label>
+                    <input
+                      type="text"
+                      value={emailForm}
+                      onChange={(e) => setEmailForm(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSaveCompanyProfileForm}
+                    disabled={isSavingCompanyProfile}
+                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>{isSavingCompanyProfile ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลงทั้งหมด'}</span>
+                  </button>
+                </div>
+
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ======================================================================= */}
       {/* ======================= TAB 1: MASTER PROJECTS ======================== */}
@@ -4851,6 +5108,7 @@ export default function SettingsView({
         employees={employees}
         selectedEmployee={selectedEmpForCard}
         onEditEmployee={onEditEmployee}
+        companyProfile={companyProfile}
       />
 
     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand, MediaFile, sortProducts } from './types';
+import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand, MediaFile, CompanyProfile, sortProducts } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_ACTIVITIES } from './initialData';
 import Toast, { ToastMessage } from './components/Toast';
 import DashboardView from './components/DashboardView';
@@ -95,6 +95,21 @@ export default function App() {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>(() => {
     const saved = window.localStorage.getItem('stock_manager_media_files_list');
     return saved ? JSON.parse(saved) : [];
+  });
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile>(() => {
+    const saved = localStorage.getItem('stock_manager_company_profile');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return {
+      companyTh: 'บริษัท โกลบอล ทรานซิส เทคโนโลยี จำกัด',
+      companyEn: 'GLOBAL TRANSYS TECHNOLOGY CO., LTD.',
+      addressTh: 'บริษัท โกลบอล ทรานซิส เทคโนโลยี จำกัด(สำนักงานใหญ่)\n68/253 หมู่ที่ 5 ตำบลลาดสวาย อำเภอลำลูกกา\nจังหวัดปทุมธานี 12150',
+      addressEn: 'GLOBAL TRANSYS TECHNOLOGY CO., LTD.\n68/253 Moo 5 Ladsawai, Lamlukka, Pathumthani 12150\nTel. 02-153-8834  เลขประจำตัวผู้เสียภาษี 0-1355-56013-09-7',
+      phone: '080-430-6887',
+      email: 'globaltransystechnology@gmail.com\nchalee@gtt2013.com',
+      logoUrl: ''
+    };
   });
   const [isSyncComplete, setIsSyncComplete] = useState<boolean>(true);
   const [isSavingAllToDb, setIsSavingAllToDb] = useState<boolean>(false);
@@ -919,6 +934,34 @@ export default function App() {
       }
     };
   }, []);
+
+  // Real-time Company Profile / Logo sync from Firestore
+  useEffect(() => {
+    const companyProfileRef = doc(db, 'settings', 'company_profile');
+    const unsubscribe = onSnapshot(companyProfileRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as CompanyProfile;
+        if (data) {
+          setCompanyProfile(data);
+          localStorage.setItem('stock_manager_company_profile', JSON.stringify(data));
+        }
+      }
+    }, (error) => {
+      console.warn("Company profile listener warning:", error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleUpdateCompanyProfile = async (newProfile: CompanyProfile) => {
+    setCompanyProfile(newProfile);
+    localStorage.setItem('stock_manager_company_profile', JSON.stringify(newProfile));
+    try {
+      await setDoc(doc(db, 'settings', 'company_profile'), cleanUndefined(newProfile), { merge: true });
+      addToast('success', 'บันทึกข้อมูลองค์กรเรียบร้อย', 'อัปเดตโลโก้และข้อมูลบริษัทสำเร็จแล้ว โลโก้ใหม่จะแสดงบนระบบและนามบัตรทั้งหมด');
+    } catch (err: any) {
+      console.warn("Firestore company_profile save warning:", err);
+    }
+  };
 
   // Fetch user_roles list for all signed in users so user roles count & list is accurate
   useEffect(() => {
@@ -3155,6 +3198,8 @@ export default function App() {
             onEditJobProject={handleEditJobProject}
             onDeleteJobProject={handleDeleteJobProject}
             employees={employees}
+            currentUserRole={currentUserRole}
+            userRoles={userRoles}
             
             jobs={jobs}
             onAddJob={handleAddJob}
@@ -3236,6 +3281,8 @@ export default function App() {
             onAddMediaFile={handleAddMediaFile}
             onEditMediaFile={handleEditMediaFile}
             onDeleteMediaFile={handleDeleteMediaFile}
+            companyProfile={companyProfile}
+            onUpdateCompanyProfile={handleUpdateCompanyProfile}
           />
         );
       case 'catalog':
@@ -3515,7 +3562,11 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4 antialiased">
         <div className="text-center space-y-4">
-          <Logo className="h-16 w-16 mx-auto animate-bounce text-indigo-500" size={64} />
+          {companyProfile.logoUrl ? (
+            <img src={companyProfile.logoUrl} alt="Company Logo" className="h-16 w-16 mx-auto object-contain rounded-2xl bg-white p-1.5 shadow-xl animate-bounce" />
+          ) : (
+            <Logo className="h-16 w-16 mx-auto animate-bounce text-indigo-500" size={64} />
+          )}
           <p className="text-sm text-indigo-400 font-mono tracking-widest uppercase">กำลังเชื่อมต่อระบบคลัง GTT EE STORE...</p>
         </div>
       </div>
@@ -3528,7 +3579,11 @@ export default function App() {
         <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-8 space-y-6 animate-in fade-in zoom-in-95 duration-300">
           <div className="text-center space-y-3">
             <div className="flex justify-center">
-              <Logo className="h-16 w-16" size={64} />
+              {companyProfile.logoUrl ? (
+                <img src={companyProfile.logoUrl} alt="Company Logo" className="h-16 w-16 object-contain rounded-2xl bg-white p-1.5 shadow-xl" />
+              ) : (
+                <Logo className="h-16 w-16" size={64} />
+              )}
             </div>
             <div className="space-y-1">
               <h1 className="text-xl font-black text-white font-sans tracking-wide">GTT EE STORE</h1>
@@ -3770,7 +3825,11 @@ export default function App() {
         <div className="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 animate-in fade-in zoom-in-95 duration-300">
           <div className="text-center space-y-3">
             <div className="flex justify-center">
-              <Logo className="h-16 w-16 text-indigo-500" size={64} />
+              {companyProfile.logoUrl ? (
+                <img src={companyProfile.logoUrl} alt="Company Logo" className="h-16 w-16 object-contain rounded-2xl bg-white p-1.5 shadow-xl" />
+              ) : (
+                <Logo className="h-16 w-16 text-indigo-500" size={64} />
+              )}
             </div>
             <div className="space-y-1">
               <h1 className="text-xl font-black text-white font-sans tracking-wide">GTT EE STORE PLATFORM</h1>
@@ -3934,7 +3993,11 @@ export default function App() {
       <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-slate-300 border-r border-slate-800 flex-shrink-0 z-20">
         {/* Brand / Logo */}
         <div className="p-6 border-b border-slate-800/80 flex items-center gap-3">
-          <Logo className="h-10 w-10 flex-shrink-0" size={40} />
+          {companyProfile.logoUrl ? (
+            <img src={companyProfile.logoUrl} alt="Company Logo" className="h-10 w-10 object-contain rounded-xl shrink-0 bg-white p-0.5 shadow-xs border border-slate-700" />
+          ) : (
+            <Logo className="h-10 w-10 flex-shrink-0" size={40} />
+          )}
           <div>
             <h1 className="font-extrabold text-sm text-white tracking-wide font-sans">GTT EE STORE</h1>
             <p className="text-[10px] text-slate-500 font-sans tracking-widest uppercase">Inventory Real-time</p>
@@ -4060,7 +4123,11 @@ export default function App() {
       {/* -------------------- MOBILE HEADER & MENU -------------------- */}
       <header className="md:hidden bg-slate-900 text-slate-200 py-4 px-5 flex items-center justify-between border-b border-slate-800 sticky top-0 z-30">
         <div className="flex items-center gap-2">
-          <Logo className="h-8 w-8 flex-shrink-0" size={32} />
+          {companyProfile.logoUrl ? (
+            <img src={companyProfile.logoUrl} alt="Company Logo" className="h-8 w-8 object-contain rounded-lg shrink-0 bg-white p-0.5 shadow-xs border border-slate-700" />
+          ) : (
+            <Logo className="h-8 w-8 flex-shrink-0" size={32} />
+          )}
           <div>
             <span className="font-bold text-xs tracking-wide text-white block leading-none mb-0.5">GTT EE STORE</span>
             {currentUser ? (

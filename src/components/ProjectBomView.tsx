@@ -540,6 +540,8 @@ export default function ProjectBomView({
   onEditJobProject,
   onDeleteJobProject,
   employees = [],
+  currentUserRole,
+  userRoles = [],
 
   // Job assignment & daily reports props
   jobs = [],
@@ -573,8 +575,11 @@ export default function ProjectBomView({
   const [selectedBom, setSelectedBom] = useState<Bom | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [selectorViewMode, setSelectorViewMode] = useState<'vertical_grid' | 'horizontal'>('vertical_grid');
   const [isDeducting, setIsDeducting] = useState(false);
   const [isAddFormOpen, setIsAddFormOpen] = useState(false);
+  const [isModulesManagerOpen, setIsModulesManagerOpen] = useState(false);
 
   // New BOM creation states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -707,8 +712,10 @@ export default function ProjectBomView({
   const getBomGroups = (bom: Bom) => {
     const list = new Set<string>();
     bom.items.forEach(item => {
-      const g = item.group || 'โมดูลทั่วไป';
-      if (g && g !== 'ทั่วไป' && g !== 'โมดูลทั่วไป') {
+      const rawG = (item.group || '').trim();
+      if (!rawG) return;
+      const g = (rawG === 'ทั่วไป' || rawG === 'โมดูลทั่วไป' || rawG === 'General') ? 'โมดูลทั่วไป' : rawG;
+      if (g !== 'โมดูลทั่วไป') {
         list.add(g);
       }
     });
@@ -1092,16 +1099,20 @@ export default function ProjectBomView({
   };
 
   const handleDeleteBom = async (targetBom: Bom) => {
-    if (!confirm(`คุณแน่ใจว่าต้องการลบใบงาน BOM "${targetBom.name}" หรือไม่? ข้อมูลทั้งหมดจะถูกลบ`)) return;
+    const isAdmin = !currentUserRole || currentUserRole === 'admin';
+    const rolePrefix = isAdmin ? '🛡️ [สิทธิ์ ADMIN]' : '';
+    if (!confirm(`${rolePrefix} คุณแน่ใจว่าต้องการลบสูตรใบงาน BOM "${targetBom.name}" (Job No: ${targetBom.jobNo || 'ไม่ระบุ'}) ออกจากระบบถาวรหรือไม่?\n\nข้อมูลพัสดุประกอบ ชิ้นส่วน และสถิติทั้งหมดใน BOM นี้จะถูกลบออกเรียบร้อย`)) return;
 
     updateLocalBoms(prev => prev.filter(b => b.id !== targetBom.id));
 
     try {
       await deleteDoc(doc(db, 'boms', targetBom.id));
-      addToast('info', 'ลบใบงานสำเร็จ', `นำข้อมูล BOM ${targetBom.name} ออกจากระบบเรียบร้อย`);
-      setSelectedBom(null);
+      addToast('info', 'ลบสูตร BOM สำเร็จ', `นำข้อมูล BOM ${targetBom.name} (Job: ${targetBom.jobNo || '-'}) ออกจากระบบเรียบร้อยแล้ว`);
+      if (selectedBom?.id === targetBom.id) {
+        setSelectedBom(null);
+      }
     } catch (err: any) {
-      addToast('warning', 'ผิดพลาด', err.message);
+      addToast('warning', 'เกิดข้อผิดพลาดในการลบ BOM', err.message);
     }
   };
 
@@ -1313,7 +1324,8 @@ export default function ProjectBomView({
                           (b.description && b.description.toLowerCase().includes(searchQuery.toLowerCase()));
     
     const matchesStatus = statusFilter === 'all' || b.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesProject = projectFilter === 'all' || b.jobNo === projectFilter;
+    return matchesSearch && matchesStatus && matchesProject;
   });
 
   return (
@@ -1416,9 +1428,9 @@ export default function ProjectBomView({
 
           {/* BOM List Controls Bar (Inline horizontal filters & Search) */}
           <div className="bg-white dark:bg-slate-900 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-3xs flex flex-col md:flex-row items-center justify-between gap-3 text-xs font-sans">
-            <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
               {/* Search Bar */}
-              <div className="relative w-full sm:w-64">
+              <div className="relative w-full sm:w-56">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                 <input
                   type="text"
@@ -1428,6 +1440,20 @@ export default function ProjectBomView({
                   className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-sans text-slate-800 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
+
+              {/* Project Filter Dropdown */}
+              <select
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value)}
+                className="w-full sm:w-auto bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-hidden cursor-pointer"
+              >
+                <option value="all">📁 ทุกโปรเจกต์ ({jobProjects.length})</option>
+                {jobProjects.map(p => (
+                  <option key={p.id} value={p.jobNo}>
+                    {p.jobNo} - {p.projectName}
+                  </option>
+                ))}
+              </select>
 
               {/* Status Filter Dropdown */}
               <select
@@ -1443,18 +1469,46 @@ export default function ProjectBomView({
               </select>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+            {/* View Mode & Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+              {/* View Mode Toggle */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700">
+                <button
+                  onClick={() => setSelectorViewMode('vertical_grid')}
+                  className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                    selectorViewMode === 'vertical_grid'
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs font-black'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                  title="มองเห็นทุกโปรเจ็คแบบแนวตั้ง"
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  <span>แนวตั้ง (ทุกโปรเจกต์)</span>
+                </button>
+                <button
+                  onClick={() => setSelectorViewMode('horizontal')}
+                  className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                    selectorViewMode === 'horizontal'
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs font-black'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                  title="แสดงแถวสไลด์แนวนอน"
+                >
+                  <Boxes className="h-3.5 w-3.5" />
+                  <span>แนวนอน</span>
+                </button>
+              </div>
+
               <button
                 onClick={handleOpenNewAssignJob}
-                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black cursor-pointer flex items-center gap-1.5 transition-all active:scale-95 shadow-xs"
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black cursor-pointer flex items-center gap-1.5 transition-all active:scale-95 shadow-xs"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>สร้างใบงาน</span>
               </button>
               <button
                 onClick={() => setIsCreateModalOpen(true)}
-                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black cursor-pointer flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-indigo-600/15"
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black cursor-pointer flex items-center gap-1.5 transition-all active:scale-95 shadow-md shadow-indigo-600/15"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>สร้าง BOM ใหม่</span>
@@ -1462,66 +1516,270 @@ export default function ProjectBomView({
             </div>
           </div>
 
-          {/* Horizontal scrollable BOM Selector row */}
-          <div className="bg-slate-50/50 dark:bg-slate-900/50 p-2 rounded-2xl border border-slate-200/60 dark:border-slate-800 flex items-center gap-2 overflow-x-auto scrollbar-thin">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider shrink-0 px-2 font-sans flex items-center gap-1">
-              <Boxes className="h-3.5 w-3.5 text-indigo-500" />
-              <span>เลือกใบงาน BOM:</span>
-            </span>
-            {filteredBoms.length === 0 ? (
-              <span className="text-xs text-slate-400 italic px-2">ไม่พบรายการ BOM</span>
-            ) : (
-              filteredBoms.map(bom => {
-                const isActive = activeBom?.id === bom.id;
-                const financials = getBomFinancials(bom);
-                const matchingProject = jobProjects?.find(p => p.jobNo === bom.jobNo);
-                return (
-                  <button
-                    key={bom.id}
-                    onClick={() => setSelectedBom(bom)}
-                    className={`px-3 py-2 rounded-xl border text-xs font-sans font-bold shrink-0 transition-all cursor-pointer flex items-center gap-2.5 ${
-                      isActive 
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20 font-black' 
-                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-200'
-                    }`}
-                  >
-                    {/* Brand Logo & Job Image */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      {matchingProject?.projectImageUrl ? (
-                        <img 
-                          src={matchingProject.projectImageUrl} 
-                          alt={bom.jobNo} 
-                          className="w-5 h-5 object-cover rounded-md border border-white/20 shrink-0 bg-white" 
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${isActive ? 'bg-indigo-500/30' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                          <FolderGit2 className={`h-3 w-3 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+          {/* BOM & Projects Selector Container */}
+          {selectorViewMode === 'vertical_grid' ? (
+            /* VERTICAL ALL-PROJECTS GRID VIEW */
+            <div className="bg-slate-50/70 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-3 max-h-[460px] overflow-y-auto scrollbar-thin text-left font-sans">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[11px] font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <Layers className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>มองเห็นทุกโปรเจกต์ & BOM แบบแนวตั้ง ({jobProjects.length} โครงการ)</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-bold">
+                  แสดงสูตรประกอบที่พบ: <strong className="text-indigo-600">{filteredBoms.length}</strong> รายการ
+                </span>
+              </div>
+
+              {jobProjects.length === 0 && filteredBoms.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs italic bg-white dark:bg-slate-900 rounded-xl border border-slate-200/60">
+                  ไม่พบข้อมูลโปรเจกต์หรือสูตร BOM
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {/* Group BOMs under Job Projects */}
+                  {jobProjects
+                    .filter(proj => projectFilter === 'all' || proj.jobNo === projectFilter)
+                    .map(proj => {
+                      const projBoms = filteredBoms.filter(b => b.jobNo === proj.jobNo);
+                      return (
+                        <div 
+                          key={proj.id}
+                          className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 shadow-3xs hover:border-indigo-300 dark:hover:border-indigo-700 transition-all flex flex-col justify-between space-y-2.5"
+                        >
+                          {/* Project Card Header */}
+                          <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {proj.projectImageUrl ? (
+                                <img 
+                                  src={proj.projectImageUrl} 
+                                  alt={proj.jobNo} 
+                                  className="w-8 h-8 object-cover rounded-lg border border-slate-200 shrink-0 bg-slate-50" 
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900 flex items-center justify-center shrink-0">
+                                  <FolderGit2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                                </div>
+                              )}
+                              <div className="min-w-0 text-left">
+                                <span className="font-mono text-[9.5px] font-black px-1.5 py-0.2 bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 rounded border border-indigo-100 dark:border-indigo-900 inline-block">
+                                  {proj.jobNo}
+                                </span>
+                                <h4 className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate mt-0.5">
+                                  {proj.projectName}
+                                </h4>
+                                <span className="text-[10px] text-slate-400 block truncate">
+                                  ลูกค้า: {proj.customer || 'ไม่ระบุ'}
+                                </span>
+                              </div>
+                            </div>
+                            <span className="text-[9.5px] font-black px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full shrink-0">
+                              {projBoms.length} BOM
+                            </span>
+                          </div>
+
+                          {/* BOM Sheets linked under this project */}
+                          <div className="space-y-1.5 flex-1 min-h-[40px]">
+                            {projBoms.length === 0 ? (
+                              <div className="py-2 text-center text-[10.5px] text-slate-400 italic bg-slate-50 dark:bg-slate-950 rounded-lg">
+                                ยังไม่มีสูตร BOM สำหรับโปรเจกต์นี้
+                              </div>
+                            ) : (
+                              projBoms.map(bom => {
+                                const isActive = activeBom?.id === bom.id;
+                                const financials = getBomFinancials(bom);
+                                return (
+                                  <div
+                                    key={bom.id}
+                                    onClick={() => setSelectedBom(bom)}
+                                    className={`p-2 rounded-lg border text-xs font-sans transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                      isActive
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-black'
+                                        : 'bg-slate-50/80 dark:bg-slate-950 border-slate-200/80 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200'
+                                    }`}
+                                  >
+                                    <div className="min-w-0 text-left flex-1">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="truncate font-extrabold text-[11px]">{bom.name}</span>
+                                        <span className={`text-[8px] font-bold px-1 rounded ${
+                                          isActive ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                                        }`}>
+                                          {getStatusThaiLabel(bom.status).split(' ')[0]}
+                                        </span>
+                                      </div>
+                                      <span className={`text-[10px] font-mono font-bold block mt-0.5 ${isActive ? 'text-indigo-100' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                        ฿{(financials?.totalCost || 0).toLocaleString('th-TH')}
+                                      </span>
+                                    </div>
+
+                                    {/* Action ADMIN Delete on BOM card */}
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteBom(bom);
+                                        }}
+                                        className={`p-1 rounded transition-colors cursor-pointer ${
+                                          isActive
+                                            ? 'text-white/80 hover:text-white hover:bg-rose-500/80'
+                                            : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950'
+                                        }`}
+                                        title="ลบรายการ BOM ใบนี้ (สิทธิ์ ADMIN)"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          {/* Add BOM shortcut for this job */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewBomJobNo(proj.jobNo);
+                              setIsCreateModalOpen(true);
+                            }}
+                            className="w-full py-1 bg-slate-50 hover:bg-indigo-50 dark:bg-slate-950 dark:hover:bg-indigo-950 text-slate-600 hover:text-indigo-700 dark:text-slate-400 dark:hover:text-indigo-300 rounded-lg text-[10px] font-bold border border-slate-200/60 dark:border-slate-800 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="h-3 w-3" />
+                            <span>เพิ่ม BOM สำหรับ {proj.jobNo}</span>
+                          </button>
                         </div>
-                      )}
+                      );
+                    })}
+
+                  {/* Render Unassigned BOMs if any */}
+                  {(() => {
+                    const unassignedBoms = filteredBoms.filter(b => !jobProjects.some(p => p.jobNo === b.jobNo));
+                    if (unassignedBoms.length === 0) return null;
+                    return (
+                      <div className="bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-3 shadow-3xs space-y-2">
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                          <span className="font-mono text-xs font-black text-amber-600 dark:text-amber-400">
+                            BOM อิสระ (ไม่ระบุ Job No)
+                          </span>
+                          <span className="text-[9.5px] font-black px-2 py-0.5 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 rounded-full">
+                            {unassignedBoms.length} BOM
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {unassignedBoms.map(bom => {
+                            const isActive = activeBom?.id === bom.id;
+                            const financials = getBomFinancials(bom);
+                            return (
+                              <div
+                                key={bom.id}
+                                onClick={() => setSelectedBom(bom)}
+                                className={`p-2 rounded-lg border text-xs font-sans transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                  isActive
+                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-black'
+                                    : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:bg-slate-100 text-slate-800 dark:text-slate-200'
+                                }`}
+                              >
+                                <div className="min-w-0 text-left flex-1">
+                                  <span className="truncate font-bold text-[11px] block">{bom.name}</span>
+                                  <span className={`text-[10px] font-mono font-bold block ${isActive ? 'text-indigo-100' : 'text-emerald-600'}`}>
+                                    ฿{(financials?.totalCost || 0).toLocaleString('th-TH')}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteBom(bom);
+                                  }}
+                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                                  title="ลบ BOM ใบนี้ (สิทธิ์ ADMIN)"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* HORIZONTAL SCROLLABLE ROW */
+            <div className="bg-slate-50/50 dark:bg-slate-900/50 p-2 rounded-2xl border border-slate-200/60 dark:border-slate-800 flex items-center gap-2 overflow-x-auto scrollbar-thin font-sans">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider shrink-0 px-2 flex items-center gap-1">
+                <Boxes className="h-3.5 w-3.5 text-indigo-500" />
+                <span>เลือกใบงาน BOM:</span>
+              </span>
+              {filteredBoms.length === 0 ? (
+                <span className="text-xs text-slate-400 italic px-2">ไม่พบรายการ BOM</span>
+              ) : (
+                filteredBoms.map(bom => {
+                  const isActive = activeBom?.id === bom.id;
+                  const financials = getBomFinancials(bom);
+                  const matchingProject = jobProjects?.find(p => p.jobNo === bom.jobNo);
+                  return (
+                    <div
+                      key={bom.id}
+                      onClick={() => setSelectedBom(bom)}
+                      className={`px-3 py-2 rounded-xl border text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-2.5 ${
+                        isActive 
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20 font-black' 
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-200'
+                      }`}
+                    >
+                      {/* Brand Logo & Job Image */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {matchingProject?.projectImageUrl ? (
+                          <img 
+                            src={matchingProject.projectImageUrl} 
+                            alt={bom.jobNo} 
+                            className="w-5 h-5 object-cover rounded-md border border-white/20 shrink-0 bg-white" 
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${isActive ? 'bg-indigo-500/30' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                            <FolderGit2 className={`h-3 w-3 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                          </div>
+                        )}
+                      </div>
+                      
+                      <span className={`font-mono text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400'
+                      }`}>
+                        {bom.jobNo || 'NO JOB'}
+                      </span>
+                      <span className="truncate max-w-[130px]">{bom.name}</span>
+                      <span className={`text-[10px] font-mono font-black ${isActive ? 'text-indigo-100' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        ฿{(financials?.totalCost || 0).toLocaleString('th-TH')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteBom(bom);
+                        }}
+                        className={`p-1 rounded hover:bg-rose-500/20 transition-colors ml-1 ${isActive ? 'text-white/80 hover:text-white' : 'text-slate-400 hover:text-rose-600'}`}
+                        title="ลบ BOM ใบนี้ (สิทธิ์ ADMIN)"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
                     </div>
-                    
-                    <span className={`font-mono text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
-                      isActive ? 'bg-white/20 text-white' : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400'
-                    }`}>
-                      {bom.jobNo || 'NO JOB'}
-                    </span>
-                    <span className="truncate max-w-[130px] font-sans">{bom.name}</span>
-                    <span className={`text-[10px] font-mono font-black ${isActive ? 'text-indigo-100' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      ฿{(financials?.totalCost || 0).toLocaleString('th-TH')}
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </div>
+                  );
+                })
+              )}
+            </div>
+          )}
 
           {/* Core spreadsheet workspace when BOM selected */}
           {activeBom ? (
-            <div className="space-y-3.5 animate-in fade-in duration-150">
+            <div className="space-y-3.5 animate-in fade-in duration-150 font-sans">
               
               {/* Selected BOM Meta Panel (Flat & Dense) */}
-              <div className="bg-slate-50/40 p-2.5 rounded-lg border border-slate-100 text-[11px] font-sans space-y-2">
+              <div className="bg-slate-50/40 p-2.5 rounded-lg border border-slate-100 text-[11px] space-y-2">
                 <div className="flex items-center justify-between gap-2 flex-wrap border-b border-slate-100 pb-1.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-mono text-[9px] font-black px-1.5 bg-slate-200 text-slate-700 rounded">{activeBom.jobNo || 'NO JOB'}</span>
@@ -1536,6 +1794,19 @@ export default function ProjectBomView({
 
                   {/* Actions buttons */}
                   <div className="flex items-center gap-1 shrink-0 ml-auto">
+                    {activeProject && (
+                      <button
+                        onClick={() => setIsModulesManagerOpen(!isModulesManagerOpen)}
+                        className={`px-1.5 py-0.5 border rounded font-bold text-[9.5px] flex items-center gap-1 transition-all ${
+                          isModulesManagerOpen
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                        }`}
+                      >
+                        <FolderGit2 className="h-3 w-3" />
+                        <span>โมดูลโครงการ ({projectModules.length})</span>
+                      </button>
+                    )}
                     <button
                       onClick={handleOpenEditModal}
                       className="p-0.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-200/80 rounded border border-slate-200/60 bg-slate-100"
@@ -1571,9 +1842,11 @@ export default function ProjectBomView({
                     )}
                     <button
                       onClick={() => handleDeleteBom(activeBom)}
-                      className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-slate-200/80 rounded border border-slate-200/60 bg-slate-100"
+                      className="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 dark:border-rose-900 rounded font-black text-[9.5px] flex items-center gap-1 transition-all cursor-pointer shadow-2xs hover:scale-105"
+                      title="ลบสูตร BOM ใบนี้ (สิทธิ์ ADMIN)"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3 w-3 text-rose-600" />
+                      <span>ลบ BOM (ADMIN)</span>
                     </button>
                   </div>
                 </div>
@@ -1640,6 +1913,30 @@ export default function ProjectBomView({
                     </div>
                   );
                 })()}
+
+                {/* Collapsible Project Modules Manager */}
+                {isModulesManagerOpen && activeProject && (
+                  <div className="mt-2 p-3 bg-white rounded-xl border border-indigo-200 shadow-xs space-y-2 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <div className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5 font-sans">
+                        <FolderGit2 className="h-4 w-4 text-indigo-600" />
+                        <span>จัดการระบบโมดูลประจำโครงการ: <strong className="font-mono text-indigo-700">{activeProject.jobNo}</strong> ({activeProject.projectName})</span>
+                      </div>
+                      <button 
+                        onClick={() => setIsModulesManagerOpen(false)} 
+                        className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <ProjectModulesManager
+                      proj={activeProject}
+                      onEditJobProject={onEditJobProject!}
+                      addToast={addToast}
+                      onAddMediaFile={onAddMediaFile}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Inline Expandable Form (Flat & Compact) */}
@@ -1948,10 +2245,21 @@ export default function ProjectBomView({
                                             onChange={(e) => handleUpdateItemField(originalIndex, 'group', e.target.value)}
                                             className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-[11px] font-bold focus:outline-none cursor-pointer"
                                           >
-                                            <option value="โมดูลทั่วไป">โมดูลทั่วไป</option>
-                                            {getBomGroups(activeBom).map(g => (
-                                              <option key={g} value={g}>{g}</option>
-                                            ))}
+                                            <option value="โมดูลทั่วไป">โมดูลทั่วไป (General)</option>
+                                            {projectModules.map(pm => {
+                                              const val = `${pm.code} - ${pm.name}`;
+                                              return (
+                                                <option key={pm.code} value={val}>
+                                                  📦 {val}
+                                                </option>
+                                              );
+                                            })}
+                                            {getBomGroups(activeBom)
+                                              .filter(g => !projectModules.some(pm => `${pm.code} - ${pm.name}` === g || pm.name === g || pm.code === g))
+                                              .map(g => (
+                                                <option key={g} value={g}>{g}</option>
+                                              ))
+                                            }
                                           </select>
                                         </td>
 
