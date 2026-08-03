@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Product, Bom, BomItem, Category, JobProject, ProductOrder, normalizeModules, Employee, Job, DailyReport, MediaFile, UserRole } from '../types';
+import { Product, Bom, BomItem, Category, JobProject, ProductOrder, normalizeModules, Employee, Job, DailyReport, MediaFile, UserRole, Supplier } from '../types';
 import Logo from './Logo';
 import JobAssignmentView from './JobAssignmentView';
 import OrderingSystemView from './OrderingSystemView';
@@ -30,7 +30,9 @@ import {
   Briefcase,
   ShoppingCart,
   FileText,
-  ShoppingBag
+  ShoppingBag,
+  Store,
+  ExternalLink
 } from 'lucide-react';
 import { collection, doc, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db, cleanUndefined, auth } from '../firebase';
@@ -41,6 +43,7 @@ interface ProjectBomViewProps {
   setBoms?: React.Dispatch<React.SetStateAction<Bom[]>>;
   projects: Project[]; // Backward compatible
   categories: Category[];
+  suppliers?: Supplier[];
   addToast: (type: 'success' | 'warning' | 'info', title: string, message: string) => void;
   jobProjects?: JobProject[];
   onAddJobProject?: (proj: Omit<JobProject, 'id' | 'createdAt'>) => Promise<void>;
@@ -542,6 +545,7 @@ export default function ProjectBomView({
   boms, 
   setBoms,
   categories, 
+  suppliers = [],
   addToast,
   jobProjects = [],
   onAddJobProject,
@@ -604,6 +608,8 @@ export default function ProjectBomView({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [bomSupplierFilter, setBomSupplierFilter] = useState<string>('all');
+  const [bomItemSort, setBomItemSort] = useState<'none' | 'supplier_asc' | 'supplier_desc'>('none');
   const [selectorViewMode, setSelectorViewMode] = useState<'vertical_grid' | 'horizontal'>('vertical_grid');
   const [isDeducting, setIsDeducting] = useState(false);
   const [isAddFormOpen, setIsAddFormOpen] = useState(false);
@@ -946,6 +952,12 @@ export default function ProjectBomView({
       quantity: worksheetAddQty,
       unit: worksheetAddUnit.trim() || matchedProd.unit || 'ชิ้น',
       priceUnit: matchedProd.costPrice || matchedProd.price || 0,
+      brand: matchedProd.brand || '',
+      supplier: matchedProd.supplier || '',
+      supplierLogoUrl: matchedProd.supplierLogoUrl || '',
+      subStore: matchedProd.subStore || '',
+      subStoreLogoUrl: matchedProd.subStoreLogoUrl || '',
+      subStoreLink: matchedProd.subStoreLink || '',
       group: worksheetAddGroup
     };
 
@@ -2187,6 +2199,56 @@ export default function ProjectBomView({
                 </div>
               </div>
 
+              {/* Supplier Filter & Sort Controls for BOM Workspace */}
+              {activeBom.items.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-100/80 dark:bg-slate-800/80 p-2 px-3 rounded-xl text-xs font-sans border border-slate-200/80 dark:border-slate-700">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                      <Store className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span>เลือกแสดงร้านค้า:</span>
+                    </div>
+                    <select
+                      value={bomSupplierFilter}
+                      onChange={(e) => setBomSupplierFilter(e.target.value)}
+                      className="py-1 px-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-3xs"
+                    >
+                      <option value="all">🏬 ร้านค้าทั้งหมด ({suppliers.length} ร้าน)</option>
+                      {suppliers.map(s => (
+                        <option key={s.id} value={s.name}>
+                          🏬 {s.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-300 ml-2">
+                      <ArrowUpDown className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span>จัดเรียงตามร้านค้า:</span>
+                    </div>
+                    <select
+                      value={bomItemSort}
+                      onChange={(e) => setBomItemSort(e.target.value as any)}
+                      className="py-1 px-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-3xs"
+                    >
+                      <option value="none">-- ตามลำดับเดิม --</option>
+                      <option value="supplier_asc">ร้านค้า ก-ฮ (ก ถึง ฮ)</option>
+                      <option value="supplier_desc">ร้านค้า ฮ-ก (ฮ ถึง ก)</option>
+                    </select>
+                  </div>
+
+                  {(bomSupplierFilter !== 'all' || bomItemSort !== 'none') && (
+                    <button
+                      onClick={() => {
+                        setBomSupplierFilter('all');
+                        setBomItemSort('none');
+                      }}
+                      className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer flex items-center gap-1"
+                    >
+                      <X className="h-3 w-3" /> ล้างตัวกรองร้านค้า
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Spreadsheet Table (Flat & Dense, Low Padding) */}
               <div className="overflow-x-auto">
                 {activeBom.items.length === 0 ? (
@@ -2195,8 +2257,31 @@ export default function ProjectBomView({
                   </div>
                 ) : (
                   (() => {
+                    // Filter items by selected supplier
+                    const filteredItems = activeBom.items.map((item, originalIndex) => ({ item, originalIndex })).filter(({ item }) => {
+                      if (bomSupplierFilter === 'all') return true;
+                      const p = products.find(prod => prod.id === item.productId);
+                      const supplierName = item.supplier || p?.supplier || '';
+                      return supplierName === bomSupplierFilter;
+                    });
+
+                    // Sort items by supplier if requested
+                    if (bomItemSort !== 'none') {
+                      filteredItems.sort((a, b) => {
+                        const pA = products.find(prod => prod.id === a.item.productId);
+                        const pB = products.find(prod => prod.id === b.item.productId);
+                        const supA = a.item.supplier || pA?.supplier || '';
+                        const supB = b.item.supplier || pB?.supplier || '';
+                        if (bomItemSort === 'supplier_asc') {
+                          return supA.localeCompare(supB, 'th');
+                        } else {
+                          return supB.localeCompare(supA, 'th');
+                        }
+                      });
+                    }
+
                     const itemsByGroup: { [grp: string]: { originalIndex: number; item: BomItem }[] } = {};
-                    activeBom.items.forEach((item, originalIndex) => {
+                    filteredItems.forEach(({ item, originalIndex }) => {
                       const rawGrpName = item.group || 'โมดูลทั่วไป';
                       const grpName = rawGrpName === 'ทั่วไป' ? 'โมดูลทั่วไป' : rawGrpName;
                       if (!itemsByGroup[grpName]) {
@@ -2211,21 +2296,29 @@ export default function ProjectBomView({
                       return (a || '').localeCompare(b || '');
                     });
 
+                    if (filteredItems.length === 0) {
+                      return (
+                        <div className="py-8 text-center text-slate-400 text-xs italic">
+                          ไม่พบรายการพัสดุที่ตรงกับร้านค้า "{bomSupplierFilter}" ในสูตร BOM นี้
+                        </div>
+                      );
+                    }
+
                     return (
-                      <div className="divide-y divide-slate-100">
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800">
                         {groups.map(grp => {
                           const list = itemsByGroup[grp];
                           return (
                             <div key={grp} className="py-1 px-0.5 text-left space-y-1">
-                              <div className="flex items-center gap-1 font-black text-slate-700 text-[12px] uppercase border-b border-slate-100 pb-1">
+                              <div className="flex items-center gap-1 font-black text-slate-700 dark:text-slate-300 text-[12px] uppercase border-b border-slate-100 dark:border-slate-800 pb-1">
                                 <span>📦 โมดูล: {grp}</span>
                                 <span className="text-slate-400">({list.length} รายการพัสดุ)</span>
                               </div>
 
                               <table className="w-full text-left border-collapse text-[13px] font-sans min-w-[850px]">
                                 <thead>
-                                  <tr className="border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                                    <th className="py-1 px-1.5 min-w-[200px]">รายละเอียดชิ้นส่วน / Code</th>
+                                  <tr className="border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                                    <th className="py-1 px-1.5 min-w-[200px]">รายละเอียดชิ้นส่วน / Code / ร้านค้า</th>
                                     <th className="py-1 px-1.5 w-[290px] text-center">ลำดับติดตามสถานะจัดซื้อ</th>
                                     <th className="py-1 px-1.5 text-center w-[100px]">จำนวนใช้ต่อชุด</th>
                                     <th className="py-1 px-1.5 text-center w-[80px]">หน่วย</th>
@@ -2234,7 +2327,7 @@ export default function ProjectBomView({
                                     <th className="py-1 px-1.5 text-right w-[45px]">ลบ</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-100">
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                   {list.map(({ originalIndex, item }) => {
                                     const p = products.find(prod => prod.id === item.productId);
                                     const currentQtyInStock = p ? p.quantity : 0;
@@ -2248,19 +2341,61 @@ export default function ProjectBomView({
                                       (o.productId === item.productId && activeBom.jobNo && o.jobNo === activeBom.jobNo)
                                     );
 
+                                    const supplierName = item.supplier || p?.supplier;
+                                    const supplierLogo = item.supplierLogoUrl || p?.supplierLogoUrl;
+
                                     return (
-                                      <tr key={originalIndex} className="hover:bg-slate-50/40 transition-colors h-[50px]">
+                                      <tr key={originalIndex} className="hover:bg-slate-50/40 dark:hover:bg-slate-800/40 transition-colors h-[50px]">
                                         
                                         {/* Product info (Now First Column) */}
-                                        <td className="py-0.5 px-1.5 font-bold text-slate-800">
+                                        <td className="py-0.5 px-1.5 font-bold text-slate-800 dark:text-slate-200">
                                           <div className="flex items-center gap-2">
                                             {p?.image && (
-                                              <img src={p.image} alt="" className="w-[36px] h-[36px] rounded object-cover border border-slate-200 shrink-0" referrerPolicy="no-referrer" />
+                                              <img src={p.image} alt="" className="w-[36px] h-[36px] rounded object-cover border border-slate-200 dark:border-slate-700 shrink-0" referrerPolicy="no-referrer" />
                                             )}
                                             <div>
-                                              <div className="line-clamp-1 text-[13px]">{item.productName}</div>
+                                              <div className="line-clamp-1 text-[13px] flex items-center gap-1.5 flex-wrap">
+                                                <span>{item.productName}</span>
+                                                {supplierName && (
+                                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-black text-indigo-700 bg-indigo-50 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-150 dark:border-indigo-850" title={`ร้านค้า/ผู้จัดจำหน่าย: ${supplierName}`}>
+                                                    {supplierLogo ? (
+                                                      <img src={supplierLogo} alt={supplierName} className="h-3.5 object-contain" referrerPolicy="no-referrer" />
+                                                    ) : (
+                                                      <span>🏬 {supplierName}</span>
+                                                    )}
+                                                  </span>
+                                                )}
+                                                {(() => {
+                                                  const subName = item.subStore || p?.subStore;
+                                                  const subLogo = item.subStoreLogoUrl || p?.subStoreLogoUrl;
+                                                  const subLink = item.subStoreLink || p?.subStoreLink;
+                                                  if (!subName && !subLogo) return null;
+                                                  return (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-black text-rose-700 bg-rose-50 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-150 dark:border-rose-850" title={`ร้านค้าย่อย: ${subName || ''}`}>
+                                                      {subLogo ? (
+                                                        <img src={subLogo} alt={subName || 'ร้านค้าย่อย'} className="h-3.5 object-contain" referrerPolicy="no-referrer" />
+                                                      ) : (
+                                                        <span>🛒 {subName || 'ร้านค้าย่อย'}</span>
+                                                      )}
+                                                      {subName && subLogo && <span>{subName}</span>}
+                                                      {subLink && (
+                                                        <a
+                                                          href={subLink.startsWith('http') ? subLink : `https://${subLink}`}
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="ml-0.5 p-0.2 bg-rose-600 text-white rounded hover:bg-rose-500 transition-colors"
+                                                          title="เปิดลิงก์ร้านค้าย่อย E-commerce"
+                                                          onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                          <ExternalLink className="h-2 w-2 inline" />
+                                                        </a>
+                                                      )}
+                                                    </span>
+                                                  );
+                                                })()}
+                                              </div>
                                               <div className="text-[11px] text-slate-400 font-normal">
-                                                Code: {p?.sku || '-'} | <span className={currentQtyInStock < requiredTotal ? 'text-rose-600 font-extrabold' : 'text-emerald-700 font-extrabold'}>คงเหลือสต็อก: {currentQtyInStock} {item.unit || 'ชิ้น'}</span>
+                                                Code: {p?.sku || '-'} | <span className={currentQtyInStock < requiredTotal ? 'text-rose-600 dark:text-rose-400 font-extrabold' : 'text-emerald-700 dark:text-emerald-400 font-extrabold'}>คงเหลือสต็อก: {currentQtyInStock} {item.unit || 'ชิ้น'}</span>
                                               </div>
                                               <button
                                                 type="button"

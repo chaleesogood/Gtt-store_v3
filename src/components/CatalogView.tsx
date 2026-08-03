@@ -1981,13 +1981,44 @@ const ProductCard: React.FC<ProductCardProps> = ({
             {product.name}
           </h3>
 
-          {product.series && (
-            <div className="pt-0.5">
+          <div className="flex flex-wrap gap-1 items-center pt-0.5">
+            {product.series && (
               <span className="inline-block px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md text-[10px] font-bold font-sans">
                 Series ย่อย: {product.series}
               </span>
-            </div>
-          )}
+            )}
+            {product.supplier && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-150 dark:border-indigo-850 rounded-md text-[10px] font-bold font-sans">
+                {product.supplierLogoUrl ? (
+                  <img src={product.supplierLogoUrl} alt={product.supplier} className="h-3.5 object-contain" referrerPolicy="no-referrer" />
+                ) : (
+                  <span>🏬 {product.supplier}</span>
+                )}
+              </span>
+            )}
+            {(product.subStore || product.subStoreLogoUrl) && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-150 dark:border-rose-850 rounded-md text-[10px] font-bold font-sans">
+                {product.subStoreLogoUrl ? (
+                  <img src={product.subStoreLogoUrl} alt={product.subStore || ''} className="h-3.5 object-contain" referrerPolicy="no-referrer" />
+                ) : (
+                  <span>🛒 {product.subStore || 'ร้านค้าย่อย'}</span>
+                )}
+                {product.subStore && product.subStoreLogoUrl && <span>{product.subStore}</span>}
+                {product.subStoreLink && (
+                  <a
+                    href={product.subStoreLink.startsWith('http') ? product.subStoreLink : `https://${product.subStoreLink}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-0.5 p-0.5 bg-rose-600 text-white rounded hover:bg-rose-500 transition-colors inline-flex"
+                    title="เปิดลิงก์ร้านค้าย่อย E-commerce"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink className="h-2 w-2" />
+                  </a>
+                )}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Price & Action Footer */}

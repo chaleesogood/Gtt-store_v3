@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Product, Category, Employee, JobProject, Brand, sortProducts, Bom, BomItem, SubSeries, MediaFile, normalizeModules } from '../types';
-import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag, Copy, ArrowUpDown, FileText, Boxes, Check, Briefcase } from 'lucide-react';
+import { Product, Category, Employee, JobProject, Brand, Supplier, sortProducts, Bom, BomItem, SubSeries, MediaFile, normalizeModules } from '../types';
+import { Search, Filter, Plus, Edit3, Trash2, PlusCircle, MinusCircle, Upload, Eye, EyeOff, X, Image as ImageIcon, ExternalLink, Layers, List, ChevronDown, ChevronUp, ChevronRight, Package, ShoppingCart, Tag, Copy, ArrowUpDown, FileText, Boxes, Check, Briefcase, Store } from 'lucide-react';
 import CategoryView from './CategoryView';
 import OrderingSystemView from './OrderingSystemView';
 import ShoppingCartView from './ShoppingCartView';
@@ -25,6 +25,7 @@ interface ProductListViewProps {
   employees: Employee[];
   jobProjects: JobProject[];
   brands?: Brand[];
+  suppliers?: Supplier[];
   boms?: Bom[];
   setBoms?: React.Dispatch<React.SetStateAction<Bom[]>>;
   onAddMediaFile?: (data: Omit<MediaFile, 'id' | 'createdAt'>) => Promise<MediaFile>;
@@ -91,6 +92,7 @@ export default function ProductListView({
   employees,
   jobProjects,
   brands = [],
+  suppliers = [],
   boms = [],
   setBoms,
   onAddMediaFile
@@ -100,6 +102,8 @@ export default function ProductListView({
   const [preselectedProductId, setPreselectedProductId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [brandFilter, setBrandFilter] = useState('all');
+  const [supplierFilter, setSupplierFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grouped' | 'list'>('grouped');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const [isReorderMode, setIsReorderMode] = useState(false);
@@ -189,8 +193,10 @@ export default function ProductListView({
           id: `bom-${Date.now()}`,
           jobNo: trimmedJobNo,
           name: selectedProj ? `BOM - ${selectedProj.projectName}` : `BOM - Job ${trimmedJobNo}`,
+          description: '',
           requiredQuantity: 1,
           status: 'pending',
+          stockDeducted: false,
           items: [newItem],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -414,6 +420,8 @@ export default function ProductListView({
         )
       );
     } else {
+      const lastReq = localStorage.getItem('last_selected_requester') || '';
+      const lastPur = localStorage.getItem('last_selected_purchaser') || '';
       setCartItems([
         ...cartItems,
         {
@@ -421,6 +429,8 @@ export default function ProductListView({
           quantity: 1,
           pricePerUnit: product.costPrice || product.price || 0,
           unit: product.unit || 'ชิ้น',
+          requesterName: lastReq,
+          purchaserName: lastPur,
           jobNo: '',
           jobName: '',
           remark: '',
@@ -457,6 +467,8 @@ export default function ProductListView({
   const [formWarehouse, setFormWarehouse] = useState('คลังสินค้าหลัก A');
   const [formColor, setFormColor] = useState('');
   const [formBrand, setFormBrand] = useState('');
+  const [formSupplier, setFormSupplier] = useState('');
+  const [formSupplierLogoUrl, setFormSupplierLogoUrl] = useState('');
   const [formModelNumber, setFormModelNumber] = useState<string | number>('');
   const [formModelUnit, setFormModelUnit] = useState<string>('Kg');
 
@@ -466,6 +478,14 @@ export default function ProductListView({
       setFormBrand('');
     }
   }, [brands, formBrand]);
+
+  // Auto-reset formSupplier if selected supplier is deleted
+  useEffect(() => {
+    if (formSupplier && !suppliers.some(s => s.name.trim().toLowerCase() === formSupplier.trim().toLowerCase())) {
+      setFormSupplier('');
+      setFormSupplierLogoUrl('');
+    }
+  }, [suppliers, formSupplier]);
 
   // Image Upload States
   const [imagePreview, setImagePreview] = useState('');
@@ -579,8 +599,12 @@ export default function ProductListView({
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
       (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.sku || '').toLowerCase().includes(searchTerm.toLowerCase());
+      (p.sku || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.brand || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.supplier || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
+    const matchesBrand = brandFilter === 'all' || p.brand === brandFilter;
+    const matchesSupplier = supplierFilter === 'all' || p.supplier === supplierFilter;
 
     let matchesStatus = true;
     if (statusFilter === 'low') {
@@ -589,7 +613,7 @@ export default function ProductListView({
       matchesStatus = p.quantity === 0;
     }
 
-    return matchesSearch && matchesCategory && matchesStatus;
+    return matchesSearch && matchesCategory && matchesBrand && matchesSupplier && matchesStatus;
   });
 
   // Build a merged list of categories to handle any missing category definitions in the DB gracefully
@@ -629,6 +653,8 @@ export default function ProductListView({
     setFormWarehouse('คลังสินค้าหลัก A');
     setFormColor('');
     setFormBrand('');
+    setFormSupplier('');
+    setFormSupplierLogoUrl('');
     setFormModelNumber('');
     setFormModelUnit('Kg');
     setIsModalOpen(true);
@@ -653,6 +679,9 @@ export default function ProductListView({
     setFormWarehouse(product.warehouse || 'คลังสินค้าหลัก A');
     setFormColor(product.color || '');
     setFormBrand(product.brand || '');
+    setFormSupplier(product.supplier || '');
+    const matchedSupplier = suppliers.find(s => s.name === product.supplier);
+    setFormSupplierLogoUrl(matchedSupplier?.logoUrl || product.supplierLogoUrl || '');
     setFormModelNumber(product.modelNumber ?? '');
     setFormModelUnit(product.modelUnit ?? 'Kg');
     setIsModalOpen(true);
@@ -677,6 +706,9 @@ export default function ProductListView({
     setFormWarehouse(product.warehouse || 'คลังสินค้าหลัก A');
     setFormColor(product.color || '');
     setFormBrand(product.brand || '');
+    setFormSupplier(product.supplier || '');
+    const matchedSupplier = suppliers.find(s => s.name === product.supplier);
+    setFormSupplierLogoUrl(matchedSupplier?.logoUrl || product.supplierLogoUrl || '');
     setFormModelNumber(product.modelNumber ?? '');
     setFormModelUnit(product.modelUnit ?? 'Kg');
     setIsModalOpen(true);
@@ -686,6 +718,9 @@ export default function ProductListView({
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formSku.trim()) return;
+
+    const matchedSupplier = suppliers.find(s => s.name === formSupplier);
+    const supplierLogoToSave = matchedSupplier?.logoUrl || formSupplierLogoUrl || '';
 
     const productData = {
       name: formName,
@@ -702,6 +737,8 @@ export default function ProductListView({
       warehouse: formWarehouse,
       color: formColor,
       brand: formBrand,
+      supplier: formSupplier,
+      supplierLogoUrl: supplierLogoToSave,
       modelNumber: formModelNumber !== '' ? formModelNumber : undefined,
       modelUnit: formModelNumber !== '' ? formModelUnit : undefined,
     };
@@ -989,7 +1026,7 @@ export default function ProductListView({
               </div>
 
               {/* Category drop */}
-              <div className="relative min-w-[140px] flex items-center bg-white border border-slate-200/80 rounded px-2 py-1">
+              <div className="relative min-w-[130px] flex items-center bg-white border border-slate-200/80 rounded px-2 py-1">
                 <Filter className="h-3 w-3 text-slate-400 mr-1 flex-shrink-0" />
                 <select
                   className="bg-transparent border-none text-[11px] text-slate-700 focus:outline-none w-full font-sans cursor-pointer appearance-none"
@@ -1005,6 +1042,46 @@ export default function ProductListView({
                   ))}
                 </select>
               </div>
+
+              {/* Brand drop */}
+              {brands && brands.length > 0 && (
+                <div className="relative min-w-[110px] flex items-center bg-white border border-slate-200/80 rounded px-2 py-1">
+                  <Tag className="h-3 w-3 text-slate-400 mr-1 flex-shrink-0" />
+                  <select
+                    className="bg-transparent border-none text-[11px] text-slate-700 focus:outline-none w-full font-sans cursor-pointer appearance-none"
+                    value={brandFilter}
+                    onChange={(e) => setBrandFilter(e.target.value)}
+                    id="select-brand-filter"
+                  >
+                    <option value="all">ทุกแบรนด์ ({brands.length})</option>
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.name}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Supplier drop */}
+              {suppliers && suppliers.length > 0 && (
+                <div className="relative min-w-[120px] flex items-center bg-white border border-slate-200/80 rounded px-2 py-1">
+                  <Store className="h-3 w-3 text-slate-400 mr-1 flex-shrink-0" />
+                  <select
+                    className="bg-transparent border-none text-[11px] text-slate-700 focus:outline-none w-full font-sans cursor-pointer appearance-none"
+                    value={supplierFilter}
+                    onChange={(e) => setSupplierFilter(e.target.value)}
+                    id="select-supplier-filter"
+                  >
+                    <option value="all">ทุกร้านค้า ({suppliers.length})</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.name}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Right: Trigger add product */}
@@ -1504,6 +1581,53 @@ export default function ProductListView({
                                                    }
                                                    return null;
                                                  })()}
+                                                {(() => {
+                                                   const sMatch = suppliers.find(s => s.name === p.supplier);
+                                                   const logo = sMatch?.logoUrl || p.supplierLogoUrl;
+                                                   const supplierName = p.supplier || sMatch?.name;
+                                                   if (supplierName) {
+                                                     return (
+                                                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8.5px] font-black text-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/60 dark:text-indigo-300 rounded-md leading-none shrink-0 border border-indigo-200/60 dark:border-indigo-800/60" title={`ร้านค้า/ผู้จัดจำหน่าย: ${supplierName}`}>
+                                                         {logo ? (
+                                                           <img src={logo} alt={supplierName} className="h-4.5 object-contain" referrerPolicy="no-referrer" />
+                                                         ) : (
+                                                           <span>🏬 {supplierName}</span>
+                                                         )}
+                                                       </span>
+                                                     );
+                                                   }
+                                                   return null;
+                                                 })()}
+                                                {(() => {
+                                                   const subName = p.subStore;
+                                                   const subLogo = p.subStoreLogoUrl;
+                                                   const subLink = p.subStoreLink;
+                                                   if (subName || subLogo) {
+                                                     return (
+                                                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8.5px] font-black text-rose-800 bg-rose-50/80 dark:bg-rose-950/60 dark:text-rose-300 rounded-md leading-none shrink-0 border border-rose-200/60 dark:border-rose-800/60" title={`ร้านค้าย่อย: ${subName || ''}`}>
+                                                         {subLogo ? (
+                                                           <img src={subLogo} alt={subName || 'ร้านค้าย่อย'} className="h-4.5 object-contain" referrerPolicy="no-referrer" />
+                                                         ) : (
+                                                           <span>🛒 {subName || 'ร้านค้าย่อย'}</span>
+                                                         )}
+                                                         {subName && subLogo && <span>{subName}</span>}
+                                                         {subLink && (
+                                                           <a
+                                                             href={subLink.startsWith('http') ? subLink : `https://${subLink}`}
+                                                             target="_blank"
+                                                             rel="noopener noreferrer"
+                                                             className="ml-0.5 p-0.5 bg-rose-600 text-white rounded hover:bg-rose-500 transition-colors"
+                                                             title="เปิดลิงก์ร้านค้าย่อย E-commerce"
+                                                             onClick={(e) => e.stopPropagation()}
+                                                           >
+                                                             <ExternalLink className="h-2.5 w-2.5" />
+                                                           </a>
+                                                         )}
+                                                       </span>
+                                                     );
+                                                   }
+                                                   return null;
+                                                 })()}
                                               </div>
                                             </div>
                                           </div>
@@ -1766,6 +1890,23 @@ export default function ProductListView({
                                         <img src={bMatch.logoUrl} alt={p.brand} className="h-4.5 object-contain" referrerPolicy="no-referrer" />
                                       ) : (
                                         <span>🏷️ {p.brand}</span>
+                                      )}
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
+                              {(() => {
+                                const sMatch = suppliers.find(s => s.name === p.supplier);
+                                const logo = sMatch?.logoUrl || p.supplierLogoUrl;
+                                const supplierName = p.supplier || sMatch?.name;
+                                if (supplierName) {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8.5px] font-black text-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/60 dark:text-indigo-300 rounded-md leading-none shrink-0 border border-indigo-200/60 dark:border-indigo-800/60" title={`ร้านค้า/ผู้จัดจำหน่าย: ${supplierName}`}>
+                                      {logo ? (
+                                        <img src={logo} alt={supplierName} className="h-4.5 object-contain" referrerPolicy="no-referrer" />
+                                      ) : (
+                                        <span>🏬 {supplierName}</span>
                                       )}
                                     </span>
                                   );
@@ -2148,6 +2289,38 @@ export default function ProductListView({
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  {/* Supplier Selection */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans flex items-center gap-1">
+                      <Store className="h-3 w-3 text-indigo-500" />
+                      <span>ร้านค้า / ผู้จัดจำหน่าย (Store / Supplier)</span>
+                    </label>
+                    <div className="flex gap-2 items-center">
+                      <select
+                        className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all cursor-pointer text-slate-800 dark:text-slate-100"
+                        value={formSupplier}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormSupplier(val);
+                          const matched = suppliers.find(s => s.name === val);
+                          setFormSupplierLogoUrl(matched?.logoUrl || '');
+                        }}
+                      >
+                        <option value="">-- ไม่ระบุร้านค้า / ทั่วไป --</option>
+                        {suppliers.map((s) => (
+                          <option key={s.id} value={s.name}>
+                            {s.name} {s.contactName ? `(${s.contactName})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {formSupplierLogoUrl && (
+                        <div className="h-8 w-8 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center p-0.5 shrink-0 overflow-hidden" title={formSupplier}>
+                          <img src={formSupplierLogoUrl} alt={formSupplier} className="max-h-full max-w-full object-contain" referrerPolicy="no-referrer" />
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Color Selection */}

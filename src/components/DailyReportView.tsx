@@ -500,7 +500,11 @@ export default function DailyReportView({
                     </div>
                     <div className="min-w-0">
                       <h4 className="text-xs font-black text-slate-800 truncate flex items-center gap-1.5">
-                        {rep.employeeName}
+                        {(() => {
+                          const matchedEmp = employees.find(e => e.name === rep.employeeName);
+                          const nick = matchedEmp?.nickname;
+                          return <span>{nick ? `[${nick}] ` : ''}{rep.employeeName}</span>;
+                        })()}
                         <span className="text-[9px] px-1.5 py-0.2 bg-slate-50 border border-slate-200 rounded text-slate-500 font-normal shrink-0">
                           ช่างไซต์
                         </span>

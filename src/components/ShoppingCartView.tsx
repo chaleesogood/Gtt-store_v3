@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product, Employee, JobProject, Bom, BomItem, normalizeModules } from '../types';
 import { 
   ShoppingCart, 
@@ -56,7 +56,33 @@ export default function ShoppingCartView({
   const [isSendingLine, setIsSendingLine] = useState(false);
   const [showLineApiConfig, setShowLineApiConfig] = useState(false);
 
-  // Individual item edits
+  // Auto pre-fill missing requesterName/purchaserName in cart items from last selected
+  useEffect(() => {
+    const savedReq = localStorage.getItem('last_selected_requester');
+    const savedPur = localStorage.getItem('last_selected_purchaser');
+    if (!savedReq && !savedPur) return;
+
+    setCartItems((prev) => {
+      let changed = false;
+      const next = prev.map((item) => {
+        let updatedReq = item.requesterName;
+        let updatedPur = item.purchaserName;
+        if (!updatedReq && savedReq) {
+          updatedReq = savedReq;
+          changed = true;
+        }
+        if (!updatedPur && savedPur) {
+          updatedPur = savedPur;
+          changed = true;
+        }
+        if (changed) {
+          return { ...item, requesterName: updatedReq, purchaserName: updatedPur };
+        }
+        return item;
+      });
+      return changed ? next : prev;
+    });
+  }, [cartItems.length]);
   const updateItemQty = (productId: string, change: number) => {
     setCartItems((prev) =>
       prev.map((item) => {
@@ -211,6 +237,8 @@ export default function ShoppingCartView({
           unit: item.unit?.trim() || item.product.unit || 'ชิ้น',
           remark: item.remark?.trim() || 'ส่งจากตะกร้าจัดซื้อ',
           brand: item.product.brand || '',
+          supplier: item.product.supplier || item.supplier || '',
+          supplierLogoUrl: item.product.supplierLogoUrl || item.supplierLogoUrl || '',
           priceUnit: Number(item.pricePerUnit) || Number(item.product.costPrice) || 0,
           group: item.module?.trim() || item.product.category || 'ทั่วไป'
         };
@@ -670,8 +698,17 @@ export default function ShoppingCartView({
                                   {item.product.name}
                                 </h4>
                                 {item.product.series && (
-                                  <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[8.5px] font-black bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-150/30 dark:border-indigo-850/30">
+                                  <span className="inline-block mt-1 px-1.5 py-0.2 rounded text-[8.5px] font-black bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-150/30 dark:border-indigo-850/30 mr-1">
                                     🏷️ {item.product.series}
+                                  </span>
+                                )}
+                                {(item.product.supplier || item.supplier) && (
+                                  <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.2 rounded text-[8.5px] font-black bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-800/50" title={`ร้านค้า: ${item.product.supplier || item.supplier}`}>
+                                    {(item.product.supplierLogoUrl || item.supplierLogoUrl) ? (
+                                      <img src={item.product.supplierLogoUrl || item.supplierLogoUrl} alt={item.product.supplier || item.supplier} className="h-3.5 object-contain" referrerPolicy="no-referrer" />
+                                    ) : (
+                                      <span>🏬 {item.product.supplier || item.supplier}</span>
+                                    )}
                                   </span>
                                 )}
                                 <div className="text-[9.5px] text-slate-400 font-mono mt-1">Code: {item.product.sku}</div>

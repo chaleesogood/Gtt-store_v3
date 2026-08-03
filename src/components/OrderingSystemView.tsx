@@ -24,7 +24,8 @@ import {
   CheckSquare,
   Briefcase,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  ExternalLink
 } from 'lucide-react';
 
 interface OrderingSystemViewProps {
@@ -1268,7 +1269,53 @@ export default function OrderingSystemView({
                             {/* Title & Remarks */}
                             <td className="py-0.5 px-1.5">
                               <div className="space-y-0.2">
-                                <div className="font-bold text-slate-800 line-clamp-1">{order.orderTitle}</div>
+                                <div className="font-bold text-slate-800 line-clamp-1 flex items-center gap-1.5 flex-wrap">
+                                  <span>{order.orderTitle}</span>
+                                  {(() => {
+                                    const p = products.find(prod => prod.id === order.productId);
+                                    const sName = order.supplier || p?.supplier;
+                                    const sLogo = order.supplierLogoUrl || p?.supplierLogoUrl;
+                                    if (!sName) return null;
+                                    return (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[8.5px] font-black text-indigo-700 bg-indigo-50 border border-indigo-150" title={`ร้านค้า: ${sName}`}>
+                                        {sLogo ? (
+                                          <img src={sLogo} alt={sName} className="h-3.5 object-contain" referrerPolicy="no-referrer" />
+                                        ) : (
+                                          <span>🏬 {sName}</span>
+                                        )}
+                                      </span>
+                                    );
+                                  })()}
+                                  {(() => {
+                                    const p = products.find(prod => prod.id === order.productId);
+                                    const subName = order.subStore || p?.subStore;
+                                    const subLogo = order.subStoreLogoUrl || p?.subStoreLogoUrl;
+                                    const subLink = order.subStoreLink || p?.subStoreLink;
+                                    if (!subName && !subLogo) return null;
+                                    return (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[8.5px] font-black text-rose-700 bg-rose-50 border border-rose-150" title={`ร้านค้าย่อย: ${subName || ''}`}>
+                                        {subLogo ? (
+                                          <img src={subLogo} alt={subName || 'ร้านค้าย่อย'} className="h-3.5 object-contain" referrerPolicy="no-referrer" />
+                                        ) : (
+                                          <span>🛒 {subName || 'ร้านค้าย่อย'}</span>
+                                        )}
+                                        {subName && subLogo && <span>{subName}</span>}
+                                        {subLink && (
+                                          <a
+                                            href={subLink.startsWith('http') ? subLink : `https://${subLink}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="ml-0.5 p-0.2 bg-rose-600 text-white rounded hover:bg-rose-500 transition-colors inline-flex"
+                                            title="เปิดลิงก์ร้านค้าย่อย E-commerce"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <ExternalLink className="h-2 w-2" />
+                                          </a>
+                                        )}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
                                 {order.remark && (
                                   <div className="text-[9.5px] text-slate-400 italic line-clamp-1" title={order.remark}>
                                     หมายเหตุ: {order.remark}
@@ -1354,7 +1401,53 @@ export default function OrderingSystemView({
                       {/* Title, Job & Remarks */}
                       <td className="py-0.5 px-1.5">
                         <div className="space-y-0.2">
-                          <div className="font-bold text-slate-800 line-clamp-1">{order.orderTitle}</div>
+                          <div className="font-bold text-slate-800 line-clamp-1 flex items-center gap-1.5 flex-wrap">
+                            <span>{order.orderTitle}</span>
+                            {(() => {
+                              const p = products.find(prod => prod.id === order.productId);
+                              const sName = order.supplier || p?.supplier;
+                              const sLogo = order.supplierLogoUrl || p?.supplierLogoUrl;
+                              if (!sName) return null;
+                              return (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[8.5px] font-black text-indigo-700 bg-indigo-50 border border-indigo-150" title={`ร้านค้า: ${sName}`}>
+                                  {sLogo ? (
+                                    <img src={sLogo} alt={sName} className="h-3.5 object-contain" referrerPolicy="no-referrer" />
+                                  ) : (
+                                    <span>🏬 {sName}</span>
+                                  )}
+                                </span>
+                              );
+                            })()}
+                            {(() => {
+                              const p = products.find(prod => prod.id === order.productId);
+                              const subName = order.subStore || p?.subStore;
+                              const subLogo = order.subStoreLogoUrl || p?.subStoreLogoUrl;
+                              const subLink = order.subStoreLink || p?.subStoreLink;
+                              if (!subName && !subLogo) return null;
+                              return (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[8.5px] font-black text-rose-700 bg-rose-50 border border-rose-150" title={`ร้านค้าย่อย: ${subName || ''}`}>
+                                  {subLogo ? (
+                                    <img src={subLogo} alt={subName || 'ร้านค้าย่อย'} className="h-3.5 object-contain" referrerPolicy="no-referrer" />
+                                  ) : (
+                                    <span>🛒 {subName || 'ร้านค้าย่อย'}</span>
+                                  )}
+                                  {subName && subLogo && <span>{subName}</span>}
+                                  {subLink && (
+                                    <a
+                                      href={subLink.startsWith('http') ? subLink : `https://${subLink}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="ml-0.5 p-0.2 bg-rose-600 text-white rounded hover:bg-rose-500 transition-colors inline-flex"
+                                      title="เปิดลิงก์ร้านค้าย่อย E-commerce"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <ExternalLink className="h-2 w-2" />
+                                    </a>
+                                  )}
+                                </span>
+                              );
+                            })()}
+                          </div>
                           <div className="flex items-center gap-1.5 text-[9px] text-slate-400">
                             {order.jobNo && <span>JOB: <strong>{order.jobNo}</strong></span>}
                             {order.jobName && <span>งาน: {order.jobName}</span>}

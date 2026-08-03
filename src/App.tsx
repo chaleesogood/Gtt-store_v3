@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand, MediaFile, CompanyProfile, sortProducts } from './types';
+import { Product, Category, StockActivity, Project, Bom, Job, Employee, JobProject, DailyReport, Brand, Supplier, MediaFile, CompanyProfile, sortProducts } from './types';
 import { INITIAL_PRODUCTS, INITIAL_CATEGORIES, INITIAL_ACTIVITIES } from './initialData';
 import Toast, { ToastMessage } from './components/Toast';
 import DashboardView from './components/DashboardView';
@@ -90,6 +90,10 @@ export default function App() {
   });
   const [brands, setBrands] = useState<Brand[]>(() => {
     const saved = window.localStorage.getItem('stock_manager_brands_list');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => {
+    const saved = window.localStorage.getItem('stock_manager_suppliers_list');
     return saved ? JSON.parse(saved) : [];
   });
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>(() => {
@@ -1493,6 +1497,47 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser]);
 
+  const isSuppliersInitializedRef = useRef(false);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const q = query(collection(db, 'suppliers'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      recordFirestoreReads(snapshot.size || 1);
+      const firestoreList: Supplier[] = [];
+      snapshot.forEach((document) => {
+        firestoreList.push({ id: document.id, ...document.data() } as Supplier);
+      });
+
+      const savedStr = localStorage.getItem('stock_manager_suppliers_list');
+      const localList: Supplier[] = savedStr ? JSON.parse(savedStr) : [];
+
+      if (firestoreList.length > 0) {
+        isSuppliersInitializedRef.current = true;
+        firestoreList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+        setSuppliers(firestoreList);
+        localStorage.setItem('stock_manager_suppliers_list', JSON.stringify(firestoreList));
+      } else {
+        if (!isSuppliersInitializedRef.current && localList.length > 0) {
+          isSuppliersInitializedRef.current = true;
+          localList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+          setSuppliers(localList);
+          uploadListToFirestoreInBatches('suppliers', localList);
+        } else {
+          isSuppliersInitializedRef.current = true;
+          setSuppliers([]);
+          localStorage.setItem('stock_manager_suppliers_list', JSON.stringify([]));
+        }
+      }
+    }, (error) => {
+      handleFirestoreError("Firestore suppliers sync error", error);
+      const saved = localStorage.getItem('stock_manager_suppliers_list');
+      setSuppliers(saved ? JSON.parse(saved) : []);
+    });
+    return () => unsubscribe();
+  }, [currentUser]);
+
   // Sync job projects from Firestore
   useEffect(() => {
     if (!currentUser) return;
@@ -2892,6 +2937,78 @@ export default function App() {
     }
   };
 
+  const handleAddSupplier = async (newSupplierData: Omit<Supplier, 'id' | 'createdAt'>) => {
+    const supplierId = 'sup_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const supplier: Supplier = {
+      ...newSupplierData,
+      id: supplierId,
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedSuppliers = [...suppliers, supplier];
+    setSuppliers(updatedSuppliers);
+    localStorage.setItem('stock_manager_suppliers_list', JSON.stringify(updatedSuppliers));
+
+    try {
+      await setDoc(doc(db, 'suppliers', supplier.id), cleanUndefined(supplier));
+      addToast('success', 'เพิ่มร้านค้าสำเร็จ', `ร้านค้า "${supplier.name}" ถูกเพิ่มเข้าสู่ระบบแล้ว`);
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถเพิ่มร้านค้าได้: ${error.message}`);
+    }
+  };
+
+  const handleEditSupplier = async (id: string, updatedFields: Partial<Supplier>) => {
+    const oldSupplier = suppliers.find((s) => s.id === id);
+    const updatedSuppliers = suppliers.map((s) =>
+      s.id === id ? { ...s, ...updatedFields } : s
+    );
+    setSuppliers(updatedSuppliers);
+    localStorage.setItem('stock_manager_suppliers_list', JSON.stringify(updatedSuppliers));
+
+    // If supplier name changed, update products referencing old supplier name
+    if (oldSupplier && updatedFields.name && oldSupplier.name !== updatedFields.name) {
+      const affectedProducts = products.filter((p) => p.supplier === oldSupplier.name);
+      if (affectedProducts.length > 0) {
+        const updatedProducts = products.map((p) =>
+          p.supplier === oldSupplier.name ? { ...p, supplier: updatedFields.name } : p
+        );
+        setProducts(updatedProducts);
+        localStorage.setItem('stock_manager_products', JSON.stringify(updatedProducts));
+      }
+    }
+
+    try {
+      const supRef = doc(db, 'suppliers', id);
+      const cleanFields: Record<string, any> = {};
+      Object.entries(updatedFields).forEach(([key, val]) => {
+        if (val !== undefined) cleanFields[key] = val;
+      });
+      await updateDoc(supRef, cleanFields);
+      addToast('success', 'ปรับปรุงข้อมูลร้านค้าสำเร็จ', 'ข้อมูลของร้านค้าได้รับการปรับปรุงในระบบแล้ว');
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถปรับปรุงร้านค้าได้: ${error.message}`);
+    }
+  };
+
+  const handleDeleteSupplier = async (id: string) => {
+    const supplierToDelete = suppliers.find((s) => s.id === id);
+    if (!supplierToDelete) return;
+
+    const updatedSuppliers = suppliers.filter((s) => s.id !== id);
+    setSuppliers(updatedSuppliers);
+    localStorage.setItem('stock_manager_suppliers_list', JSON.stringify(updatedSuppliers));
+
+    try {
+      await deleteDoc(doc(db, 'suppliers', id));
+      addToast('info', 'ลบร้านค้าสำเร็จ', `ร้านค้า "${supplierToDelete.name}" ถูกนำออกจากระบบแล้ว`);
+    } catch (error: any) {
+      console.error(error);
+      addToast('warning', 'เกิดข้อผิดพลาด', `ไม่สามารถลบร้านค้าได้: ${error.message}`);
+    }
+  };
+
   // -------------------- MEDIA & DOCUMENTS WORKFLOWS --------------------
 
   const handleAddMediaFile = async (data: Omit<MediaFile, 'id' | 'createdAt'>): Promise<MediaFile> => {
@@ -3178,6 +3295,7 @@ export default function App() {
             employees={employees}
             jobProjects={jobProjects}
             brands={brands}
+            suppliers={suppliers}
             boms={boms}
             setBoms={setBoms}
             onAddMediaFile={handleAddMediaFile}
@@ -3215,6 +3333,7 @@ export default function App() {
             onAddMediaFile={handleAddMediaFile}
             onAdjustStock={handleAdjustStock}
             setBoms={setBoms}
+            suppliers={suppliers}
           />
         );
       case 'reports':
@@ -3264,6 +3383,10 @@ export default function App() {
             onAddBrand={handleAddBrand}
             onEditBrand={handleEditBrand}
             onDeleteBrand={handleDeleteBrand}
+            suppliers={suppliers}
+            onAddSupplier={handleAddSupplier}
+            onEditSupplier={handleEditSupplier}
+            onDeleteSupplier={handleDeleteSupplier}
             onDownloadBackup={handleDownloadBackup}
             onRestoreBackup={handleRestoreBackup}
             onSaveAllToDatabase={handleSaveAllToDatabase}

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Job, Employee, JobProject, normalizeModules, Brand, UserRole, MediaFile, CompanyProfile } from '../types';
+import { Job, Employee, JobProject, normalizeModules, Brand, Supplier, SubStore, UserRole, MediaFile, CompanyProfile } from '../types';
 import { BusinessCardModal } from './BusinessCardModal';
 import { 
   FolderGit2, 
@@ -27,6 +27,10 @@ import {
   Sparkles,
   ClipboardList,
   Tag,
+  Store,
+  Globe,
+  Building,
+  Building2,
   Database,
   RotateCcw,
   Download,
@@ -48,7 +52,7 @@ import {
   GraduationCap,
   IdCard,
   QrCode,
-  Building2
+  ShoppingBag
 } from 'lucide-react';
 
 const getDeptBadgeStyle = (dept: string) => {
@@ -513,6 +517,11 @@ interface SettingsViewProps {
   onEditBrand?: (id: string, updatedFields: Partial<Brand>) => Promise<void>;
   onDeleteBrand?: (id: string) => Promise<void>;
 
+  suppliers?: Supplier[];
+  onAddSupplier?: (supplier: Omit<Supplier, 'id' | 'createdAt'>) => Promise<void>;
+  onEditSupplier?: (id: string, updatedFields: Partial<Supplier>) => Promise<void>;
+  onDeleteSupplier?: (id: string) => Promise<void>;
+
   onDownloadBackup?: () => void;
   onRestoreBackup?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onSaveAllToDatabase?: () => Promise<void>;
@@ -537,7 +546,7 @@ interface SettingsViewProps {
   onUpdateCompanyProfile?: (profile: CompanyProfile) => Promise<void> | void;
 }
 
-type SubTab = 'company' | 'projects' | 'employees' | 'brands' | 'media' | 'database';
+type SubTab = 'company' | 'projects' | 'employees' | 'brands' | 'suppliers' | 'media' | 'database';
 
 export default function SettingsView({
   employees,
@@ -554,6 +563,10 @@ export default function SettingsView({
   onAddBrand,
   onEditBrand,
   onDeleteBrand,
+  suppliers = [],
+  onAddSupplier,
+  onEditSupplier,
+  onDeleteSupplier,
   onDownloadBackup,
   onRestoreBackup,
   onSaveAllToDatabase,
@@ -793,6 +806,90 @@ export default function SettingsView({
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
   const [brandAttachedDocs, setBrandAttachedDocs] = useState<string[]>([]);
   const [brandDocModalBrand, setBrandDocModalBrand] = useState<Brand | null>(null);
+
+  // Form Fields & States - Suppliers / Stores
+  const [supplierName, setSupplierName] = useState('');
+  const [supplierLogo, setSupplierLogo] = useState('');
+  const [supplierContact, setSupplierContact] = useState('');
+  const [supplierPhone, setSupplierPhone] = useState('');
+  const [supplierEmail, setSupplierEmail] = useState('');
+  const [supplierWebsite, setSupplierWebsite] = useState('');
+  const [supplierAddress, setSupplierAddress] = useState('');
+  const [supplierSubStores, setSupplierSubStores] = useState<SubStore[]>([]);
+  const [newSubName, setNewSubName] = useState('');
+  const [newSubPlatform, setNewSubPlatform] = useState<string>('Shopee');
+  const [newSubLogoUrl, setNewSubLogoUrl] = useState('');
+  const [newSubLink, setNewSubLink] = useState('');
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [isSupplierAddModalOpen, setIsSupplierAddModalOpen] = useState(false);
+  const [isSupplierEditModalOpen, setIsSupplierEditModalOpen] = useState(false);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+
+  const filteredSuppliers = useMemo(() => {
+    return suppliers.filter((s) => {
+      const q = supplierSearch.trim().toLowerCase();
+      if (!q) return true;
+      const matchSub = s.subStores?.some(sub => 
+        sub.name.toLowerCase().includes(q) || 
+        (sub.platform && sub.platform.toLowerCase().includes(q))
+      );
+      return (
+        s.name.toLowerCase().includes(q) ||
+        (s.contactName && s.contactName.toLowerCase().includes(q)) ||
+        (s.phone && s.phone.includes(q)) ||
+        (s.email && s.email.toLowerCase().includes(q)) ||
+        matchSub
+      );
+    });
+  }, [suppliers, supplierSearch]);
+
+  const handleSupplierAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supplierName.trim()) return;
+    if (onAddSupplier) {
+      await onAddSupplier({
+        name: supplierName.trim(),
+        logoUrl: supplierLogo.trim() || undefined,
+        contactName: supplierContact.trim() || undefined,
+        phone: supplierPhone.trim() || undefined,
+        email: supplierEmail.trim() || undefined,
+        website: supplierWebsite.trim() || undefined,
+        address: supplierAddress.trim() || undefined,
+        subStores: supplierSubStores.length > 0 ? supplierSubStores : undefined,
+      });
+    }
+    setSupplierName('');
+    setSupplierLogo('');
+    setSupplierContact('');
+    setSupplierPhone('');
+    setSupplierEmail('');
+    setSupplierWebsite('');
+    setSupplierAddress('');
+    setSupplierSubStores([]);
+    setNewSubName('');
+    setNewSubLogoUrl('');
+    setNewSubLink('');
+    setIsSupplierAddModalOpen(false);
+  };
+
+  const handleSupplierEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSupplier || !supplierName.trim()) return;
+    if (onEditSupplier) {
+      await onEditSupplier(selectedSupplier.id, {
+        name: supplierName.trim(),
+        logoUrl: supplierLogo.trim() || undefined,
+        contactName: supplierContact.trim() || undefined,
+        phone: supplierPhone.trim() || undefined,
+        email: supplierEmail.trim() || undefined,
+        website: supplierWebsite.trim() || undefined,
+        address: supplierAddress.trim() || undefined,
+        subStores: supplierSubStores,
+      });
+    }
+    setIsSupplierEditModalOpen(false);
+    setSelectedSupplier(null);
+  };
 
   // Media Repository States
   const [mediaSearch, setMediaSearch] = useState('');
@@ -1349,6 +1446,18 @@ export default function SettingsView({
           >
             <Tag className="h-3 w-3" />
             <span>แบรนด์ ({brands.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveSubTab('suppliers')}
+            className={`px-2.5 py-0.5 rounded text-[10px] font-black cursor-pointer flex items-center gap-1 transition-all ${
+              activeSubTab === 'suppliers' 
+                ? 'bg-indigo-600 text-white shadow-3xs' 
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+            id="settings-tab-suppliers"
+          >
+            <Store className="h-3 w-3" />
+            <span>ร้านค้า ({suppliers.length})</span>
           </button>
           <button
             onClick={() => setActiveSubTab('media')}
@@ -2131,8 +2240,7 @@ export default function SettingsView({
                               </div>
                               
                               <h4 className="text-sm font-black text-slate-800 dark:text-slate-100 font-sans truncate mt-1">
-                                {emp.name}
-                                {emp.nickname && <span className="text-indigo-600 dark:text-indigo-400 font-black ml-1.5">({emp.nickname})</span>}
+                                {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name}
                               </h4>
                               
                               <p className="text-[11px] text-purple-700 dark:text-purple-300 font-extrabold mt-0.5">{emp.role || 'ประธานกรรมการบริหาร (Owner)'}</p>
@@ -2325,8 +2433,7 @@ export default function SettingsView({
                                         </div>
 
                                         <h6 className="text-xs font-black text-slate-800 dark:text-slate-100 font-sans truncate mt-0.5">
-                                          {emp.name}
-                                          {emp.nickname && <span className="text-indigo-600 dark:text-indigo-400 font-black ml-1">({emp.nickname})</span>}
+                                          {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name}
                                         </h6>
                                         <p className="text-[10px] font-extrabold text-slate-500 leading-tight">{emp.role || 'หัวหน้าประจำแผนก'}</p>
                                         
@@ -2459,8 +2566,7 @@ export default function SettingsView({
                                         </div>
 
                                         <h6 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-100 font-sans truncate mt-0.5">
-                                          {emp.name}
-                                          {emp.nickname && <span className="text-slate-500 dark:text-slate-400 font-bold ml-1">({emp.nickname})</span>}
+                                          {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name}
                                         </h6>
                                         <p className="text-[9px] font-bold text-slate-500 leading-none mt-0.5">{emp.role || 'ช่างประจำแผนก'}</p>
                                         
@@ -3767,6 +3873,850 @@ export default function SettingsView({
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ======================= TAB 4: SUPPLIERS DIRECTORY ==================== */}
+      {/* ======================================================================= */}
+      {activeSubTab === 'suppliers' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 font-sans flex items-center gap-1.5">
+                <Store className="h-4 w-4 text-indigo-500" />
+                ทำเนียบร้านค้า / ผู้จัดจำหน่าย (Suppliers &amp; Stores)
+              </h3>
+              <p className="text-[10px] text-slate-400 font-medium">
+                ลงทะเบียนร้านค้า ผู้จัดจำหน่าย และซัพพลายเออร์ เพื่อเชื่อมโยงโลโก้ร้านค้า ช่องทางจัดซื้อ และแผน BOM
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setSupplierName('');
+                setSupplierLogo('');
+                setSupplierContact('');
+                setSupplierPhone('');
+                setSupplierEmail('');
+                setSupplierWebsite('');
+                setSupplierAddress('');
+                setSupplierSubStores([]);
+                setNewSubName('');
+                setNewSubLogoUrl('');
+                setNewSubLink('');
+                setIsSupplierAddModalOpen(true);
+              }}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-xs self-start md:self-auto"
+              id="btn-add-supplier-modal"
+            >
+              <Plus className="h-4 w-4" />
+              <span>เพิ่มร้านค้าใหม่</span>
+            </button>
+          </div>
+
+          {/* Search Box */}
+          <div className="bg-white/80 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+                <Search className="h-4 w-4 text-slate-400" />
+              </span>
+              <input
+                type="text"
+                placeholder="ค้นหาชื่อร้านค้า ผู้ติดต่อ เบอร์โทรศัพท์ หรืออีเมล..."
+                value={supplierSearch}
+                onChange={(e) => setSupplierSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-950/20 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-hidden"
+                id="supplier-search-input"
+              />
+            </div>
+          </div>
+
+          {/* Suppliers list */}
+          {filteredSuppliers.length === 0 ? (
+            <div className="bg-white/40 dark:bg-slate-900/20 border border-slate-100 dark:border-slate-800 rounded-2xl p-12 text-center">
+              <div className="inline-flex p-3 bg-slate-100 dark:bg-slate-800 rounded-xl mb-3">
+                <Store className="h-6 w-6 text-slate-400" />
+              </div>
+              <p className="text-xs font-bold text-slate-600 dark:text-slate-400">ไม่พบข้อมูลร้านค้า/ผู้จัดจำหน่าย</p>
+              <p className="text-[10px] text-slate-400 mt-1">คุณสามารถเพิ่มร้านค้าใหม่ได้โดยคลิกปุ่ม "เพิ่มร้านค้าใหม่"</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredSuppliers.map((supplier) => (
+                <div 
+                  key={supplier.id}
+                  className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-xs transition-all hover:border-indigo-500/30 group"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      {/* Logo Box */}
+                      <div className="h-14 w-14 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-center overflow-hidden shrink-0">
+                        {supplier.logoUrl ? (
+                          <img 
+                            src={supplier.logoUrl} 
+                            alt={supplier.name} 
+                            className="max-h-full max-w-full object-contain p-1"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <span className="text-xl font-black text-indigo-500 font-sans uppercase">
+                            {supplier.name.charAt(0)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-sm font-black text-slate-800 dark:text-slate-100 truncate" title={supplier.name}>
+                          {supplier.name}
+                        </h4>
+                        {supplier.contactName && (
+                          <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5 truncate">
+                            <Users className="h-3 w-3 text-slate-400 shrink-0" />
+                            <span>{supplier.contactName}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Additional Details */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-50 dark:border-slate-800/80 text-[11px]">
+                      {supplier.phone && (
+                        <p className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                          <Phone className="h-3 w-3 text-emerald-500 shrink-0" />
+                          <a href={`tel:${supplier.phone}`} className="hover:underline">{supplier.phone}</a>
+                        </p>
+                      )}
+                      {supplier.email && (
+                        <p className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 truncate">
+                          <Mail className="h-3 w-3 text-indigo-500 shrink-0" />
+                          <a href={`mailto:${supplier.email}`} className="hover:underline truncate">{supplier.email}</a>
+                        </p>
+                      )}
+                      {supplier.website && (
+                        <p className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 truncate">
+                          <Globe className="h-3 w-3 text-sky-500 shrink-0" />
+                          <a 
+                            href={supplier.website.startsWith('http') ? supplier.website : `https://${supplier.website}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="hover:underline text-indigo-600 dark:text-indigo-400 font-medium truncate flex items-center gap-0.5"
+                          >
+                            <span>{supplier.website.replace(/^https?:\/\//, '')}</span>
+                          </a>
+                        </p>
+                      )}
+                      {supplier.address && (
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 line-clamp-2 mt-1">
+                          {supplier.address}
+                        </p>
+                      )}
+
+                      {/* Sub-Stores & E-Commerce Channels Display */}
+                      {supplier.subStores && supplier.subStores.length > 0 && (
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5 mt-2">
+                          <div className="flex items-center justify-between text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400">
+                            <span className="flex items-center gap-1">
+                              <ShoppingBag className="h-3 w-3" />
+                              <span>ร้านค้าย่อย E-Commerce ({supplier.subStores.length})</span>
+                            </span>
+                          </div>
+                          <div className="space-y-1 max-h-32 overflow-y-auto pr-0.5">
+                            {supplier.subStores.map((sub) => (
+                              <div key={sub.id} className="flex items-center justify-between p-1.5 bg-slate-50 dark:bg-slate-950/40 rounded-lg border border-slate-150 dark:border-slate-800/80 text-[10.5px]">
+                                <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1">
+                                  {sub.logoUrl ? (
+                                    <img src={sub.logoUrl} alt={sub.name} className="w-4 h-4 object-contain rounded shrink-0 bg-white" referrerPolicy="no-referrer" />
+                                  ) : (
+                                    <span className="px-1 py-0.2 bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded font-black text-[8px] shrink-0">
+                                      {sub.platform || 'ECom'}
+                                    </span>
+                                  )}
+                                  <span className="font-bold text-slate-700 dark:text-slate-200 truncate">{sub.name}</span>
+                                </div>
+                                {sub.link && (
+                                  <a
+                                    href={sub.link.startsWith('http') ? sub.link : `https://${sub.link}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-1.5 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold text-[8.5px] flex items-center gap-0.5 shrink-0 transition-colors"
+                                    title={`ไปหน้าร้านค้าย่อย ${sub.name}`}
+                                  >
+                                    <ExternalLink className="h-2.5 w-2.5" />
+                                    <span>ลิงก์</span>
+                                  </a>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-end gap-1.5 mt-4 pt-3 border-t border-slate-50 dark:border-slate-800 w-full">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedSupplier(supplier);
+                        setSupplierName(supplier.name);
+                        setSupplierLogo(supplier.logoUrl || '');
+                        setSupplierContact(supplier.contactName || '');
+                        setSupplierPhone(supplier.phone || '');
+                        setSupplierEmail(supplier.email || '');
+                        setSupplierWebsite(supplier.website || '');
+                        setSupplierAddress(supplier.address || '');
+                        setSupplierSubStores(supplier.subStores || []);
+                        setNewSubName('');
+                        setNewSubLogoUrl('');
+                        setNewSubLink('');
+                        setIsSupplierEditModalOpen(true);
+                      }}
+                      className="p-1.5 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                      title="แก้ไขข้อมูลร้านค้า"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (triggerConfirm) {
+                          triggerConfirm(
+                            'ยืนยันการลบร้านค้า',
+                            `คุณต้องการลบร้านค้า "${supplier.name}" หรือไม่?`,
+                            () => onDeleteSupplier?.(supplier.id)
+                          );
+                        } else if (confirm(`คุณต้องการลบร้านค้า "${supplier.name}" หรือไม่?`)) {
+                          onDeleteSupplier?.(supplier.id);
+                        }
+                      }}
+                      className="p-1.5 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                      title="ลบร้านค้า"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ======================== MODAL: ADD SUPPLIER ========================== */}
+      {/* ======================================================================= */}
+      {isSupplierAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Store className="h-4 w-4 text-indigo-500" />
+                <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">เพิ่มร้านค้า / ผู้จัดจำหน่ายใหม่</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSupplierAddModalOpen(false)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSupplierAddSubmit} className="flex-1 overflow-y-auto">
+              <div className="p-4 space-y-3.5">
+                {/* Store Name */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อร้านค้า / ผู้จัดจำหน่าย <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={supplierName}
+                    onChange={(e) => setSupplierName(e.target.value)}
+                    placeholder="กรอกชื่อร้านค้า (เช่น RS Components, Shopee, HomePro)..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Logo File upload */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 block">Logo ร้านค้า</label>
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-14 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+                      {supplierLogo ? (
+                        <img 
+                          src={supplierLogo} 
+                          alt="Logo Preview" 
+                          className="max-h-full max-w-full object-contain p-1"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <Store className="h-5 w-5 text-slate-300" />
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer border border-slate-200/60 dark:border-slate-700/60">
+                        <Upload className="h-3.5 w-3.5" />
+                        อัปโหลดโลโก้ร้านค้า
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setSupplierLogo(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                      <input
+                        type="text"
+                        value={supplierLogo}
+                        onChange={(e) => setSupplierLogo(e.target.value)}
+                        placeholder="หรือวางลิงก์ URL รูปภาพโลโก้..."
+                        className="w-full px-2.5 py-1 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-md text-[10px] text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Name */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อผู้ติดต่อ</label>
+                  <input
+                    type="text"
+                    value={supplierContact}
+                    onChange={(e) => setSupplierContact(e.target.value)}
+                    placeholder="ชื่อผู้ขาย / เซลส์ / ผู้ติดต่อ..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Phone & Email */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 block">เบอร์โทรศัพท์</label>
+                    <input
+                      type="text"
+                      value={supplierPhone}
+                      onChange={(e) => setSupplierPhone(e.target.value)}
+                      placeholder="02-xxx-xxxx / 08x-xxx-xxxx"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 block">อีเมล</label>
+                    <input
+                      type="email"
+                      value={supplierEmail}
+                      onChange={(e) => setSupplierEmail(e.target.value)}
+                      placeholder="sales@supplier.com"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Website */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 block">เว็บไซต์ / ลิงก์ร้านค้าออนไลน์</label>
+                  <input
+                    type="text"
+                    value={supplierWebsite}
+                    onChange={(e) => setSupplierWebsite(e.target.value)}
+                    placeholder="https://www.example-store.com..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Address */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 block">ที่อยู่ / รายละเอียดเพิ่มเติม</label>
+                  <textarea
+                    rows={2}
+                    value={supplierAddress}
+                    onChange={(e) => setSupplierAddress(e.target.value)}
+                    placeholder="ที่อยู่ร้านค้า เลขที่ผู้เสียภาษี หมายเหตุ..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden resize-none"
+                  />
+                </div>
+
+                {/* Sub-Stores / E-Commerce Channels Section */}
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                      <ShoppingBag className="h-3.5 w-3.5 text-indigo-500" />
+                      <span>กลุ่มร้านค้าย่อย / ช่องทาง E-commerce ({supplierSubStores.length})</span>
+                    </label>
+                  </div>
+
+                  {/* Existing sub-stores list */}
+                  {supplierSubStores.length > 0 && (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto p-1 bg-slate-50 dark:bg-slate-950/40 rounded-xl border border-slate-200 dark:border-slate-800">
+                      {supplierSubStores.map((sub) => (
+                        <div key={sub.id} className="flex items-center justify-between p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-800 shadow-2xs text-xs">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            {sub.logoUrl ? (
+                              <img src={sub.logoUrl} alt={sub.name} className="w-5 h-5 object-contain rounded shrink-0 bg-slate-50" referrerPolicy="no-referrer" />
+                            ) : (
+                              <div className="w-5 h-5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-black text-[9px] flex items-center justify-center shrink-0">
+                                {sub.platform?.slice(0, 3) || 'Sub'}
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="font-extrabold text-slate-800 dark:text-slate-100 truncate">{sub.name}</p>
+                              {sub.link && (
+                                <p className="text-[10px] text-indigo-600 dark:text-indigo-400 truncate">{sub.link}</p>
+                              )}
+                            </div>
+                            <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded font-bold text-[9px] shrink-0">
+                              {sub.platform || 'General'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSupplierSubStores(prev => prev.filter(s => s.id !== sub.id))}
+                            className="p-1 text-slate-400 hover:text-rose-500 rounded-lg transition-colors ml-1 cursor-pointer shrink-0"
+                            title="ลบร้านค้าย่อยนี้"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add sub-store inline form */}
+                  <div className="bg-slate-50 dark:bg-slate-950/30 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-1 space-y-0.5">
+                        <label className="text-[9px] font-bold text-slate-400 block">แพลตฟอร์ม</label>
+                        <select
+                          value={newSubPlatform}
+                          onChange={(e) => setNewSubPlatform(e.target.value)}
+                          className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                        >
+                          <option value="Shopee">Shopee</option>
+                          <option value="Lazada">Lazada</option>
+                          <option value="TikTok">TikTok Shop</option>
+                          <option value="Line">LINE Shop</option>
+                          <option value="Facebook">Facebook</option>
+                          <option value="Website">Website</option>
+                          <option value="Other">อื่นๆ</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2 space-y-0.5">
+                        <label className="text-[9px] font-bold text-slate-400 block">ชื่อร้านค้าย่อย / สาขา</label>
+                        <input
+                          type="text"
+                          value={newSubName}
+                          onChange={(e) => setNewSubName(e.target.value)}
+                          placeholder="เช่น Shopee Official Store..."
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <label className="text-[9px] font-bold text-slate-400 block">ลิงก์ URL หน้าร้านค้าย่อย E-commerce</label>
+                      <input
+                        type="text"
+                        value={newSubLink}
+                        onChange={(e) => setNewSubLink(e.target.value)}
+                        placeholder="https://shopee.co.th/..."
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 space-y-0.5">
+                        <label className="text-[9px] font-bold text-slate-400 block">รูป/โลโก้ร้านค้าย่อย (อัปโหลดหรือ URL)</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={newSubLogoUrl}
+                            onChange={(e) => setNewSubLogoUrl(e.target.value)}
+                            placeholder="URL รูปโลโก้..."
+                            className="flex-1 px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                          />
+                          <label className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-bold cursor-pointer shrink-0">
+                            <Upload className="h-3 w-3 inline mr-1" />
+                            ไฟล์
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  setNewSubLogoUrl(reader.result as string);
+                                };
+                                reader.readAsDataURL(file);
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!newSubName.trim() && !newSubLink.trim()) return;
+                          const subItem: SubStore = {
+                            id: 'sub_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+                            name: newSubName.trim() || `${newSubPlatform} Store`,
+                            platform: newSubPlatform,
+                            logoUrl: newSubLogoUrl.trim() || undefined,
+                            link: newSubLink.trim() || undefined
+                          };
+                          setSupplierSubStores(prev => [...prev, subItem]);
+                          setNewSubName('');
+                          setNewSubLogoUrl('');
+                          setNewSubLink('');
+                        }}
+                        className="self-end px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-black flex items-center gap-1 cursor-pointer shrink-0 shadow-2xs"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>เพิ่ม</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2 bg-slate-50/50 dark:bg-slate-950/20">
+                <button
+                  type="button"
+                  onClick={() => setIsSupplierAddModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-xs"
+                >
+                  บันทึกข้อมูลร้านค้า
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* ======================= MODAL: EDIT SUPPLIER ========================== */}
+      {/* ======================================================================= */}
+      {isSupplierEditModalOpen && selectedSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Store className="h-4 w-4 text-indigo-500" />
+                <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">แก้ไขข้อมูลร้านค้า</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSupplierEditModalOpen(false)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSupplierEditSubmit} className="flex-1 overflow-y-auto">
+              <div className="p-4 space-y-3.5">
+                {/* Store Name */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อร้านค้า / ผู้จัดจำหน่าย <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={supplierName}
+                    onChange={(e) => setSupplierName(e.target.value)}
+                    placeholder="กรอกชื่อร้านค้า..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Logo File upload */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 block">Logo ร้านค้า</label>
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-14 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+                      {supplierLogo ? (
+                        <img 
+                          src={supplierLogo} 
+                          alt="Logo Preview" 
+                          className="max-h-full max-w-full object-contain p-1"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <Store className="h-5 w-5 text-slate-300" />
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer border border-slate-200/60 dark:border-slate-700/60">
+                        <Upload className="h-3.5 w-3.5" />
+                        เปลี่ยนโลโก้ร้านค้า
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setSupplierLogo(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                      <input
+                        type="text"
+                        value={supplierLogo}
+                        onChange={(e) => setSupplierLogo(e.target.value)}
+                        placeholder="หรือวางลิงก์ URL รูปภาพโลโก้..."
+                        className="w-full px-2.5 py-1 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-md text-[10px] text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Name */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 block">ชื่อผู้ติดต่อ</label>
+                  <input
+                    type="text"
+                    value={supplierContact}
+                    onChange={(e) => setSupplierContact(e.target.value)}
+                    placeholder="ชื่อผู้ขาย / เซลส์..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Phone & Email */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 block">เบอร์โทรศัพท์</label>
+                    <input
+                      type="text"
+                      value={supplierPhone}
+                      onChange={(e) => setSupplierPhone(e.target.value)}
+                      placeholder="02-xxx-xxxx"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 block">อีเมล</label>
+                    <input
+                      type="email"
+                      value={supplierEmail}
+                      onChange={(e) => setSupplierEmail(e.target.value)}
+                      placeholder="sales@supplier.com"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Website */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 block">เว็บไซต์ / ลิงก์ร้านค้าออนไลน์</label>
+                  <input
+                    type="text"
+                    value={supplierWebsite}
+                    onChange={(e) => setSupplierWebsite(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Address */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 block">ที่อยู่ / รายละเอียดเพิ่มเติม</label>
+                  <textarea
+                    rows={2}
+                    value={supplierAddress}
+                    onChange={(e) => setSupplierAddress(e.target.value)}
+                    placeholder="ที่อยู่ร้านค้า..."
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden resize-none"
+                  />
+                </div>
+
+                {/* Sub-Stores / E-Commerce Channels Section */}
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                      <ShoppingBag className="h-3.5 w-3.5 text-indigo-500" />
+                      <span>กลุ่มร้านค้าย่อย / ช่องทาง E-commerce ({supplierSubStores.length})</span>
+                    </label>
+                  </div>
+
+                  {/* Existing sub-stores list */}
+                  {supplierSubStores.length > 0 && (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto p-1 bg-slate-50 dark:bg-slate-950/40 rounded-xl border border-slate-200 dark:border-slate-800">
+                      {supplierSubStores.map((sub) => (
+                        <div key={sub.id} className="flex items-center justify-between p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-800 shadow-2xs text-xs">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            {sub.logoUrl ? (
+                              <img src={sub.logoUrl} alt={sub.name} className="w-5 h-5 object-contain rounded shrink-0 bg-slate-50" referrerPolicy="no-referrer" />
+                            ) : (
+                              <div className="w-5 h-5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-black text-[9px] flex items-center justify-center shrink-0">
+                                {sub.platform?.slice(0, 3) || 'Sub'}
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="font-extrabold text-slate-800 dark:text-slate-100 truncate">{sub.name}</p>
+                              {sub.link && (
+                                <p className="text-[10px] text-indigo-600 dark:text-indigo-400 truncate">{sub.link}</p>
+                              )}
+                            </div>
+                            <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded font-bold text-[9px] shrink-0">
+                              {sub.platform || 'General'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSupplierSubStores(prev => prev.filter(s => s.id !== sub.id))}
+                            className="p-1 text-slate-400 hover:text-rose-500 rounded-lg transition-colors ml-1 cursor-pointer shrink-0"
+                            title="ลบร้านค้าย่อยนี้"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add sub-store inline form */}
+                  <div className="bg-slate-50 dark:bg-slate-950/30 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-1 space-y-0.5">
+                        <label className="text-[9px] font-bold text-slate-400 block">แพลตฟอร์ม</label>
+                        <select
+                          value={newSubPlatform}
+                          onChange={(e) => setNewSubPlatform(e.target.value)}
+                          className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                        >
+                          <option value="Shopee">Shopee</option>
+                          <option value="Lazada">Lazada</option>
+                          <option value="TikTok">TikTok Shop</option>
+                          <option value="Line">LINE Shop</option>
+                          <option value="Facebook">Facebook</option>
+                          <option value="Website">Website</option>
+                          <option value="Other">อื่นๆ</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2 space-y-0.5">
+                        <label className="text-[9px] font-bold text-slate-400 block">ชื่อร้านค้าย่อย / สาขา</label>
+                        <input
+                          type="text"
+                          value={newSubName}
+                          onChange={(e) => setNewSubName(e.target.value)}
+                          placeholder="เช่น Shopee Official Store..."
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <label className="text-[9px] font-bold text-slate-400 block">ลิงก์ URL หน้าร้านค้าย่อย E-commerce</label>
+                      <input
+                        type="text"
+                        value={newSubLink}
+                        onChange={(e) => setNewSubLink(e.target.value)}
+                        placeholder="https://shopee.co.th/..."
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 space-y-0.5">
+                        <label className="text-[9px] font-bold text-slate-400 block">รูป/โลโก้ร้านค้าย่อย (อัปโหลดหรือ URL)</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={newSubLogoUrl}
+                            onChange={(e) => setNewSubLogoUrl(e.target.value)}
+                            placeholder="URL รูปโลโก้..."
+                            className="flex-1 px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                          />
+                          <label className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-[10px] font-bold cursor-pointer shrink-0">
+                            <Upload className="h-3 w-3 inline mr-1" />
+                            ไฟล์
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  setNewSubLogoUrl(reader.result as string);
+                                };
+                                reader.readAsDataURL(file);
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!newSubName.trim() && !newSubLink.trim()) return;
+                          const subItem: SubStore = {
+                            id: 'sub_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+                            name: newSubName.trim() || `${newSubPlatform} Store`,
+                            platform: newSubPlatform,
+                            logoUrl: newSubLogoUrl.trim() || undefined,
+                            link: newSubLink.trim() || undefined
+                          };
+                          setSupplierSubStores(prev => [...prev, subItem]);
+                          setNewSubName('');
+                          setNewSubLogoUrl('');
+                          setNewSubLink('');
+                        }}
+                        className="self-end px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-black flex items-center gap-1 cursor-pointer shrink-0 shadow-2xs"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>เพิ่ม</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2 bg-slate-50/50 dark:bg-slate-950/20">
+                <button
+                  type="button"
+                  onClick={() => setIsSupplierEditModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-xs"
+                >
+                  บันทึกการแก้ไข
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

@@ -23,6 +23,10 @@ export interface Product {
   brand?: string; // BRAND NAME e.g., SCHNEIDER
   unit?: string; // UNIT e.g., PCS
   supplier?: string; // SUPPLIER
+  supplierLogoUrl?: string; // SUPPLIER LOGO (Base64 or URL)
+  subStore?: string; // SUB STORE NAME (e.g. Shopee Official Store)
+  subStoreLogoUrl?: string; // SUB STORE LOGO
+  subStoreLink?: string; // SUB STORE E-COMMERCE LINK
   sourceUrl?: string;
   createdAt: string;
   updatedAt: string;
@@ -62,6 +66,27 @@ export interface Brand {
   createdAt: string;
 }
 
+export interface SubStore {
+  id: string;
+  name: string; // ชื่อร้านค้าย่อย / สาขา E-commerce (e.g. Shopee Official, Lazada Mall, TikTok Shop, Direct Web)
+  platform?: 'Shopee' | 'Lazada' | 'TikTok' | 'Line' | 'Facebook' | 'Website' | 'Other' | string;
+  logoUrl?: string; // รูปภาพ/โลโก้ร้านค้าย่อย
+  link?: string; // ลิงก์ URL ร้านค้าย่อย E-commerce
+}
+
+export interface Supplier {
+  id: string;
+  name: string; // ชื่อร้านค้าหลัก / Supplier Name
+  logoUrl?: string; // Logo ร้านค้าหลัก (Base64 or image URL)
+  contactName?: string; // ชื่อผู้ติดต่อ
+  phone?: string; // เบอร์โทรศัพท์
+  email?: string; // อีเมล
+  website?: string; // เว็บไซต์ / ลิงก์ร้านค้าหลัก
+  address?: string; // ที่อยู่
+  subStores?: SubStore[]; // กลุ่มร้านค้าย่อย E-commerce / สาขาออนไลน์
+  createdAt: string;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -98,6 +123,11 @@ export interface BomItem {
   unit?: string; // e.g. PCS
   remark?: string; // e.g. ขอราคาแล้ว
   brand?: string; // e.g. SCHNEIDER
+  supplier?: string; // e.g. RS Components, Shopee
+  supplierLogoUrl?: string; // Logo URL/Base64 of store
+  subStore?: string; // Sub-store name
+  subStoreLogoUrl?: string; // Sub-store logo
+  subStoreLink?: string; // Sub-store e-commerce link
   prNo?: string; // e.g. P.R-GTT2605-0794
   poNo?: string;
   priceUnit?: number; // Custom override or reference price
@@ -149,6 +179,10 @@ export interface ProductOrder {
   prNo?: string; // เลขที่ใบขอซื้อ (PR No.)
   poNo?: string; // เลขที่ใบสั่งซื้อ (PO No.)
   supplier?: string; // ผู้จัดจำหน่าย/ซัพพลายเออร์ (Supplier)
+  supplierLogoUrl?: string; // Logo ผู้จัดจำหน่าย/ซัพพลายเออร์
+  subStore?: string; // ร้านค้าย่อย E-commerce
+  subStoreLogoUrl?: string; // Logo ร้านค้าย่อย E-commerce
+  subStoreLink?: string; // ลิงก์ร้านค้าย่อย E-commerce
   quotationNo?: string; // เลขที่ใบเสนอราคา (Quotation No.)
   approverName?: string; // ชื่อผู้อนุมัติ (Approver)
   paymentRef?: string; // ข้อมูลอ้างอิงการโอนเงิน/ชำระเงิน (Payment Ref)
