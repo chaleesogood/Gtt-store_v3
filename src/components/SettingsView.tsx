@@ -46,7 +46,8 @@ import {
   HardDrive,
   CheckCircle,
   GraduationCap,
-  IdCard
+  IdCard,
+  QrCode
 } from 'lucide-react';
 
 const getDeptBadgeStyle = (dept: string) => {
@@ -719,6 +720,9 @@ export default function SettingsView({
   const [empEmail, setEmpEmail] = useState('');
   const [empPhone, setEmpPhone] = useState('');
   const [empImageUrl, setEmpImageUrl] = useState('');
+  const [empLineId, setEmpLineId] = useState('');
+  const [empLineQrUrl, setEmpLineQrUrl] = useState('');
+  const [empCompanyLogoUrl, setEmpCompanyLogoUrl] = useState('');
   const [empDepartment, setEmpDepartment] = useState<string>('Electrical');
   const [empOrgLevel, setEmpOrgLevel] = useState<string>('team');
   const [empRole, setEmpRole] = useState('');
@@ -961,6 +965,9 @@ export default function SettingsView({
       email: empEmail.trim(),
       phone: empPhone.trim(),
       imageUrl: empImageUrl || '',
+      lineId: empLineId.trim(),
+      lineQrUrl: empLineQrUrl,
+      companyLogoUrl: empCompanyLogoUrl,
       department: empDepartment,
       orgLevel: empOrgLevel,
       role: empRole.trim(),
@@ -974,6 +981,9 @@ export default function SettingsView({
     setEmpEmail('');
     setEmpPhone('');
     setEmpImageUrl('');
+    setEmpLineId('');
+    setEmpLineQrUrl('');
+    setEmpCompanyLogoUrl('');
     setEmpDepartment('Electrical');
     setEmpOrgLevel('team');
     setEmpRole('');
@@ -989,6 +999,9 @@ export default function SettingsView({
     setEmpEmail(emp.email || '');
     setEmpPhone(emp.phone || '');
     setEmpImageUrl(emp.imageUrl || '');
+    setEmpLineId(emp.lineId || '');
+    setEmpLineQrUrl(emp.lineQrUrl || '');
+    setEmpCompanyLogoUrl(emp.companyLogoUrl || '');
     setEmpDepartment(emp.department || 'Electrical');
     setEmpOrgLevel(emp.orgLevel || 'team');
     setEmpRole(emp.role || '');
@@ -1007,6 +1020,9 @@ export default function SettingsView({
       email: empEmail.trim(),
       phone: empPhone.trim(),
       imageUrl: empImageUrl,
+      lineId: empLineId.trim(),
+      lineQrUrl: empLineQrUrl,
+      companyLogoUrl: empCompanyLogoUrl,
       department: empDepartment,
       orgLevel: empOrgLevel,
       role: empRole.trim(),
@@ -2889,6 +2905,59 @@ export default function SettingsView({
                   />
                 </div>
 
+                {/* Line ID & Line QR Code Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/60 rounded-xl">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block flex items-center gap-1">
+                      <span className="bg-[#06C755] text-white px-1 rounded text-[8px] font-black">LINE</span>
+                      <span>Line ID (ไอดีไลน์พนักงาน)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={empLineId}
+                      onChange={(e) => setEmpLineId(e.target.value)}
+                      placeholder="เช่น @gtt2013 หรือ chalee"
+                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block flex items-center gap-1">
+                      <QrCode className="h-3 w-3 text-emerald-600" />
+                      <span>อัปโหลด Line QR Code</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="px-2.5 py-1.5 bg-[#06C755] hover:bg-emerald-600 text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs">
+                        <Upload className="h-3 w-3" />
+                        <span>{empLineQrUrl ? 'เปลี่ยนรูป QR' : 'อัปโหลด QR'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setEmpLineQrUrl(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                      {empLineQrUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setEmpLineQrUrl('')}
+                          className="px-2 py-1 text-[10px] font-bold text-rose-500 hover:text-rose-600"
+                        >
+                          ลบรูป QR
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 {/* Photo URL, Upload, or Presets */}
                 <div className="space-y-3 p-3 bg-slate-50 dark:bg-slate-950/20 rounded-xl border border-slate-150 dark:border-slate-800">
                   <label className="text-[10px] font-bold text-slate-500 block">รูปถ่ายประจำตัวพนักงาน (Profile Picture)</label>
@@ -3157,6 +3226,59 @@ export default function SettingsView({
                     onChange={(e) => setEmpRole(e.target.value)}
                     className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:outline-hidden"
                   />
+                </div>
+
+                {/* Line ID & Line QR Code Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/60 rounded-xl">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block flex items-center gap-1">
+                      <span className="bg-[#06C755] text-white px-1 rounded text-[8px] font-black">LINE</span>
+                      <span>Line ID (ไอดีไลน์พนักงาน)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={empLineId}
+                      onChange={(e) => setEmpLineId(e.target.value)}
+                      placeholder="เช่น @gtt2013 หรือ chalee"
+                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300 block flex items-center gap-1">
+                      <QrCode className="h-3 w-3 text-emerald-600" />
+                      <span>อัปโหลด Line QR Code</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="px-2.5 py-1.5 bg-[#06C755] hover:bg-emerald-600 text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs">
+                        <Upload className="h-3 w-3" />
+                        <span>{empLineQrUrl ? 'เปลี่ยนรูป QR' : 'อัปโหลด QR'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setEmpLineQrUrl(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                      {empLineQrUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setEmpLineQrUrl('')}
+                          className="px-2 py-1 text-[10px] font-bold text-rose-500 hover:text-rose-600"
+                        >
+                          ลบรูป QR
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Photo URL, Upload, or Presets */}
@@ -4728,6 +4850,7 @@ export default function SettingsView({
         onClose={() => setIsBusinessCardModalOpen(false)}
         employees={employees}
         selectedEmployee={selectedEmpForCard}
+        onEditEmployee={onEditEmployee}
       />
 
     </div>

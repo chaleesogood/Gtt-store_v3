@@ -181,6 +181,9 @@ export interface Employee {
   createdAt: string;
   imageUrl?: string; // รูปถ่ายพนักงาน
   cardColor?: string; // สีพื้นหลังการ์ดสำหรับจัดรูปแบบ
+  lineId?: string; // Line ID พนักงาน
+  lineQrUrl?: string; // รูปภาพ Line QR Code
+  companyLogoUrl?: string; // รูปโลโก้บริษัท
 }
 
 export interface ProjectModule {
