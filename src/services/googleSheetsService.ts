@@ -1,4 +1,4 @@
-import { Product, Category, Bom, Project, Job, Employee, Brand, DailyReport, StockActivity, UserRole } from '../types';
+import { Product, Category, Bom, Project, Job, Employee, Brand, DailyReport, StockActivity, UserRole, EngineeringPhaseSchedule } from '../types';
 import { GoogleAuthProvider, signInWithPopup, auth } from '../firebase';
 
 // In-memory token cache according to Workspace integration skill guidelines
@@ -38,7 +38,9 @@ const SHEET_TITLES = [
   'Brands',
   'DailyReports',
   'Activities',
-  'UserRoles'
+  'UserRoles',
+  'EngineeringSchedules',
+  'Project_Module_Status'
 ];
 
 export interface AllAppData {
@@ -52,6 +54,7 @@ export interface AllAppData {
   dailyReports: DailyReport[];
   activities: StockActivity[];
   userRoles: UserRole[];
+  engineeringSchedules?: EngineeringPhaseSchedule[];
 }
 
 // Convert all 10 collections to sheet rows
@@ -216,6 +219,87 @@ export function prepareAllSheetsData(data: AllAppData) {
     ur.createdAt || ''
   ]);
 
+  // 11. Engineering Schedules (Phase Matrix)
+  const engHeader = [
+    'JOB No.',
+    'โปรเจ็ค',
+    'โมดูล / ระบบงาน',
+    'Sub-module / รายการย่อย',
+    'Address IO',
+    'รูปภาพ',
+    '1. Install',
+    '2. Wiring',
+    '3. Test IO',
+    '4. Manual HMI',
+    '5. Semi-Auto',
+    '6. Auto',
+    'ผู้รับผิดชอบ',
+    'Remark / หมายเหตุ',
+    'ความคืบหน้า',
+    'id',
+    'moduleCode',
+    'isBypassed',
+    'targetDate',
+    'updatedAt'
+  ];
+
+  const statusLabel = (st?: string, isBypassed?: boolean) => {
+    if (isBypassed) return '⚡ Bypass';
+    if (st === 'completed') return '✅ เสร็จแล้ว';
+    if (st === 'in_progress') return '🟡 กำลังทำ';
+    return '🔴 รอทำ';
+  };
+
+  const calculateProgress = (item: any) => {
+    if (item.isBypassed) return '100%';
+    const stages = [
+      item.installStatus,
+      item.wiringStatus,
+      item.testIoStatus,
+      item.manualHmiStatus,
+      item.semiAutoStatus,
+      item.autoStatus
+    ];
+    const completed = stages.filter(s => s === 'completed').length;
+    return `${Math.round((completed / 6) * 100)}%`;
+  };
+
+  let schedulesList: EngineeringPhaseSchedule[] = data.engineeringSchedules || [];
+  if (schedulesList.length === 0) {
+    try {
+      const cached = localStorage.getItem('stock_manager_engineering_schedules_list');
+      if (cached) schedulesList = JSON.parse(cached);
+    } catch (e) {}
+  }
+
+  const engRows = schedulesList.map(s => {
+    const imgCell = s.imageUrl
+      ? (s.imageUrl.startsWith('http') ? `=IMAGE("${s.imageUrl}")` : s.imageUrl)
+      : '';
+    return [
+      s.jobNo || '',
+      s.projectName || '',
+      s.moduleName || '',
+      s.subModuleName || '',
+      s.addressIo || '',
+      imgCell,
+      statusLabel(s.installStatus, s.isBypassed),
+      statusLabel(s.wiringStatus, s.isBypassed),
+      statusLabel(s.testIoStatus, s.isBypassed),
+      statusLabel(s.manualHmiStatus, s.isBypassed),
+      statusLabel(s.semiAutoStatus, s.isBypassed),
+      statusLabel(s.autoStatus, s.isBypassed),
+      s.assignee || '',
+      s.remark || '',
+      calculateProgress(s),
+      s.id || '',
+      s.moduleCode || '',
+      s.isBypassed ? 'true' : 'false',
+      s.targetDate || '',
+      s.updatedAt || ''
+    ];
+  });
+
   return {
     Products: [productsHeader, ...productsRows],
     Categories: [categoriesHeader, ...categoriesRows],
@@ -226,7 +310,9 @@ export function prepareAllSheetsData(data: AllAppData) {
     Brands: [brandsHeader, ...brandsRows],
     DailyReports: [dailyReportsHeader, ...dailyReportsRows],
     Activities: [activitiesHeader, ...activitiesRows],
-    UserRoles: [userRolesHeader, ...userRolesRows]
+    UserRoles: [userRolesHeader, ...userRolesRows],
+    EngineeringSchedules: [engHeader, ...engRows],
+    Project_Module_Status: [engHeader, ...engRows]
   };
 }
 
@@ -339,6 +425,155 @@ export const exportToGoogleSheets = async (
 
   const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
   return { spreadsheetId: spreadsheetId!, url };
+};
+
+// Helper to parse Engineering schedules / Phase Matrix from 2D array or Google Sheet tab
+export const parseEngineeringSchedulesFromMatrix = (
+  header: string[],
+  rows: any[][]
+): EngineeringPhaseSchedule[] => {
+  if (!rows || rows.length === 0) return [];
+
+  const normHeader = (header || []).map(h => String(h || '').trim().toLowerCase());
+
+  // Check if header row exists or if header was omitted
+  const hasHeader = normHeader.some(h => 
+    h.includes('โมดูล') || h.includes('sub-module') || h.includes('address') || h.includes('install') || h.includes('job')
+  );
+
+  let actualHeader = normHeader;
+  let actualRows = rows;
+
+  if (!hasHeader && rows.length > 0) {
+    actualHeader = [
+      'โมดูล / ระบบงาน',
+      'sub-module / รายการย่อย',
+      'address io',
+      'รูปภาพ',
+      '1. install',
+      '2. wiring',
+      '3. test io',
+      '4. manual hmi',
+      '5. semi-auto',
+      '6. auto',
+      'ผู้รับผิดชอบ',
+      'remark / หมายเหตุ',
+      'ความคืบหน้า'
+    ];
+    actualRows = rows;
+  }
+
+  const getIdx = (keywords: string[], fallbackIdx: number) => {
+    const idx = actualHeader.findIndex(h => keywords.some(k => h.includes(k)));
+    return idx !== -1 ? idx : fallbackIdx;
+  };
+
+  const is13ColFormat = actualHeader.some(h => h.includes('โมดูล')) && !actualHeader.some(h => h.includes('job'));
+
+  const jobNoIdx = getIdx(['job no', 'job', 'เลขใบสั่งงาน'], is13ColFormat ? -1 : 0);
+  const projIdx = getIdx(['โปรเจ็ค', 'project'], is13ColFormat ? -1 : 1);
+  const modIdx = getIdx(['โมดูล', 'module'], is13ColFormat ? 0 : 2);
+  const subModIdx = getIdx(['sub-module', 'submodule', 'รายการย่อย'], is13ColFormat ? 1 : 3);
+  const ioIdx = getIdx(['address', 'io'], is13ColFormat ? 2 : 4);
+  const imgIdx = getIdx(['รูปภาพ', 'image'], is13ColFormat ? 3 : 5);
+  const installIdx = getIdx(['install', '1.'], is13ColFormat ? 4 : 6);
+  const wiringIdx = getIdx(['wiring', '2.'], is13ColFormat ? 5 : 7);
+  const testIoIdx = getIdx(['test io', 'test', '3.'], is13ColFormat ? 6 : 8);
+  const manualIdx = getIdx(['manual', '4.'], is13ColFormat ? 7 : 9);
+  const semiIdx = getIdx(['semi', '5.'], is13ColFormat ? 8 : 10);
+  const autoIdx = getIdx(['auto', '6.'], is13ColFormat ? 9 : 11);
+  const assignIdx = getIdx(['ผู้รับผิดชอบ', 'assignee'], is13ColFormat ? 10 : 12);
+  const remarkIdx = getIdx(['remark', 'หมายเหตุ'], is13ColFormat ? 11 : 13);
+  const idIdx = getIdx(['id'], is13ColFormat ? -1 : 15);
+  const modCodeIdx = getIdx(['modulecode'], is13ColFormat ? -1 : 16);
+  const bypassedIdx = getIdx(['isbypassed', 'bypassed'], is13ColFormat ? -1 : 17);
+  const targetDateIdx = getIdx(['targetdate'], is13ColFormat ? -1 : 18);
+  const updatedAtIdx = getIdx(['updatedat'], is13ColFormat ? -1 : 19);
+
+  const parseStatus = (val: string) => {
+    if (!val) return 'pending';
+    const clean = String(val).trim().toLowerCase();
+    if (clean.includes('bypass') || clean.includes('ข้าม') || clean.includes('⚡')) return 'bypassed';
+    if (clean.includes('เสร็จ') || clean.includes('completed') || clean.includes('✅') || clean === 'done') return 'completed';
+    if (clean.includes('กำลัง') || clean.includes('in_progress') || clean.includes('🟡') || clean.includes('doing')) return 'in_progress';
+    return 'pending';
+  };
+
+  const cleanImage = (val: any) => {
+    if (!val) return '';
+    let str = String(val).trim();
+    const formulaMatch = str.match(/=IMAGE\(["']?([^"']+)["']?\)/i);
+    if (formulaMatch && formulaMatch[1]) {
+      return formulaMatch[1].trim();
+    }
+    if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:image/')) {
+      return str;
+    }
+    return '';
+  };
+
+  let currentJobNo = '';
+  let currentProjectName = '';
+  let currentModule = '';
+  let currentSubModule = '';
+
+  const result: EngineeringPhaseSchedule[] = [];
+
+  actualRows.forEach((r, i) => {
+    const rawJobNo = jobNoIdx !== -1 && r[jobNoIdx] ? String(r[jobNoIdx]).trim() : '';
+    const rawProj = projIdx !== -1 && r[projIdx] ? String(r[projIdx]).trim() : '';
+    const rawMod = modIdx !== -1 && r[modIdx] ? String(r[modIdx]).trim() : '';
+    const rawSubMod = subModIdx !== -1 && r[subModIdx] ? String(r[subModIdx]).trim() : '';
+    const rawIo = ioIdx !== -1 && r[ioIdx] ? String(r[ioIdx]).trim() : '';
+    const rawImg = imgIdx !== -1 ? r[imgIdx] : '';
+    const rawInstall = installIdx !== -1 ? String(r[installIdx] || '').trim() : '';
+    const rawWiring = wiringIdx !== -1 ? String(r[wiringIdx] || '').trim() : '';
+    const rawTestIo = testIoIdx !== -1 ? String(r[testIoIdx] || '').trim() : '';
+    const rawManual = manualIdx !== -1 ? String(r[manualIdx] || '').trim() : '';
+    const rawSemi = semiIdx !== -1 ? String(r[semiIdx] || '').trim() : '';
+    const rawAuto = autoIdx !== -1 ? String(r[autoIdx] || '').trim() : '';
+    const rawAssignee = assignIdx !== -1 ? String(r[assignIdx] || '').trim() : '';
+    const rawRemark = remarkIdx !== -1 ? String(r[remarkIdx] || '').trim() : '';
+    const rawId = idIdx !== -1 && r[idIdx] ? String(r[idIdx]).trim() : '';
+    const rawModCode = modCodeIdx !== -1 && r[modCodeIdx] ? String(r[modCodeIdx]).trim() : '';
+    const rawBypassed = bypassedIdx !== -1 ? String(r[bypassedIdx]).trim().toLowerCase() === 'true' : false;
+    const rawTargetDate = targetDateIdx !== -1 && r[targetDateIdx] ? String(r[targetDateIdx]).trim() : '';
+    const rawUpdatedAt = updatedAtIdx !== -1 && r[updatedAtIdx] ? String(r[updatedAtIdx]).trim() : '';
+
+    if (rawJobNo) currentJobNo = rawJobNo;
+    if (rawProj) currentProjectName = rawProj;
+    if (rawMod) currentModule = rawMod;
+    if (rawSubMod) currentSubModule = rawSubMod;
+
+    const hasStatusOrDetails = Boolean(rawInstall || rawWiring || rawTestIo || rawManual || rawSemi || rawAuto || rawAssignee || rawRemark || rawImg);
+    const isDataItem = Boolean(rawIo) || (Boolean(rawSubMod || rawMod) && hasStatusOrDetails);
+
+    if (isDataItem) {
+      result.push({
+        id: rawId || `sched_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 5)}`,
+        jobNo: rawJobNo || currentJobNo,
+        projectName: rawProj || currentProjectName,
+        moduleName: rawMod || currentModule,
+        subModuleName: rawSubMod || currentSubModule,
+        addressIo: rawIo,
+        imageUrl: cleanImage(rawImg),
+        installStatus: parseStatus(rawInstall),
+        wiringStatus: parseStatus(rawWiring),
+        testIoStatus: parseStatus(rawTestIo),
+        manualHmiStatus: parseStatus(rawManual),
+        semiAutoStatus: parseStatus(rawSemi),
+        autoStatus: parseStatus(rawAuto),
+        assignee: rawAssignee,
+        remark: rawRemark,
+        moduleCode: rawModCode,
+        isBypassed: rawBypassed || parseStatus(rawInstall) === 'bypassed',
+        targetDate: rawTargetDate,
+        updatedAt: rawUpdatedAt || new Date().toISOString()
+      });
+    }
+  });
+
+  return result;
 };
 
 // Import / Sync back from Google Sheet to App State
@@ -629,6 +864,25 @@ export const importFromGoogleSheets = async (
   }));
   const userRoles = hasTab('UserRoles') ? parsedUserRoles : (currentAppData?.userRoles || []);
 
+  // 11. Parse Engineering Schedules (from EngineeringSchedules or Project_Module_Status tab)
+  const schedTabName = hasTab('EngineeringSchedules')
+    ? 'EngineeringSchedules'
+    : (hasTab('Project_Module_Status') ? 'Project_Module_Status' : '');
+
+  const { header: schedHeader, rows: schedRows } = schedTabName ? getHeaderAndRows(schedTabName) : { header: [], rows: [] };
+  const parsedSchedules = parseEngineeringSchedulesFromMatrix(schedHeader, schedRows);
+
+  const engineeringSchedules = schedTabName && parsedSchedules.length > 0
+    ? parsedSchedules
+    : (currentAppData?.engineeringSchedules || []);
+
+  if (schedTabName && engineeringSchedules.length > 0) {
+    try {
+      localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(engineeringSchedules));
+      window.dispatchEvent(new CustomEvent('engineering_schedules_updated', { detail: engineeringSchedules }));
+    } catch (e) {}
+  }
+
   return {
     products,
     categories,
@@ -639,6 +893,184 @@ export const importFromGoogleSheets = async (
     brands,
     dailyReports,
     activities,
-    userRoles
+    userRoles,
+    engineeringSchedules
   };
 };
+
+// Export / Sync Project & Module Phase Matrix Status to Google Sheet
+export const exportProjectAndModuleStatusToGoogleSheet = async (
+  accessToken: string,
+  spreadsheetId: string,
+  projects: Project[],
+  jobs: Job[],
+  schedules: any[]
+): Promise<{ spreadsheetId: string; url: string; rowsCount: number }> => {
+  if (!spreadsheetId) {
+    throw new Error('ไม่พบ Spreadsheet ID สำหรับการซิงค์สถานะ');
+  }
+
+  const sheetTitle = 'Project_Module_Status';
+
+  // Helper status label
+  const statusLabel = (st?: string, isBypassed?: boolean) => {
+    if (isBypassed) return '⚡ Bypass';
+    if (st === 'completed') return '✅ เสร็จแล้ว';
+    if (st === 'in_progress') return '🟡 กำลังทำ';
+    return '🔴 รอทำ';
+  };
+
+  const calculateProgress = (item: any) => {
+    if (item.isBypassed) return 100;
+    const stages = [
+      item.installStatus,
+      item.wiringStatus,
+      item.testIoStatus,
+      item.manualHmiStatus,
+      item.semiAutoStatus,
+      item.autoStatus
+    ];
+    const completed = stages.filter(s => s === 'completed').length;
+    return Math.round((completed / 6) * 100);
+  };
+
+  // Find project status lookup
+  const projectStatusMap = new Map<string, string>();
+  projects.forEach(p => {
+    if (p.jobNo) projectStatusMap.set(p.jobNo, p.status || 'pending');
+  });
+
+  const headers = [
+    'JOB No.',
+    'โปรเจ็ค',
+    'โมดูล / ระบบงาน',
+    'Sub-module / รายการย่อย',
+    'Address IO',
+    'รูปภาพ',
+    '1. Install',
+    '2. Wiring',
+    '3. Test IO',
+    '4. Manual HMI',
+    '5. Semi-Auto',
+    '6. Auto',
+    'ผู้รับผิดชอบ',
+    'Remark / หมายเหตุ',
+    'ความคืบหน้า',
+    'สถานะโครงการ',
+    'อัปเดตล่าสุด'
+  ];
+
+  const nowStr = new Date().toLocaleString('th-TH');
+
+  const rows = (schedules || []).map(item => {
+    const progressPct = calculateProgress(item);
+    const imgCell = item.imageUrl
+      ? (item.imageUrl.startsWith('http') ? `=IMAGE("${item.imageUrl}")` : item.imageUrl)
+      : '';
+    const projStatus = projectStatusMap.get(item.jobNo) || 'in_progress';
+
+    return [
+      item.jobNo || '',
+      item.projectName || '',
+      item.moduleName || '',
+      item.subModuleName || '',
+      item.addressIo || '',
+      imgCell,
+      statusLabel(item.installStatus, item.isBypassed),
+      statusLabel(item.wiringStatus, item.isBypassed),
+      statusLabel(item.testIoStatus, item.isBypassed),
+      statusLabel(item.manualHmiStatus, item.isBypassed),
+      statusLabel(item.semiAutoStatus, item.isBypassed),
+      statusLabel(item.autoStatus, item.isBypassed),
+      item.assignee || '',
+      item.remark || '',
+      `${progressPct}%`,
+      projStatus,
+      nowStr
+    ];
+  });
+
+  const matrix = [headers, ...rows];
+
+  // 1. Ensure sheet tab exists
+  const getRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`, {
+    headers: { 'Authorization': `Bearer ${accessToken}` }
+  });
+
+  if (getRes.ok) {
+    const existingMeta = await getRes.json();
+    const existingTitles = new Set((existingMeta.sheets || []).map((s: any) => s.properties?.title));
+    if (!existingTitles.has(sheetTitle)) {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          requests: [{ addSheet: { properties: { title: sheetTitle } } }]
+        })
+      });
+    }
+  }
+
+  // 2. Clear tab
+  try {
+    await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetTitle)}!A1:Q5000:clear`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+  } catch (e) {
+    console.warn(`Could not clear sheet ${sheetTitle}:`, e);
+  }
+
+  // 3. Write data
+  const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      valueInputOption: 'USER_ENTERED',
+      data: [{
+        range: `${sheetTitle}!A1:Q5000`,
+        values: matrix
+      }]
+    })
+  });
+
+  if (!updateRes.ok) {
+    const errJson = await updateRes.json();
+    throw new Error(errJson?.error?.message || 'ไม่สามารถเขียนข้อมูลสถานะลงใน Google Sheet ได้');
+  }
+
+  const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+  return { spreadsheetId, url, rowsCount: rows.length };
+};
+
+// Helper to auto-sync project & module status if auto-sync is enabled by user
+export const autoSyncProjectAndModuleStatusIfEnabled = async (
+  projects: Project[],
+  jobs: Job[],
+  schedules: any[]
+): Promise<boolean> => {
+  const isAutoSync = localStorage.getItem('google_sheets_auto_sync_status') === 'true';
+  const spreadsheetId = localStorage.getItem('google_sheets_spreadsheet_id');
+  const token = getGoogleSheetsAccessToken();
+
+  if (isAutoSync && spreadsheetId && token) {
+    try {
+      await exportProjectAndModuleStatusToGoogleSheet(token, spreadsheetId, projects, jobs, schedules);
+      const nowStr = new Date().toLocaleString('th-TH');
+      localStorage.setItem('google_sheets_last_status_sync', nowStr);
+      console.log('✅ Auto-synced Project & Module status to Google Sheet successfully');
+      return true;
+    } catch (err) {
+      console.warn('⚠️ Auto-sync status to Google Sheet failed:', err);
+    }
+  }
+  return false;
+};
+
+

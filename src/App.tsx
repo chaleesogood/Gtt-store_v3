@@ -3200,7 +3200,7 @@ export default function App() {
           cleanFields[key] = val;
         }
       });
-      await updateDoc(projRef, cleanFields);
+      await setDoc(projRef, cleanFields, { merge: true });
       addToast('success', 'แก้ไขโปรเจกต์สำเร็จ', 'ข้อมูลโปรเจกต์ได้รับการปรับปรุงในระบบแล้ว');
     } catch (error: any) {
       console.error(error);
@@ -3522,6 +3522,9 @@ export default function App() {
             onDeleteMediaFile={handleDeleteMediaFile}
             companyProfile={companyProfile}
             onUpdateCompanyProfile={handleUpdateCompanyProfile}
+            engineeringSchedules={engineeringSchedules}
+            onSaveEngineeringSchedule={handleSaveEngineeringSchedule}
+            onDeleteEngineeringSchedule={handleDeleteEngineeringSchedule}
           />
         );
       case 'catalog':

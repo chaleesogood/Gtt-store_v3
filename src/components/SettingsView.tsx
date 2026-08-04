@@ -94,21 +94,63 @@ function ProjectModulesManager({
   proj, 
   onEditJobProject,
   jobs,
-  onEditJob
+  onEditJob,
+  engineeringSchedules,
+  onSaveEngineeringSchedule,
+  onDeleteEngineeringSchedule
 }: { 
   proj: JobProject; 
   onEditJobProject: (id: string, updatedFields: Partial<JobProject>) => Promise<void>; 
   jobs: Job[];
   onEditJob: (id: string, updatedFields: Partial<Job>) => Promise<void>;
+  engineeringSchedules?: any[];
+  onSaveEngineeringSchedule?: (schedule: any) => Promise<void>;
+  onDeleteEngineeringSchedule?: (id: string) => Promise<void>;
 }) {
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
   const [newImgUrl, setNewImgUrl] = useState('');
+  const [isAddModuleModalOpen, setIsAddModuleModalOpen] = useState(false);
+  
+  const handleFormPaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.indexOf('image') !== -1) {
+        const file = item.getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setNewImgUrl(reader.result as string);
+          };
+          reader.readAsDataURL(file);
+          e.preventDefault();
+        }
+      }
+    }
+  };
+
+  const handleFormDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setNewImgUrl(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
   
   // For editing
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingCode, setEditingCode] = useState('');
   const [editingName, setEditingName] = useState('');
+  const [editingImgUrl, setEditingImgUrl] = useState('');
 
   // Normalize existing modules
   const rawModules = proj.modules || [];
@@ -141,7 +183,7 @@ function ProjectModulesManager({
       return;
     }
 
-    const updated = [...modules, { code: codeVal, name: nameVal, imageUrl: newImgUrl || '' }];
+    const updated = [...modules, { code: codeVal, name: nameVal, imageUrl: newImgUrl || '', subModules: [] }];
     await onEditJobProject(proj.id, { modules: updated });
     
     setNewCode('');
@@ -164,7 +206,13 @@ function ProjectModulesManager({
 
     const updated = modules.map(m => {
       if (m.code === oldModule.code) {
-        return { ...m, code: codeVal, name: nameVal };
+        return { 
+          ...m, 
+          code: codeVal, 
+          name: nameVal, 
+          imageUrl: editingImgUrl,
+          subModules: m.subModules || []
+        };
       }
       return m;
     });
@@ -187,6 +235,22 @@ function ProjectModulesManager({
       }
     }
 
+    // Sync updates to any engineeringSchedules (Phase Matrix)
+    if (engineeringSchedules && onSaveEngineeringSchedule) {
+      const relatedSchedules = engineeringSchedules.filter(
+        s => s.jobNo === proj.jobNo && (s.moduleName === oldModule.name || s.moduleCode === oldModule.code)
+      );
+      for (const sched of relatedSchedules) {
+        await onSaveEngineeringSchedule({
+          ...sched,
+          moduleCode: codeVal,
+          moduleName: nameVal,
+          imageUrl: editingImgUrl,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
+
     setEditingIndex(null);
   };
 
@@ -194,6 +258,16 @@ function ProjectModulesManager({
     if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบโมดูล "${moduleCode} - ${moduleName}" ออกจากโครงการ?`)) {
       const updated = modules.filter(m => m.code !== moduleCode);
       await onEditJobProject(proj.id, { modules: updated });
+
+      // Clean related engineeringSchedules (Phase Matrix)
+      if (engineeringSchedules && onDeleteEngineeringSchedule) {
+        const relatedSchedules = engineeringSchedules.filter(
+          s => s.jobNo === proj.jobNo && (s.moduleCode === moduleCode || s.moduleName === moduleName)
+        );
+        for (const sched of relatedSchedules) {
+          await onDeleteEngineeringSchedule(sched.id);
+        }
+      }
     }
   };
 
@@ -205,6 +279,20 @@ function ProjectModulesManager({
       return m;
     });
     await onEditJobProject(proj.id, { modules: updated });
+
+    // Sync image update to engineeringSchedules
+    if (engineeringSchedules && onSaveEngineeringSchedule) {
+      const relatedSchedules = engineeringSchedules.filter(
+        s => s.jobNo === proj.jobNo && (s.moduleCode === moduleCode)
+      );
+      for (const sched of relatedSchedules) {
+        await onSaveEngineeringSchedule({
+          ...sched,
+          imageUrl: base64Data,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
   };
 
   const handleDeleteImage = async (moduleCode: string) => {
@@ -216,176 +304,201 @@ function ProjectModulesManager({
         return m;
       });
       await onEditJobProject(proj.id, { modules: updated });
+
+      // Sync image removal to engineeringSchedules
+      if (engineeringSchedules && onSaveEngineeringSchedule) {
+        const relatedSchedules = engineeringSchedules.filter(
+          s => s.jobNo === proj.jobNo && (s.moduleCode === moduleCode)
+        );
+        for (const sched of relatedSchedules) {
+          await onSaveEngineeringSchedule({
+            ...sched,
+            imageUrl: '',
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+    }
+  };
+
+  // Sub-module management handlers
+  const handleAddSubModule = async (moduleCode: string) => {
+    const subName = prompt('ระบุชื่อ Sub-module / รายการย่อย ใหม่:');
+    if (!subName || !subName.trim()) return;
+    
+    const targetModule = modules.find(m => m.code === moduleCode);
+    if (!targetModule) return;
+
+    const updated = modules.map(m => {
+      if (m.code === moduleCode) {
+        const subs = m.subModules || [];
+        if (subs.includes(subName.trim())) {
+          alert('มีชื่อ Sub-module นี้อยู่แล้ว');
+          return m;
+        }
+        return { ...m, subModules: [...subs, subName.trim()] };
+      }
+      return m;
+    });
+    
+    await onEditJobProject(proj.id, { modules: updated });
+
+    // Proactively save to Engineering Phase Schedules
+    if (engineeringSchedules && onSaveEngineeringSchedule) {
+      const exists = engineeringSchedules.some(
+        s => s.jobNo === proj.jobNo &&
+             (s.moduleCode === moduleCode || s.moduleName === targetModule.name) &&
+             (s.subModuleName || '').trim() === subName.trim()
+      );
+      if (!exists) {
+        await onSaveEngineeringSchedule({
+          id: `eng_${proj.jobNo}_${moduleCode}_${subName.trim().replace(/\s+/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+          jobNo: proj.jobNo,
+          projectName: proj.projectName,
+          moduleCode: moduleCode,
+          moduleName: targetModule.name,
+          subModuleName: subName.trim(),
+          isBypassed: false,
+          addressIo: '',
+          imageUrl: targetModule.imageUrl || '',
+          installStatus: 'pending',
+          wiringStatus: 'pending',
+          testIoStatus: 'pending',
+          manualHmiStatus: 'pending',
+          semiAutoStatus: 'pending',
+          autoStatus: 'pending',
+          assignee: '',
+          remark: '',
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
+  };
+
+  const handleDeleteSubModule = async (moduleCode: string, subName: string) => {
+    if (!confirm(`ยืนยันการลบ Sub-module "${subName}" หรือไม่? ข้อมูลตารางงานในระบบวิศวกรรม (Phase Matrix) จะถูกลบไปด้วย`)) return;
+    
+    const matchModule = modules.find(m => m.code === moduleCode);
+
+    const updated = modules.map(m => {
+      if (m.code === moduleCode) {
+        return { ...m, subModules: (m.subModules || []).filter(s => s !== subName) };
+      }
+      return m;
+    });
+    
+    await onEditJobProject(proj.id, { modules: updated });
+
+    if (engineeringSchedules && onDeleteEngineeringSchedule) {
+      const targetScheds = engineeringSchedules.filter(
+        s => s.jobNo === proj.jobNo && 
+             (s.moduleCode === moduleCode || s.moduleName === (matchModule?.name || '')) &&
+             s.subModuleName === subName
+      );
+      for (const item of targetScheds) {
+        await onDeleteEngineeringSchedule(item.id);
+      }
     }
   };
 
   return (
     <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-100 space-y-4 mt-2">
-      {/* Header */}
+      {/* Header with trigger button for Add Module Popup */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-150">
         <div className="flex items-center gap-1.5 text-xs font-black text-slate-700">
           <Layers className="h-4.5 w-4.5 text-indigo-500 shrink-0" />
           <span>โมดูลและระบบย่อย ({sortedModules.length})</span>
-          <span className="text-[10px] text-slate-400 font-normal ml-1">เรียงตามรหัสโมดูลจากน้อยไปมาก</span>
+          <span className="text-[10px] text-slate-400 font-normal ml-1">เรียงตามรหัสโมดูล</span>
         </div>
+        <button
+          type="button"
+          onClick={() => setIsAddModuleModalOpen(true)}
+          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white text-[11px] font-black rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 shadow-xs h-[30px]"
+        >
+          <Plus className="h-3.5 w-3.5 stroke-[3]" />
+          <span>ลงทะเบียนโมดูลใหม่</span>
+        </button>
       </div>
-
-      {/* Multi-field Add Form */}
-      <form onSubmit={handleAdd} className="bg-white p-3 rounded-lg border border-slate-200/60 shadow-2xs space-y-3">
-        <div className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">ลงทะเบียนโมดูลใหม่</div>
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-          {/* Code field */}
-          <div className="sm:col-span-3">
-            <input
-              type="text"
-              required
-              placeholder="รหัสโมดูล (เช่น 01)"
-              value={newCode}
-              onChange={(e) => setNewCode(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
-            />
-          </div>
-          {/* Name field */}
-          <div className="sm:col-span-6">
-            <input
-              type="text"
-              required
-              placeholder="ชื่อโมดูล (เช่น ตู้คอนโทรลหลัก)"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all"
-            />
-          </div>
-          {/* Action button */}
-          <div className="sm:col-span-3 flex gap-2">
-            <button
-              type="submit"
-              className="w-full px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white text-[11px] font-black rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0 shadow-xs h-[32px]"
-            >
-              <Plus className="h-3.5 w-3.5 stroke-[3]" />
-              <span>ลงทะเบียน</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Optional Base64 Image Preview / Selector inside Form */}
-        <div className="flex items-center gap-3 pt-1 border-t border-slate-100">
-          <label className="text-[10px] text-slate-500 font-bold flex items-center gap-1 cursor-pointer hover:text-indigo-600 transition-colors">
-            <Camera className="h-3.5 w-3.5 text-slate-400" />
-            <span>{newImgUrl ? 'เปลี่ยนรูปแนบโมดูล' : 'แนบรูปภาพโมดูล'}</span>
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                  setNewImgUrl(reader.result as string);
-                };
-                reader.readAsDataURL(file);
-              }}
-            />
-          </label>
-
-          {newImgUrl && (
-            <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-              <img src={newImgUrl} alt="Preview" className="h-5 w-5 rounded object-cover" />
-              <button
-                type="button"
-                onClick={() => setNewImgUrl('')}
-                className="text-[9px] text-rose-500 hover:text-rose-600 cursor-pointer font-bold"
-              >
-                ลบรูป
-              </button>
-            </div>
-          )}
-
-          {/* Prompt Unsplash presets */}
-          <div className="flex items-center gap-1 ml-auto">
-            <span className="text-[9px] text-slate-400 font-sans">รูปตัวอย่าง:</span>
-            <button
-              type="button"
-              onClick={() => setNewImgUrl('https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80')}
-              className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors"
-            >
-              +ตู้ไฟ
-            </button>
-            <button
-              type="button"
-              onClick={() => setNewImgUrl('https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80')}
-              className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold cursor-pointer transition-colors"
-            >
-              +แผงวงจร
-            </button>
-          </div>
-        </div>
-      </form>
 
       {/* Modules List/Grid sorted by module code */}
       {sortedModules.length === 0 ? (
         <span className="text-[11px] text-slate-400 italic font-sans font-normal block pl-1">
-          ยังไม่มีการลงทะเบียนโมดูลในระบบ คุณสามารถเพิ่มโมดูลเพื่อใช้อ้างอิงมอบหมายงานได้
+          ยังไม่มีการลงทะเบียนโมดูลในระบบ คุณสามารถคลิกเพื่อลงทะเบียนโมดูลและจัดระบบย่อยได้
         </span>
       ) : (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-2">
           {sortedModules.map((m, idx) => (
             <div 
               key={m.code}
-              className="flex items-center justify-between p-1 py-1 px-1.5 hover:bg-slate-50/50 border-b border-slate-100 last:border-0 transition-colors group/mod relative"
+              className="p-3 hover:bg-white/80 border border-slate-100 rounded-xl bg-white/40 transition-colors group/mod relative space-y-2.5"
             >
-              <div className="flex items-center gap-3 w-full">
-                {/* Module Image section */}
-                <div className="relative shrink-0 group/img">
-                  {m.imageUrl ? (
-                    <div className="relative h-12 w-12 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 shadow-2xs">
-                      <img 
-                        src={m.imageUrl} 
-                        alt={m.name} 
-                        className="h-full w-full object-cover"
-                      />
-                      {/* Remove Image overlay */}
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteImage(m.code)}
-                        className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-white cursor-pointer"
-                        title="ลบรูปภาพโมดูล"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-rose-200 hover:text-rose-400 stroke-[2.5]" />
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center h-12 w-12 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-indigo-50/50 hover:border-indigo-300 transition-all cursor-pointer relative">
-                      <Upload className="h-4 w-4 text-slate-400" />
-                      <span className="text-[8px] text-slate-400 font-bold mt-0.5">เพิ่มรูป</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            handleUploadImage(m.code, reader.result as string);
-                          };
-                          reader.readAsDataURL(file);
+              <div className="flex items-center justify-between gap-3 w-full">
+                <div className="flex items-center gap-3 flex-grow min-w-0">
+                  {/* Module Image section */}
+                  <div className="relative shrink-0 group/img">
+                    {m.imageUrl ? (
+                      <div className="relative h-12 w-12 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 shadow-2xs">
+                        <img 
+                          src={m.imageUrl} 
+                          alt={m.name} 
+                          className="h-full w-full object-cover"
+                        />
+                        {/* Remove Image overlay */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteImage(m.code)}
+                          className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-white cursor-pointer"
+                          title="ลบรูปภาพโมดูล"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-200 hover:text-rose-400 stroke-[2.5]" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label 
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const file = e.dataTransfer?.files?.[0];
+                          if (file && file.type.startsWith('image/')) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              handleUploadImage(m.code, reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }
                         }}
-                      />
-                    </label>
-                  )}
-                </div>
+                        className="flex flex-col items-center justify-center h-12 w-12 rounded-lg border border-dashed border-slate-300 bg-slate-50 hover:bg-indigo-50/50 hover:border-indigo-300 transition-all cursor-pointer relative"
+                      >
+                        <Upload className="h-4 w-4 text-slate-400" />
+                        <span className="text-[8px] text-slate-400 font-bold mt-0.5">เพิ่มรูป</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              handleUploadImage(m.code, reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
 
-                {/* Text details */}
-                <div className="flex-grow min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-[10px] font-black text-indigo-700 font-mono rounded">
-                      {m.code}
-                    </span>
-                    <h5 className="text-xs font-black text-slate-800 truncate">
-                      {m.name}
-                    </h5>
+                  {/* Text details */}
+                  <div className="flex-grow min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-[10px] font-black text-indigo-700 font-mono rounded">
+                        {m.code}
+                      </span>
+                      <h5 className="text-xs font-black text-slate-800 truncate">
+                        {m.name}
+                      </h5>
+                    </div>
                   </div>
                 </div>
 
@@ -420,8 +533,9 @@ function ProjectModulesManager({
                       setEditingIndex(idx);
                       setEditingCode(m.code);
                       setEditingName(m.name);
+                      setEditingImgUrl(m.imageUrl || '');
                     }}
-                    className="text-slate-400 hover:text-indigo-600 hover:bg-slate-100 p-1 rounded-lg transition-colors cursor-pointer"
+                    className="text-slate-400 hover:text-indigo-600 hover:bg-slate-100 p-1.5 rounded-lg transition-colors cursor-pointer"
                     title="แก้ไขข้อมูลโมดูล"
                   >
                     <Edit3 className="h-3.5 w-3.5" />
@@ -431,47 +545,348 @@ function ProjectModulesManager({
                   <button
                     type="button"
                     onClick={() => handleDelete(m.code, m.name)}
-                    className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1 rounded-lg transition-colors cursor-pointer"
+                    className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition-colors cursor-pointer"
                     title="ลบโมดูล"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
+
+              {/* Collapsible/Flexible Sub-modules Row */}
+              <div className="pl-15 pr-1 py-1.5 border-t border-slate-100/65 flex flex-wrap gap-1.5 items-center">
+                <span className="text-[10px] text-slate-400 font-extrabold select-none">ระบบย่อย / Sub-modules:</span>
+                {(m.subModules || []).length === 0 ? (
+                  <span className="text-[10px] text-slate-400 italic">ยังไม่มีหัวข้อย่อย</span>
+                ) : (
+                  (m.subModules || []).map((sub, sIdx) => (
+                    <span 
+                      key={sIdx}
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-600 rounded-full border border-slate-200/50 transition-colors"
+                    >
+                      <span>{sub}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSubModule(m.code, sub)}
+                        className="text-slate-400 hover:text-rose-600 cursor-pointer p-0.5 rounded-full"
+                        title="ลบ Sub-module"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  ))
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleAddSubModule(m.code)}
+                  className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-[10px] font-extrabold text-indigo-700 rounded-full border border-indigo-150 transition-colors cursor-pointer"
+                >
+                  <Plus className="h-2.5 w-2.5 stroke-[3]" />
+                  <span>เพิ่ม Sub-module</span>
+                </button>
+              </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Add Module Popup Modal */}
+      {isAddModuleModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200">
+          <form 
+            onSubmit={(e) => {
+              handleAdd(e);
+              setIsAddModuleModalOpen(false);
+            }} 
+            className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-md w-full p-5 space-y-4 animate-in zoom-in-95 duration-200 text-left"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-black text-slate-800">ลงทะเบียนโมดูลใหม่</h4>
+                <p className="text-[10px] text-slate-400">ระบุรหัสโมดูล ชื่อ และแนบรูปประกอบของโมดูล</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddModuleModalOpen(false)}
+                className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+              <div className="sm:col-span-4 space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 block">รหัสโมดูล *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="เช่น 01"
+                  value={newCode}
+                  onChange={(e) => setNewCode(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 transition-all"
+                />
+              </div>
+              <div className="sm:col-span-8 space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 block">ชื่อโมดูล *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="เช่น ตู้คอนโทรลหลัก"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Drag and Drop / Paste Area for Image */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-500 block">รูปภาพโมดูล / ภาพประกอบ</label>
+              <div 
+                onPaste={handleFormPaste}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleFormDrop}
+                className="border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/30 rounded-xl p-3.5 transition-all text-center space-y-2 cursor-pointer relative group"
+              >
+                <input
+                  type="file"
+                  id="newModuleImageInputModal"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      setNewImgUrl(reader.result as string);
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                
+                {newImgUrl ? (
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <div className="relative h-24 w-full max-w-[180px] rounded-lg border border-slate-200 overflow-hidden shadow-xs bg-white">
+                      <img src={newImgUrl} alt="Preview" className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setNewImgUrl(''); }}
+                        className="absolute top-1.5 right-1.5 p-1 bg-rose-500 hover:bg-rose-600 text-white rounded-full shadow-md transition-colors cursor-pointer"
+                        title="ลบรูปภาพ"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-indigo-600 font-extrabold bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                      แนบรูปภาพแล้ว (คลิก/ลากวาง/กด Ctrl+V เพื่อเปลี่ยน)
+                    </span>
+                  </div>
+                ) : (
+                  <div 
+                    onClick={() => document.getElementById('newModuleImageInputModal')?.click()}
+                    className="flex flex-col items-center justify-center py-2"
+                  >
+                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-full mb-1.5 group-hover:scale-110 transition-transform">
+                      <Camera className="h-4 w-4" />
+                    </div>
+                    <p className="text-xs font-bold text-slate-700">คลิกเพื่ออัปโหลด หรือลากไฟล์รูปภาพมาวางที่นี่</p>
+                    <p className="text-[10px] text-slate-400 mt-1 font-semibold">หรือคลิกในนี้แล้วกด <kbd className="bg-slate-100 px-1 py-0.5 border border-slate-200 rounded text-slate-600">Ctrl + V</kbd> เพื่อวางรูปจาก Clipboard</p>
+                  </div>
+                )}
+
+                {/* Preset sample buttons */}
+                <div className="flex items-center justify-center gap-1.5 pt-2 border-t border-slate-100/60 mt-2">
+                  <span className="text-[9px] text-slate-400 font-sans">รูปตัวอย่างรวดเร็ว:</span>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setNewImgUrl('https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80'); }}
+                    className="text-[9px] bg-white hover:bg-slate-150 text-slate-600 px-2 py-0.5 rounded border border-slate-250 font-bold cursor-pointer transition-colors shadow-3xs"
+                  >
+                    +ตู้คอนโทรลไฟ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setNewImgUrl('https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80'); }}
+                    className="text-[9px] bg-white hover:bg-slate-150 text-slate-600 px-2 py-0.5 rounded border border-slate-250 font-bold cursor-pointer transition-colors shadow-3xs"
+                  >
+                    +แผงวงจรไฟฟ้า
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddModuleModalOpen(false);
+                  setNewCode('');
+                  setNewName('');
+                  setNewImgUrl('');
+                }}
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                ลงทะเบียน
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
       {/* Edit Module Popup Modal */}
       {editingIndex !== null && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-sm w-full p-5 space-y-4 animate-in zoom-in-95 duration-200 text-left">
-            <div>
-              <h4 className="text-sm font-black text-slate-800">แก้ไขข้อมูลโมดูล</h4>
-              <p className="text-[10px] text-slate-400">โมดูลลำดับที่ {editingIndex + 1}</p>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-md w-full p-5 space-y-4 animate-in zoom-in-95 duration-200 text-left">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-black text-slate-800">แก้ไขข้อมูลโมดูล</h4>
+                <p className="text-[10px] text-slate-400">แก้ไขรหัส ชื่อโมดูล และเปลี่ยนรูปภาพประกอบได้ที่นี่</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingIndex(null)}
+                className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-[10.5px] font-bold text-slate-500">รหัสโมดูล <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  value={editingCode}
+                  onChange={(e) => setEditingCode(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-indigo-500 text-xs font-bold text-slate-800"
+                  placeholder="ระบุรหัสโมดูล"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10.5px] font-bold text-slate-500">ชื่อโมดูล <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-indigo-500 text-xs font-bold text-slate-800"
+                  placeholder="ระบุชื่อโมดูล"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Drag and Drop / Paste Area for Editing Image */}
             <div className="space-y-1.5">
-              <label className="text-[10.5px] font-bold text-slate-500">รหัสโมดูล <span className="text-rose-500">*</span></label>
-              <input
-                type="text"
-                value={editingCode}
-                onChange={(e) => setEditingCode(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-indigo-500 text-xs font-bold text-slate-800"
-                placeholder="ระบุรหัสโมดูล"
-              />
+              <label className="text-[10.5px] font-bold text-slate-500">รูปภาพโมดูล / ภาพประกอบ</label>
+              <div 
+                onPaste={(e) => {
+                  const items = e.clipboardData?.items;
+                  if (!items) return;
+                  for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (item.type.indexOf('image') !== -1) {
+                      const file = item.getAsFile();
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setEditingImgUrl(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                        e.preventDefault();
+                      }
+                    }
+                  }
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const files = e.dataTransfer?.files;
+                  if (files && files.length > 0) {
+                    const file = files[0];
+                    if (file.type.startsWith('image/')) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setEditingImgUrl(reader.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }
+                }}
+                className="border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/30 rounded-xl p-3.5 transition-all text-center space-y-2 cursor-pointer relative group"
+              >
+                <input
+                  type="file"
+                  id="editModuleImageInput"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      setEditingImgUrl(reader.result as string);
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                
+                {editingImgUrl ? (
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <div className="relative h-24 w-full max-w-[180px] rounded-lg border border-slate-200 overflow-hidden shadow-xs bg-white">
+                      <img src={editingImgUrl} alt="Preview" className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setEditingImgUrl(''); }}
+                        className="absolute top-1.5 right-1.5 p-1 bg-rose-500 hover:bg-rose-600 text-white rounded-full shadow-md transition-colors cursor-pointer"
+                        title="ลบรูปภาพ"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-indigo-600 font-extrabold bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                      แนบรูปภาพแล้ว (คลิก/ลากวาง/กด Ctrl+V เพื่อเปลี่ยน)
+                    </span>
+                  </div>
+                ) : (
+                  <div 
+                    onClick={() => document.getElementById('editModuleImageInput')?.click()}
+                    className="flex flex-col items-center justify-center py-2"
+                  >
+                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-full mb-1.5 group-hover:scale-110 transition-transform">
+                      <Camera className="h-4 w-4" />
+                    </div>
+                    <p className="text-xs font-bold text-slate-700">คลิกเพื่ออัปโหลด หรือลากไฟล์รูปภาพมาวางที่นี่</p>
+                    <p className="text-[10px] text-slate-400 mt-1 font-semibold">หรือคลิกในนี้แล้วกด <kbd className="bg-slate-100 px-1 py-0.5 border border-slate-200 rounded text-slate-600">Ctrl + V</kbd> เพื่อวางรูปจาก Clipboard</p>
+                  </div>
+                )}
+
+                {/* Preset sample buttons */}
+                <div className="flex items-center justify-center gap-1.5 pt-2 border-t border-slate-100/60 mt-2">
+                  <span className="text-[9px] text-slate-400 font-sans">รูปตัวอย่างรวดเร็ว:</span>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setEditingImgUrl('https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80'); }}
+                    className="text-[9px] bg-white hover:bg-slate-150 text-slate-600 px-2 py-0.5 rounded border border-slate-250 font-bold cursor-pointer transition-colors shadow-3xs"
+                  >
+                    +ตู้คอนโทรลไฟ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setEditingImgUrl('https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80'); }}
+                    className="text-[9px] bg-white hover:bg-slate-150 text-slate-600 px-2 py-0.5 rounded border border-slate-250 font-bold cursor-pointer transition-colors shadow-3xs"
+                  >
+                    +แผงวงจรไฟฟ้า
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-[10.5px] font-bold text-slate-500">ชื่อโมดูล <span className="text-rose-500">*</span></label>
-              <input
-                type="text"
-                value={editingName}
-                onChange={(e) => setEditingName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-indigo-500 text-xs font-bold text-slate-800"
-                placeholder="ระบุชื่อโมดูล"
-                autoFocus
-              />
-            </div>
+
             <div className="flex items-center gap-2 justify-end pt-1">
               <button
                 type="button"
@@ -544,6 +959,9 @@ interface SettingsViewProps {
 
   companyProfile?: CompanyProfile;
   onUpdateCompanyProfile?: (profile: CompanyProfile) => Promise<void> | void;
+  engineeringSchedules?: any[];
+  onSaveEngineeringSchedule?: (schedule: any) => Promise<void>;
+  onDeleteEngineeringSchedule?: (id: string) => Promise<void>;
 }
 
 type SubTab = 'company' | 'projects' | 'employees' | 'brands' | 'suppliers' | 'media' | 'database';
@@ -587,7 +1005,10 @@ export default function SettingsView({
   onEditMediaFile,
   onDeleteMediaFile,
   companyProfile,
-  onUpdateCompanyProfile
+  onUpdateCompanyProfile,
+  engineeringSchedules,
+  onSaveEngineeringSchedule,
+  onDeleteEngineeringSchedule
 }: SettingsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('company');
 
@@ -1936,6 +2357,9 @@ export default function SettingsView({
                         onEditJobProject={onEditJobProject}
                         jobs={jobs}
                         onEditJob={onEditJob}
+                        engineeringSchedules={engineeringSchedules}
+                        onSaveEngineeringSchedule={onSaveEngineeringSchedule}
+                        onDeleteEngineeringSchedule={onDeleteEngineeringSchedule}
                       />
                     </div>
                   </div>
@@ -2079,6 +2503,9 @@ export default function SettingsView({
                           onEditJobProject={onEditJobProject}
                           jobs={jobs}
                           onEditJob={onEditJob}
+                          engineeringSchedules={engineeringSchedules}
+                          onSaveEngineeringSchedule={onSaveEngineeringSchedule}
+                          onDeleteEngineeringSchedule={onDeleteEngineeringSchedule}
                         />
                       </div>
                     </div>

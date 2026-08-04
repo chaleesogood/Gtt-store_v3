@@ -235,6 +235,7 @@ export interface ProjectModule {
   code: string;       // เลขโมดูล (e.g. "01")
   name: string;       // ชื่อโมดูล (e.g. "ตู้คอนโทรล")
   imageUrl?: string;  // รูปภาพโมดูล
+  subModules?: string[]; // รายการ Sub-module ย่อย
 }
 
 export interface EngineeringPhaseSchedule {
@@ -280,19 +281,22 @@ export function normalizeModules(modules: any[] | undefined): ProjectModule[] {
         return {
           code: match[1],
           name: match[2].trim() || m,
-          imageUrl: ''
+          imageUrl: '',
+          subModules: []
         };
       }
       return {
         code: String(index + 1).padStart(2, '0'),
         name: m,
-        imageUrl: ''
+        imageUrl: '',
+        subModules: []
       };
     }
     return {
       code: m.code || '',
       name: m.name || '',
-      imageUrl: m.imageUrl || ''
+      imageUrl: m.imageUrl || '',
+      subModules: m.subModules || []
     };
   });
 }

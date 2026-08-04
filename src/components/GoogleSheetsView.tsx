@@ -27,6 +27,7 @@ import {
   authenticateGoogleSheets, 
   exportToGoogleSheets, 
   importFromGoogleSheets, 
+  exportProjectAndModuleStatusToGoogleSheet,
   getGoogleSheetsAccessToken, 
   AllAppData 
 } from '../services/googleSheetsService';
@@ -47,7 +48,8 @@ const ALL_TAB_IDS = [
   'Brands',
   'DailyReports',
   'Activities',
-  'UserRoles'
+  'UserRoles',
+  'EngineeringSchedules'
 ];
 
 export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
@@ -65,6 +67,73 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
   const [lastSync, setLastSync] = useState<string>(() => {
     return localStorage.getItem('google_sheets_last_sync') || '';
   });
+
+  const [autoSyncStatusEnabled, setAutoSyncStatusEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('google_sheets_auto_sync_status') !== 'false';
+  });
+  const [lastStatusSync, setLastStatusSync] = useState<string>(() => {
+    return localStorage.getItem('google_sheets_last_status_sync') || '';
+  });
+  const [isSyncingStatus, setIsSyncingStatus] = useState<boolean>(false);
+
+  const toggleAutoSyncStatus = (enabled: boolean) => {
+    setAutoSyncStatusEnabled(enabled);
+    localStorage.setItem('google_sheets_auto_sync_status', enabled ? 'true' : 'false');
+    if (enabled) {
+      addToast('info', 'เปิด Auto Sync สถานะ', 'เมื่อมีการอัปเดตสถานะงานในตาราง ระบบจะส่งข้อมูลไปที่ Google Sheet อัตโนมัติ');
+    }
+  };
+
+  const syncProjectAndModuleStatusToSheet = async (overrideSheetId?: string) => {
+    const targetSheetId = overrideSheetId || spreadsheetId;
+    if (!targetSheetId) {
+      addToast('warning', 'ยังไม่ได้ระบุ Spreadsheet ID', 'กรุณาระบุ Google Spreadsheet ID เพื่อดำเนินการซิงค์สถานะ');
+      return;
+    }
+
+    setIsSyncingStatus(true);
+    try {
+      let token = getGoogleSheetsAccessToken();
+      if (!token) {
+        token = await authenticateGoogleSheets();
+        setIsConnected(true);
+      }
+
+      let schedulesList: any[] = [];
+      try {
+        const localSchedStr = localStorage.getItem('stock_manager_engineering_schedules_list');
+        if (localSchedStr) {
+          schedulesList = JSON.parse(localSchedStr);
+        }
+      } catch (e) {
+        console.warn('Error reading schedules:', e);
+      }
+
+      const res = await exportProjectAndModuleStatusToGoogleSheet(
+        token,
+        targetSheetId,
+        appData.projects || [],
+        appData.jobs || [],
+        schedulesList
+      );
+
+      const nowStr = new Date().toLocaleString('th-TH');
+      setLastStatusSync(nowStr);
+      localStorage.setItem('google_sheets_last_status_sync', nowStr);
+
+      addToast(
+        'success',
+        'ซิงค์สถานะโปรเจ็คและโมดูลสำเร็จ',
+        `อัปเดตสถานะจำนวน ${res.rowsCount} รายการ ลงแท็บ "Project_Module_Status" ใน Google Sheet เรียบร้อยแล้ว`
+      );
+    } catch (err: any) {
+      console.error('Status sync error:', err);
+      addToast('error', 'ซิงค์สถานะล้มเหลว', err.message || 'ไม่สามารถอัปเดตสถานะลง Google Sheet ได้');
+    } finally {
+      setIsSyncingStatus(false);
+    }
+  };
+
 
   const [selectedTabs, setSelectedTabs] = useState<string[]>(ALL_TAB_IDS);
 
@@ -180,6 +249,17 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
     }
   };
 
+  const getEngineeringSchedulesCount = () => {
+    if (appData.engineeringSchedules && appData.engineeringSchedules.length > 0) {
+      return appData.engineeringSchedules.length;
+    }
+    try {
+      const cached = localStorage.getItem('stock_manager_engineering_schedules_list');
+      if (cached) return JSON.parse(cached).length;
+    } catch (e) {}
+    return 0;
+  };
+
   const collectionStats = [
     { id: 'Products', icon: Package, title: '📦 สินค้าในคลัง (Products)', count: appData.products.length, color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/40 border-blue-200' },
     { id: 'Categories', icon: FolderTree, title: '📁 หมวดหมู่ (Categories)', count: appData.categories.length, color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/40 border-amber-200' },
@@ -191,6 +271,7 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
     { id: 'DailyReports', icon: FileText, title: '📝 รายงานวัน (Daily Reports)', count: appData.dailyReports.length, color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/40 border-teal-200' },
     { id: 'Activities', icon: History, title: '📜 ประวัติสต็อก (Activities)', count: appData.activities.length, color: 'text-orange-600 bg-orange-50 dark:bg-orange-950/40 border-orange-200' },
     { id: 'UserRoles', icon: Shield, title: '🛡️ บัญชีผู้ใช้ (User Roles)', count: appData.userRoles.length, color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/40 border-purple-200' },
+    { id: 'EngineeringSchedules', icon: Wrench, title: '⚙️ ตารางงาน Phase Matrix (โมดูล/Sub-module/IO)', count: getEngineeringSchedulesCount(), color: 'text-cyan-600 bg-cyan-50 dark:bg-cyan-950/40 border-cyan-200' },
   ];
 
   return (
@@ -316,6 +397,63 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           )}
+        </div>
+      </div>
+
+      {/* Dedicated Project & Module Status Auto-Sync Card */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+          <div className="space-y-2 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-500/20 border border-indigo-400/30 rounded-full text-xs font-bold text-indigo-300">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+              <span>Real-Time Status Auto Sync</span>
+            </div>
+            <h3 className="text-lg font-black font-sans text-white flex items-center gap-2">
+              <span>⚡ ซิงค์สถานะโปรเจ็คและโมดูลลง Google Sheet อัตโนมัติ</span>
+            </h3>
+            <p className="text-xs text-indigo-200/80 font-sans leading-relaxed">
+              ดึงข้อมูลความคืบหน้าสถานะการทำงาน (INSTALL, WIRING, TEST IO, MANUAL HMI, SEMI-AUTO, AUTO) จากโปรเจ็คและตารางงาน ส่งออกไปที่แท็บ <code className="bg-indigo-900/80 px-2 py-0.5 rounded text-amber-300 font-mono">Project_Module_Status</code> ใน Google Sheet ที่ระบุไว้โดยอัตโนมัติ
+            </p>
+            <div className="flex flex-wrap items-center gap-4 pt-1 text-xs text-indigo-300">
+              <div className="flex items-center gap-1.5 font-bold">
+                <Briefcase className="w-4 h-4 text-emerald-400" />
+                <span>โครงงาน: {appData.projects.length} รายการ</span>
+              </div>
+              <div className="flex items-center gap-1.5 font-bold">
+                <ClipboardList className="w-4 h-4 text-violet-400" />
+                <span>ใบสั่งงาน: {appData.jobs.length} รายการ</span>
+              </div>
+              <div className="text-[11px] text-slate-400 font-mono">
+                {lastStatusSync ? `ซิงค์สถานะล่าสุด: ${lastStatusSync}` : 'ยังไม่มีการซิงค์สถานะ'}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row md:flex-col items-stretch md:items-end gap-3 w-full md:w-auto shrink-0">
+            {/* Toggle Switch */}
+            <label className="inline-flex items-center justify-between gap-3 px-4 py-2.5 bg-slate-800/80 border border-slate-700/80 rounded-2xl cursor-pointer hover:bg-slate-800 transition-all">
+              <span className="text-xs font-bold text-slate-200 font-sans">
+                Auto Sync เมื่อแก้ไขตารางงาน
+              </span>
+              <input
+                type="checkbox"
+                checked={autoSyncStatusEnabled}
+                onChange={(e) => toggleAutoSyncStatus(e.target.checked)}
+                className="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
+              />
+            </label>
+
+            {/* Sync Now Button */}
+            <button
+              onClick={() => syncProjectAndModuleStatusToSheet()}
+              disabled={isSyncingStatus || !spreadsheetId}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 active:scale-98 text-white text-xs font-black rounded-2xl shadow-lg shadow-indigo-500/20 transition-all cursor-pointer disabled:opacity-50"
+              id="btn-sync-project-status-sheet"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncingStatus ? 'animate-spin text-amber-300' : ''}`} />
+              <span>{isSyncingStatus ? 'กำลังซิงค์สถานะ...' : 'ดึงสถานะซิงค์ลง Google Sheet ทันที'}</span>
+            </button>
+          </div>
         </div>
       </div>
 

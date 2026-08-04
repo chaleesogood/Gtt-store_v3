@@ -42,9 +42,12 @@ import {
   ListChecks,
   ChevronRight,
   Image as ImageIcon,
-  Upload
+  Upload,
+  Copy,
+  Download
 } from 'lucide-react';
 import DailyReportView from './DailyReportView';
+import { autoSyncProjectAndModuleStatusIfEnabled, parseEngineeringSchedulesFromMatrix } from '../services/googleSheetsService';
 
 interface JobAssignmentViewProps {
   jobs: Job[];
@@ -141,25 +144,161 @@ export default function JobAssignmentView({
   const [viewIframeUrl, setViewIframeUrl] = useState('');
   const [viewIframeTitle, setViewIframeTitle] = useState('');
 
+  // Paste / Import modal state
+  const [isImportPasteModalOpen, setIsImportPasteModalOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+
+  useEffect(() => {
+    if (engineeringSchedules && engineeringSchedules.length > 0) {
+      setLocalSchedules(engineeringSchedules);
+    }
+  }, [engineeringSchedules]);
+
+  useEffect(() => {
+    const handleSchedulesUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setLocalSchedules(e.detail);
+      } else {
+        const saved = localStorage.getItem('stock_manager_engineering_schedules_list');
+        if (saved) {
+          try {
+            setLocalSchedules(JSON.parse(saved));
+          } catch (err) {}
+        }
+      }
+    };
+
+    window.addEventListener('engineering_schedules_updated', handleSchedulesUpdate);
+    window.addEventListener('storage', handleSchedulesUpdate);
+    return () => {
+      window.removeEventListener('engineering_schedules_updated', handleSchedulesUpdate);
+      window.removeEventListener('storage', handleSchedulesUpdate);
+    };
+  }, []);
+
+  const handlePasteImport = async () => {
+    if (!pasteText.trim()) {
+      alert('กรุณาวางข้อมูลตารางจาก Google Sheet หรือ CSV/TSV');
+      return;
+    }
+
+    const lines = pasteText.trim().split(/\r?\n/);
+    const matrix = lines.map(line => {
+      if (line.includes('\t')) {
+        return line.split('\t');
+      }
+      return line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, ''));
+    });
+
+    if (matrix.length === 0) {
+      alert('ไม่พบข้อมูลสำหรับนำเข้า');
+      return;
+    }
+
+    const header = matrix[0];
+    const rows = matrix.slice(1);
+    const parsed = parseEngineeringSchedulesFromMatrix(header, rows);
+
+    if (parsed.length === 0) {
+      alert('ไม่สามารถแปลงข้อมูลตารางได้ โปรดตรวจสอบรูปแบบข้อมูล');
+      return;
+    }
+
+    const targetProj = jobProjects.find(p => p.jobNo === phaseMatrixProjectFilter);
+    const updatedParsed = parsed.map(p => ({
+      ...p,
+      jobNo: p.jobNo || (targetProj ? targetProj.jobNo : ''),
+      projectName: p.projectName || (targetProj ? targetProj.projectName : '')
+    }));
+
+    let updatedList = [...schedules];
+    updatedParsed.forEach(newItem => {
+      const existingIdx = updatedList.findIndex(
+        s => (newItem.id && s.id === newItem.id) ||
+             (s.jobNo === newItem.jobNo && s.moduleName === newItem.moduleName && s.subModuleName === newItem.subModuleName && s.addressIo === newItem.addressIo)
+      );
+      if (existingIdx !== -1) {
+        updatedList[existingIdx] = { ...updatedList[existingIdx], ...newItem };
+      } else {
+        updatedList.push(newItem);
+      }
+    });
+
+    setLocalSchedules(updatedList);
+    localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(updatedList));
+    window.dispatchEvent(new CustomEvent('engineering_schedules_updated', { detail: updatedList }));
+
+    if (onSaveEngineeringSchedule) {
+      for (const item of updatedParsed) {
+        await onSaveEngineeringSchedule(item);
+      }
+    }
+
+    setIsImportPasteModalOpen(false);
+    setPasteText('');
+    alert(`นำเข้าข้อมูลจาก Google Sheet / CSV สำเร็จ! เพิ่ม/อัปเดต ${updatedParsed.length} รายการ`);
+  };
+
   const [newPhaseJobNo, setNewPhaseJobNo] = useState('');
   const [newPhaseModuleCode, setNewPhaseModuleCode] = useState('');
   const [newPhaseModuleName, setNewPhaseModuleName] = useState('');
   const [newPhaseSubModuleName, setNewPhaseSubModuleName] = useState('');
   const [newPhaseAddressIo, setNewPhaseAddressIo] = useState('');
   const [newPhaseImageUrl, setNewPhaseImageUrl] = useState('');
+  
+  const handlePhaseFormPaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.indexOf('image') !== -1) {
+        const file = item.getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setNewPhaseImageUrl(reader.result as string);
+          };
+          reader.readAsDataURL(file);
+          e.preventDefault();
+        }
+      }
+    }
+  };
+
+  const handlePhaseFormDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setNewPhaseImageUrl(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
   const [newPhaseAssignee, setNewPhaseAssignee] = useState('');
   const [newPhaseRemark, setNewPhaseRemark] = useState('');
 
   const saveScheduleItem = async (item: EngineeringPhaseSchedule) => {
+    let updatedList: EngineeringPhaseSchedule[] = [];
     if (onSaveEngineeringSchedule) {
       await onSaveEngineeringSchedule(item);
+      updatedList = schedules.some(s => s.id === item.id)
+        ? schedules.map(s => s.id === item.id ? item : s)
+        : [item, ...schedules];
     } else {
-      const updated = localSchedules.some(s => s.id === item.id)
+      updatedList = localSchedules.some(s => s.id === item.id)
         ? localSchedules.map(s => s.id === item.id ? item : s)
         : [item, ...localSchedules];
-      setLocalSchedules(updated);
-      localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(updated));
+      setLocalSchedules(updatedList);
+      localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(updatedList));
     }
+
+    // Auto-sync status to Google Sheet if enabled
+    autoSyncProjectAndModuleStatusIfEnabled(jobProjects as any, jobs, updatedList);
   };
 
   // Auto-sync project modules into Phase Matrix automatically
@@ -269,6 +408,126 @@ export default function JobAssignmentView({
     }
   };
 
+  // Compute duplicate count based on jobNo + moduleName + subModuleName + addressIo
+  const duplicateCount = useMemo(() => {
+    const seen = new Set<string>();
+    let dupes = 0;
+    schedules.forEach(item => {
+      const key = `${(item.jobNo || '').trim().toLowerCase()}::${(item.moduleName || '').trim().toLowerCase()}::${(item.subModuleName || '').trim().toLowerCase()}::${(item.addressIo || '').trim().toLowerCase()}`;
+      if (seen.has(key)) {
+        dupes++;
+      } else {
+        seen.add(key);
+      }
+    });
+    return dupes;
+  }, [schedules]);
+
+  // Clean duplicate items with the same name / sub-module / IO
+  const handleDeduplicateSchedules = async () => {
+    if (schedules.length === 0) {
+      alert('ไม่มีรายการในตารางงาน Phase');
+      return;
+    }
+
+    const map = new Map<string, EngineeringPhaseSchedule>();
+    const duplicateIdsToRemove: string[] = [];
+
+    schedules.forEach(item => {
+      const key = `${(item.jobNo || '').trim().toLowerCase()}::${(item.moduleName || '').trim().toLowerCase()}::${(item.subModuleName || '').trim().toLowerCase()}::${(item.addressIo || '').trim().toLowerCase()}`;
+
+      if (!map.has(key)) {
+        map.set(key, item);
+      } else {
+        const existing = map.get(key)!;
+        const getScore = (s: EngineeringPhaseSchedule) => {
+          let score = 0;
+          const statuses = [s.installStatus, s.wiringStatus, s.testIoStatus, s.manualHmiStatus, s.semiAutoStatus, s.autoStatus];
+          statuses.forEach(st => {
+            if (st === 'completed') score += 10;
+            else if (st === 'in_progress') score += 5;
+            else if (st === 'bypassed') score += 1;
+          });
+          if (s.assignee) score += 2;
+          if (s.remark) score += 2;
+          if (s.imageUrl) score += 2;
+          return score;
+        };
+
+        if (getScore(item) > getScore(existing)) {
+          duplicateIdsToRemove.push(existing.id);
+          map.set(key, item);
+        } else {
+          duplicateIdsToRemove.push(item.id);
+        }
+      }
+    });
+
+    if (duplicateIdsToRemove.length === 0) {
+      alert('ไม่พบรายการซ้ำซ้อนในตาราง รายการทั้งหมดมีชื่อและข้อมูลไม่ซ้ำกันแล้ว');
+      return;
+    }
+
+    if (confirm(`พบรายการที่มีชื่อและข้อมูลซ้ำกันจำนวน ${duplicateIdsToRemove.length} รายการ\n\nต้องการลบรายการซ้ำเพื่อเหลือเฉพาะรายการเดียวที่มีข้อมูลสมบูรณ์ที่สุดหรือไม่?`)) {
+      const uniqueList = Array.from(map.values());
+
+      setLocalSchedules(uniqueList);
+      localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(uniqueList));
+      window.dispatchEvent(new CustomEvent('engineering_schedules_updated', { detail: uniqueList }));
+
+      if (onDeleteEngineeringSchedule) {
+        for (const id of duplicateIdsToRemove) {
+          await onDeleteEngineeringSchedule(id);
+        }
+      }
+
+      alert(`ลบรายการซ้ำเรียบร้อยแล้ว!\n• ลบรายการซ้ำไป: ${duplicateIdsToRemove.length} รายการ\n• เหลือรายการเดียวที่ไม่ซ้ำ: ${uniqueList.length} รายการ`);
+    }
+  };
+
+  const filteredSchedules = useMemo(() => {
+    return schedules.filter(item => {
+      const matchSearch = !phaseMatrixSearch || 
+        item.jobNo.toLowerCase().includes(phaseMatrixSearch.toLowerCase()) ||
+        item.moduleName.toLowerCase().includes(phaseMatrixSearch.toLowerCase()) ||
+        (item.subModuleName || '').toLowerCase().includes(phaseMatrixSearch.toLowerCase()) ||
+        (item.addressIo || '').toLowerCase().includes(phaseMatrixSearch.toLowerCase()) ||
+        (item.remark || '').toLowerCase().includes(phaseMatrixSearch.toLowerCase()) ||
+        (item.assignee || '').toLowerCase().includes(phaseMatrixSearch.toLowerCase());
+      const matchProject = phaseMatrixProjectFilter === 'all' || item.jobNo === phaseMatrixProjectFilter;
+      const matchAssignee = phaseMatrixAssigneeFilter === 'all' || item.assignee === phaseMatrixAssigneeFilter;
+      return matchSearch && matchProject && matchAssignee;
+    });
+  }, [schedules, phaseMatrixSearch, phaseMatrixProjectFilter, phaseMatrixAssigneeFilter]);
+
+  const groupedSchedules = useMemo(() => {
+    const map = new Map<string, {
+      key: string;
+      jobNo: string;
+      projectName: string;
+      moduleName: string;
+      moduleCode: string;
+      items: EngineeringPhaseSchedule[];
+    }>();
+
+    filteredSchedules.forEach(item => {
+      const key = `${(item.jobNo || '').trim()}::${(item.moduleName || '').trim()}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          jobNo: item.jobNo,
+          projectName: item.projectName,
+          moduleName: item.moduleName,
+          moduleCode: item.moduleCode || '',
+          items: []
+        });
+      }
+      map.get(key)!.items.push(item);
+    });
+
+    return Array.from(map.values());
+  }, [filteredSchedules]);
+
   const cyclePhaseStatus = (currentStatus: 'pending' | 'in_progress' | 'completed' | 'bypassed' = 'pending'): 'pending' | 'in_progress' | 'completed' | 'bypassed' => {
     if (currentStatus === 'pending') return 'in_progress';
     if (currentStatus === 'in_progress') return 'completed';
@@ -299,6 +558,79 @@ export default function JobAssignmentView({
     });
     if (totalValid === 0) return 100;
     return Math.round((score / totalValid) * 100);
+  };
+
+  // Helper to copy or download Phase matrix schedule table data for Google Sheets
+  const exportPhaseDataToCsvOrCopy = (jobNoFilter: string, mode: 'copy' | 'download') => {
+    const items = jobNoFilter === 'all' 
+      ? schedules 
+      : schedules.filter(s => s.jobNo === jobNoFilter);
+
+    if (items.length === 0) {
+      alert('ไม่พบข้อมูลรายการตาราง Phase สำหรับการส่งออก');
+      return;
+    }
+
+    const headers = [
+      'โมดูล / ระบบงาน',
+      'Sub-module / รายการย่อย',
+      'Address IO',
+      'รูปภาพ',
+      '1. Install',
+      '2. Wiring',
+      '3. Test IO',
+      '4. Manual HMI',
+      '5. Semi-Auto',
+      '6. Auto',
+      'ผู้รับผิดชอบ',
+      'Remark / หมายเหตุ',
+      'ความคืบหน้า'
+    ];
+
+    const statusLabel = (st: string, bypassed?: boolean) => {
+      if (bypassed) return 'ข้าม (N/A)';
+      if (st === 'completed') return 'เสร็จเรียบร้อย';
+      if (st === 'in_progress') return 'กำลังดำเนินการ';
+      return 'ยังไม่เริ่ม';
+    };
+
+    const rows = items.map(item => {
+      const progressPct = calculateScheduleProgress(item);
+      const imgCell = item.imageUrl 
+        ? (item.imageUrl.startsWith('http') ? `=IMAGE("${item.imageUrl}")` : item.imageUrl)
+        : '';
+      return [
+        item.moduleName || '',
+        item.subModuleName || '',
+        item.addressIo || '',
+        imgCell,
+        statusLabel(item.installStatus, item.isBypassed),
+        statusLabel(item.wiringStatus, item.isBypassed),
+        statusLabel(item.testIoStatus, item.isBypassed),
+        statusLabel(item.manualHmiStatus, item.isBypassed),
+        statusLabel(item.semiAutoStatus, item.isBypassed),
+        statusLabel(item.autoStatus, item.isBypassed),
+        item.assignee || '',
+        item.remark || '',
+        `${progressPct}%`
+      ];
+    });
+
+    if (mode === 'copy') {
+      const tsvContent = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
+      navigator.clipboard.writeText(tsvContent);
+      alert(`คัดลอกข้อมูลตาราง Phase (${items.length} รายการ) สำเร็จ!\n\nคุณสามารถเปิด Google Sheet แล้วกด Ctrl+V (วาง) เพื่อวางตารางข้อมูลได้ทันที`);
+    } else {
+      const csvContent = '\uFEFF' + [headers.map(h => `"${h}"`).join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Phase_Schedule_${jobNoFilter}_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   // Helper renderer for interactive phase status buttons (Compact version)
@@ -1158,12 +1490,37 @@ export default function JobAssignmentView({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => setIsImportPasteModalOpen(true)}
+                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                  title="วางหรือนำเข้าข้อมูลตารางคัดลอกจาก Google Sheet / CSV"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>นำเข้า / วางตารางจาก Google Sheet</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={handleSyncProjectModulesToPhaseMatrix}
                   className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
                   title="ดึงรายการโมดูลทั้งหมดจากคลังโปรเจกต์มาสร้างเป็นแถวในตารางอัตโนมัติ"
                 >
                   <RefreshCw className="h-3.5 w-3.5 text-indigo-600" />
                   <span>ซิงค์โมดูลจากโปรเจกต์</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDeduplicateSchedules}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                  title="ลบรายการที่มีชื่อและข้อมูลซ้ำกัน ให้เหลือเฉพาะรายการเดียวเพื่อความดูง่ายและเป็นระเบียบ"
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                  <span>ลบรายการชื่อซ้ำกัน</span>
+                  {duplicateCount > 0 && (
+                    <span className="px-1.5 py-0.5 bg-rose-600 text-white text-[10px] font-black rounded-full animate-pulse">
+                      {duplicateCount}
+                    </span>
+                  )}
                 </button>
 
                 <button
@@ -1292,6 +1649,16 @@ export default function JobAssignmentView({
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => exportPhaseDataToCsvOrCopy(phaseMatrixProjectFilter, 'copy')}
+                        className="px-2.5 py-1.5 bg-indigo-500/30 hover:bg-indigo-500/50 text-indigo-100 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-indigo-400/30"
+                        title="คัดลอกข้อมูลตารางเพื่อนำไปวางใน Google Sheet (Ctrl+V)"
+                      >
+                        <Copy className="h-3.5 w-3.5 text-indigo-300" />
+                        <span>คัดลอกตาราง</span>
+                      </button>
+
                       {proj?.googleSheetUrl ? (
                         <>
                           <button
@@ -1340,7 +1707,7 @@ export default function JobAssignmentView({
                           className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
                         >
                           <Plus className="h-3.5 w-3.5" />
-                          <span>+ ตั้งค่า Google Sheet</span>
+                          <span>+ สร้างไฟล์ Google Sheet</span>
                         </button>
                       )}
                     </div>
@@ -1409,7 +1776,7 @@ export default function JobAssignmentView({
                           }}
                           className="text-[10px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded font-bold cursor-pointer"
                         >
-                          + เพิ่ม Sheet
+                          + สร้างไฟล์ Sheet
                         </button>
                       )}
                     </div>
@@ -1441,9 +1808,8 @@ export default function JobAssignmentView({
                 <table className="w-full text-left border-collapse min-w-[1100px]">
                   <thead>
                     <tr className="bg-slate-900 text-slate-200 text-[11px] font-mono font-extrabold uppercase tracking-wider">
-                      <th className="p-3 pl-4 border-r border-slate-800 w-[190px]">โมดูล / ระบบงาน</th>
-                      <th className="p-3 border-r border-slate-800 w-[160px]">Sub-module / รายการย่อย</th>
-                      <th className="p-3 border-r border-slate-800 w-[120px]">Address IO</th>
+                      <th className="p-3 pl-4 border-r border-slate-800 w-[200px]">Sub-module / รายการย่อย</th>
+                      <th className="p-3 border-r border-slate-800 w-[180px]">Address IO (จุดเชื่อมต่อ)</th>
                       <th className="p-3 border-r border-slate-800 text-center w-[70px]">รูปภาพ</th>
                       <th className="p-2 border-r border-slate-800 text-center w-[70px]">1. Install</th>
                       <th className="p-2 border-r border-slate-800 text-center w-[70px]">2. Wiring</th>
@@ -1456,307 +1822,512 @@ export default function JobAssignmentView({
                       <th className="p-3 text-center w-[85px]">ความคืบหน้า</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs font-sans">
-                    {schedules
-                      .filter(item => {
-                        const matchSearch = !phaseMatrixSearch || 
-                          item.jobNo.toLowerCase().includes(phaseMatrixSearch.toLowerCase()) ||
-                          item.moduleName.toLowerCase().includes(phaseMatrixSearch.toLowerCase()) ||
-                          (item.subModuleName || '').toLowerCase().includes(phaseMatrixSearch.toLowerCase()) ||
-                          (item.remark || '').toLowerCase().includes(phaseMatrixSearch.toLowerCase()) ||
-                          (item.assignee || '').toLowerCase().includes(phaseMatrixSearch.toLowerCase());
-                        const matchProject = phaseMatrixProjectFilter === 'all' || item.jobNo === phaseMatrixProjectFilter;
-                        const matchAssignee = phaseMatrixAssigneeFilter === 'all' || item.assignee === phaseMatrixAssigneeFilter;
-                        return matchSearch && matchProject && matchAssignee;
-                      })
-                      .map((item) => {
-                        const progressPct = calculateScheduleProgress(item);
-                        const relReports = dailyReports.filter(r => r.jobsDetail.includes(item.jobNo) && (
-                          r.jobsDetail.includes(item.moduleName) || (item.subModuleName && r.jobsDetail.includes(item.subModuleName))
-                        ));
-
+                  <tbody className="text-xs font-sans">
+                    {groupedSchedules.length === 0 ? (
+                      <tr>
+                        <td colSpan={12} className="p-8 text-center text-slate-400 font-sans">
+                          ไม่พบรายการตารางงาน Phase ที่ตรงกับเงื่อนไขค้นหา
+                        </td>
+                      </tr>
+                    ) : (
+                      groupedSchedules.map((group) => {
                         return (
-                          <tr key={item.id} className={`hover:bg-slate-50/80 transition-colors ${item.isBypassed ? 'bg-slate-50/50' : ''}`}>
-                            {/* Module Name + Bypass Toggle */}
-                            <td className="p-3 pl-4 border-r border-slate-100 font-bold text-slate-800">
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between gap-1">
-                                  <div className="flex items-center gap-1.5">
-                                    <Cpu className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-                                    <span className="block text-[11px] leading-snug font-extrabold">{item.moduleName}</span>
+                          <React.Fragment key={group.key}>
+                            {/* Module Group Header Row */}
+                            <tr className="bg-slate-800 text-slate-100 font-sans border-y border-slate-700/80">
+                              <td colSpan={12} className="p-2.5 pl-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <Cpu className="h-4 w-4 text-indigo-400 shrink-0" />
+                                    <span className="text-xs sm:text-sm font-extrabold text-white font-sans">
+                                      {group.moduleName}
+                                    </span>
+                                    {group.moduleCode && (
+                                      <span className="text-[10px] font-mono text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-700/50">
+                                        [{group.moduleCode}]
+                                      </span>
+                                    )}
+                                    {phaseMatrixProjectFilter === 'all' && (
+                                      <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-700/50">
+                                        JOB: {group.jobNo}
+                                      </span>
+                                    )}
+                                    <span className="text-[11px] text-slate-300 font-medium font-sans">
+                                      ({group.items.length} รายการ IO)
+                                    </span>
                                   </div>
-                                  <div className="flex items-center gap-1">
+
+                                  <div className="flex items-center gap-1.5">
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setEditingPhaseItem(item);
-                                        setIsPhaseSheetOpen(true);
+                                        const newItem: EngineeringPhaseSchedule = {
+                                          id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                                          jobNo: group.jobNo,
+                                          projectName: group.projectName,
+                                          moduleCode: group.moduleCode,
+                                          moduleName: group.moduleName,
+                                          subModuleName: group.items[0]?.subModuleName || '',
+                                          addressIo: '',
+                                          imageUrl: group.items[0]?.imageUrl || '',
+                                          installStatus: 'pending',
+                                          wiringStatus: 'pending',
+                                          testIoStatus: 'pending',
+                                          manualHmiStatus: 'pending',
+                                          semiAutoStatus: 'pending',
+                                          autoStatus: 'pending',
+                                          assignee: group.items[0]?.assignee || '',
+                                          remark: '',
+                                          isBypassed: group.items[0]?.isBypassed || false,
+                                          updatedAt: new Date().toISOString()
+                                        };
+                                        saveScheduleItem(newItem);
                                       }}
-                                      className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors cursor-pointer"
-                                      title="แก้ไข Sheet รายละเอียดโมดูล"
+                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                      title="เพิ่ม Address IO ใหม่ในโมดูลนี้"
                                     >
-                                      <FileEdit className="h-3.5 w-3.5" />
+                                      <Plus className="h-3.5 w-3.5" />
+                                      <span>+ เพิ่ม Address IO</span>
                                     </button>
+
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        if (confirm(`ต้องการลบแถว Phase ของโมดูล "${item.moduleName}" หรือไม่?`)) {
-                                          deleteScheduleItem(item.id);
+                                        const subName = prompt(`ระบุชื่อ Sub-module / รายการย่อย สำหรับโมดูล "${group.moduleName}":`);
+                                        if (subName !== null) {
+                                          const newItem: EngineeringPhaseSchedule = {
+                                            id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                                            jobNo: group.jobNo,
+                                            projectName: group.projectName,
+                                            moduleCode: group.moduleCode,
+                                            moduleName: group.moduleName,
+                                            subModuleName: subName,
+                                            addressIo: '',
+                                            imageUrl: group.items[0]?.imageUrl || '',
+                                            installStatus: 'pending',
+                                            wiringStatus: 'pending',
+                                            testIoStatus: 'pending',
+                                            manualHmiStatus: 'pending',
+                                            semiAutoStatus: 'pending',
+                                            autoStatus: 'pending',
+                                            assignee: group.items[0]?.assignee || '',
+                                            remark: '',
+                                            isBypassed: group.items[0]?.isBypassed || false,
+                                            updatedAt: new Date().toISOString()
+                                          };
+                                          saveScheduleItem(newItem);
                                         }
                                       }}
-                                      className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
-                                      title="ลบแถวนี้ออก"
+                                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                      title="เพิ่ม Sub-module ใหม่"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                      <span>+ เพิ่ม Sub-module</span>
+                                    </button>
+
+                                    {group.items[0] && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingPhaseItem(group.items[0]);
+                                          setIsPhaseSheetOpen(true);
+                                        }}
+                                        className="p-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs transition-colors cursor-pointer"
+                                        title="แก้ไข Sheet รายละเอียดโมดูล"
+                                      >
+                                        <FileEdit className="h-3.5 w-3.5" />
+                                      </button>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm(`ต้องการลบโมดูล "${group.moduleName}" พร้อมรายการ IO ทั้งหมด (${group.items.length} รายการ) หรือไม่?`)) {
+                                          group.items.forEach(it => deleteScheduleItem(it.id));
+                                        }
+                                      }}
+                                      className="p-1 bg-rose-950/80 hover:bg-rose-900 text-rose-300 rounded-lg text-xs transition-colors cursor-pointer"
+                                      title="ลบโมดูลนี้และรายการทั้งหมด"
                                     >
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => saveScheduleItem({ ...item, isBypassed: !item.isBypassed, updatedAt: new Date().toISOString() })}
-                                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold border flex items-center gap-1 transition-all cursor-pointer ${
-                                        item.isBypassed 
-                                          ? 'bg-amber-100 text-amber-800 border-amber-300 font-black' 
-                                          : 'bg-slate-100 hover:bg-amber-50 text-slate-500 hover:text-amber-700 border-slate-200'
-                                      }`}
-                                      title={item.isBypassed ? "ยกเลิก Bypass" : "กดเพื่อ Bypass โมดูลนี้ (ไม่ต้องมีสถานะ)"}
-                                    >
-                                      <Zap className="h-2.5 w-2.5" />
-                                      <span>{item.isBypassed ? 'Bypassed' : 'Bypass'}</span>
-                                    </button>
                                   </div>
                                 </div>
+                              </td>
+                            </tr>
 
-                                <div className="flex items-center gap-1.5">
-                                  {item.moduleCode && (
-                                    <span className="text-[9px] text-slate-400 font-mono block">[{item.moduleCode}]</span>
-                                  )}
-                                  {phaseMatrixProjectFilter === 'all' && (
-                                    <span className="text-[9px] font-mono font-bold text-indigo-700 bg-indigo-50 px-1 rounded">
-                                      {item.jobNo}
-                                    </span>
-                                  )}
-                                  {item.isBypassed && (
-                                    <span className="text-[9.5px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1 rounded">
-                                      ⚡ Bypassed (ข้าม)
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Sub-module / รายการย่อย */}
-                            <td className="p-2 border-r border-slate-100">
-                              <div className="space-y-1">
-                                <input
-                                  type="text"
-                                  defaultValue={item.subModuleName || ''}
-                                  onBlur={(e) => {
-                                    if (e.target.value !== (item.subModuleName || '')) {
-                                      saveScheduleItem({ ...item, subModuleName: e.target.value, updatedAt: new Date().toISOString() });
-                                    }
-                                  }}
-                                  placeholder="พิมพ์ Sub-module..."
-                                  className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-800 focus:outline-hidden focus:bg-white focus:border-indigo-500"
-                                />
-
-                                {/* Sub module related progress update logs */}
-                                {relReports.length > 0 && (
-                                  <div className="space-y-1 mt-1 max-h-20 overflow-y-auto">
-                                    {relReports.slice(0, 2).map((r, i) => (
-                                      <div key={i} className="text-[9.5px] bg-indigo-50/80 border border-indigo-100 rounded p-1 text-slate-700 leading-tight">
-                                        <span className="font-bold text-indigo-700 font-mono">[{r.date}] {r.employeeName}:</span> {r.jobsDetail}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* Address IO */}
-                            <td className="p-2 border-r border-slate-100 font-mono">
-                              <input
-                                type="text"
-                                defaultValue={item.addressIo || ''}
-                                onBlur={(e) => {
-                                  if (e.target.value !== (item.addressIo || '')) {
-                                    saveScheduleItem({ ...item, addressIo: e.target.value, updatedAt: new Date().toISOString() });
+                            {/* Group Items */}
+                            {(() => {
+                              const subGroups: { subModuleName: string; items: EngineeringPhaseSchedule[] }[] = [];
+                              group.items.forEach(item => {
+                                const name = (item.subModuleName || '').trim();
+                                if (name === '') {
+                                  subGroups.push({
+                                    subModuleName: '',
+                                    items: [item]
+                                  });
+                                } else {
+                                  const existing = subGroups.find(g => g.subModuleName === name);
+                                  if (existing) {
+                                    existing.items.push(item);
+                                  } else {
+                                    subGroups.push({
+                                      subModuleName: name,
+                                      items: [item]
+                                    });
                                   }
-                                }}
-                                placeholder="เช่น I:0.0 / O:1.2..."
-                                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-mono font-bold text-slate-800 focus:outline-hidden focus:bg-white focus:border-indigo-500"
-                              />
-                            </td>
+                                }
+                              });
 
-                            {/* Image */}
-                            <td className="p-2 border-r border-slate-100 text-center">
-                              {item.imageUrl ? (
-                                <div className="relative group inline-block">
-                                  <img
-                                    src={item.imageUrl}
-                                    alt={item.moduleName}
-                                    onClick={() => setActiveImagePreview(item.imageUrl!)}
-                                    className="h-9 w-9 object-cover rounded-lg border border-slate-200 shadow-2xs cursor-pointer hover:scale-105 transition-transform"
-                                  />
-                                  <label
-                                    className="absolute -bottom-1 -right-1 bg-slate-900 text-white p-0.5 rounded-full text-[9px] cursor-pointer hover:bg-indigo-600 shadow-2xs"
-                                    title="เปลี่ยนรูปภาพโมดูล"
-                                  >
-                                    <Upload className="h-2.5 w-2.5" />
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      className="hidden"
-                                      onChange={(e) => {
-                                        const file = e.target.files?.[0];
-                                        if (file) {
-                                          const reader = new FileReader();
-                                          reader.onloadend = () => {
-                                            const base64 = reader.result as string;
-                                            saveScheduleItem({ ...item, imageUrl: base64, updatedAt: new Date().toISOString() });
+                              return subGroups.flatMap((subGroup) => {
+                                return subGroup.items.map((item, itemIdx) => {
+                                  const isFirstRowOfSubGroup = itemIdx === 0;
+                                  const progressPct = calculateScheduleProgress(item);
+                                  const relReports = dailyReports.filter(r => r.jobsDetail.includes(item.jobNo) && (
+                                    r.jobsDetail.includes(item.moduleName) || (item.subModuleName && r.jobsDetail.includes(item.subModuleName))
+                                  ));
+
+                                  return (
+                                    <tr 
+                                      key={item.id} 
+                                      className={`hover:bg-slate-50/80 transition-colors ${item.isBypassed ? 'bg-slate-50/50' : ''} border-b ${
+                                        itemIdx < subGroup.items.length - 1
+                                          ? 'border-slate-100/40 border-dashed'
+                                          : 'border-slate-200/80'
+                                      }`}
+                                    >
+                                      {/* Sub-module / รายการย่อย - Merged with rowSpan */}
+                                      {isFirstRowOfSubGroup && (
+                                        <td
+                                          rowSpan={subGroup.items.length}
+                                          className={`p-2 pl-4 border-r border-slate-100 align-top ${
+                                            subGroup.items.length > 1
+                                              ? 'bg-slate-50/70 border-l-2 border-l-indigo-500 shadow-2xs'
+                                              : 'bg-white'
+                                          }`}
+                                        >
+                                          <div className="space-y-1">
+                                            <div className="flex items-center gap-1">
+                                              <input
+                                                type="text"
+                                                key={`submod_grp_${subGroup.items[0].id}_${subGroup.subModuleName}`}
+                                                defaultValue={subGroup.subModuleName}
+                                                onBlur={(e) => {
+                                                  const newVal = e.target.value;
+                                                  if (newVal !== subGroup.subModuleName) {
+                                                    subGroup.items.forEach(it => {
+                                                      saveScheduleItem({ ...it, subModuleName: newVal, updatedAt: new Date().toISOString() });
+                                                    });
+                                                  }
+                                                }}
+                                                placeholder="พิมพ์ Sub-module..."
+                                                className={`w-full px-2 py-1 border rounded-lg text-[11px] font-extrabold focus:outline-hidden focus:bg-white focus:border-indigo-500 transition-colors ${
+                                                  subGroup.items.length > 1
+                                                    ? 'bg-white border-indigo-200 text-indigo-950 shadow-2xs'
+                                                    : 'bg-slate-50 border-slate-200 text-slate-800'
+                                                }`}
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const newItem: EngineeringPhaseSchedule = {
+                                                    id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                                                    jobNo: subGroup.items[0].jobNo,
+                                                    projectName: subGroup.items[0].projectName,
+                                                    moduleCode: subGroup.items[0].moduleCode,
+                                                    moduleName: subGroup.items[0].moduleName,
+                                                    subModuleName: subGroup.subModuleName,
+                                                    addressIo: '',
+                                                    imageUrl: subGroup.items[0].imageUrl,
+                                                    installStatus: 'pending',
+                                                    wiringStatus: 'pending',
+                                                    testIoStatus: 'pending',
+                                                    manualHmiStatus: 'pending',
+                                                    semiAutoStatus: 'pending',
+                                                    autoStatus: 'pending',
+                                                    assignee: subGroup.items[0].assignee,
+                                                    remark: '',
+                                                    isBypassed: subGroup.items[0].isBypassed,
+                                                    updatedAt: new Date().toISOString()
+                                                  };
+                                                  saveScheduleItem(newItem);
+                                                }}
+                                                className="p-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-md transition-all cursor-pointer shrink-0"
+                                                title="เพิ่ม Address IO ภายใต้ Sub-module เดียวกัน"
+                                              >
+                                                <Plus className="h-3.5 w-3.5" />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  if (confirm(`ต้องการลบ Sub-module "${subGroup.subModuleName || 'นี้'}" พร้อมรายการ IO ทั้งหมด (${subGroup.items.length} รายการ) หรือไม่?`)) {
+                                                    subGroup.items.forEach(it => deleteScheduleItem(it.id));
+                                                  }
+                                                }}
+                                                className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-all cursor-pointer shrink-0"
+                                                title="ลบ Sub-module นี้และรายการย่อยทั้งหมด"
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                              </button>
+                                            </div>
+
+                                            {subGroup.items.length > 1 && (
+                                              <div className="inline-flex items-center gap-1 text-[9px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-150 px-2 py-0.5 rounded-md mt-1.5 select-none shadow-3xs">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                                                <span>กลุ่ม Sub-module ({subGroup.items.length} รายการ IO)</span>
+                                              </div>
+                                            )}
+
+                                            {/* Sub module related progress update logs */}
+                                            {relReports.length > 0 && (
+                                              <div className="space-y-1 mt-1 max-h-20 overflow-y-auto">
+                                                {relReports.slice(0, 2).map((r, i) => (
+                                                  <div key={i} className="text-[9.5px] bg-indigo-50/80 border border-indigo-100 rounded p-1 text-slate-700 leading-tight">
+                                                    <span className="font-bold text-indigo-700 font-mono">[{r.date}] {r.employeeName}:</span> {r.jobsDetail}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </td>
+                                      )}
+
+                                      {/* Address IO (with inline Add/Delete controls) */}
+                                  <td className="p-2 border-r border-slate-100 font-mono">
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        type="text"
+                                        key={`addrio_${item.id}_${item.addressIo || ''}`}
+                                        defaultValue={item.addressIo || ''}
+                                        onBlur={(e) => {
+                                          if (e.target.value !== (item.addressIo || '')) {
+                                            saveScheduleItem({ ...item, addressIo: e.target.value, updatedAt: new Date().toISOString() });
+                                          }
+                                        }}
+                                        placeholder="เช่น I:0.0 / O:1.2 / X0..."
+                                        className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-mono font-bold text-slate-800 focus:outline-hidden focus:bg-white focus:border-indigo-500"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const newItem: EngineeringPhaseSchedule = {
+                                            id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                                            jobNo: item.jobNo,
+                                            projectName: item.projectName,
+                                            moduleCode: item.moduleCode,
+                                            moduleName: item.moduleName,
+                                            subModuleName: item.subModuleName,
+                                            addressIo: '',
+                                            imageUrl: item.imageUrl,
+                                            installStatus: 'pending',
+                                            wiringStatus: 'pending',
+                                            testIoStatus: 'pending',
+                                            manualHmiStatus: 'pending',
+                                            semiAutoStatus: 'pending',
+                                            autoStatus: 'pending',
+                                            assignee: item.assignee,
+                                            remark: '',
+                                            isBypassed: item.isBypassed,
+                                            updatedAt: new Date().toISOString()
                                           };
-                                          reader.readAsDataURL(file);
+                                          saveScheduleItem(newItem);
+                                        }}
+                                        className="p-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-md transition-all cursor-pointer shrink-0"
+                                        title="เพิ่ม Address IO ใหม่ใน Sub-module นี้"
+                                      >
+                                        <Plus className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (confirm(`ต้องการลบ Address IO "${item.addressIo || 'นี้'}" หรือไม่?`)) {
+                                            deleteScheduleItem(item.id);
+                                          }
+                                        }}
+                                        className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-all cursor-pointer shrink-0"
+                                        title="ลบ Address IO นี้"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+
+                                  {/* Image */}
+                                  <td className="p-2 border-r border-slate-100 text-center">
+                                    {item.imageUrl ? (
+                                      <div className="relative group inline-block">
+                                        <img
+                                          src={item.imageUrl}
+                                          alt={item.moduleName}
+                                          onClick={() => setActiveImagePreview(item.imageUrl!)}
+                                          className="h-9 w-9 object-cover rounded-lg border border-slate-200 shadow-2xs cursor-pointer hover:scale-105 transition-transform"
+                                        />
+                                        <label
+                                          className="absolute -bottom-1 -right-1 bg-slate-900 text-white p-0.5 rounded-full text-[9px] cursor-pointer hover:bg-indigo-600 shadow-2xs"
+                                          title="เปลี่ยนรูปภาพโมดูล"
+                                        >
+                                          <Upload className="h-2.5 w-2.5" />
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              if (file) {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => {
+                                                  const base64 = reader.result as string;
+                                                  saveScheduleItem({ ...item, imageUrl: base64, updatedAt: new Date().toISOString() });
+                                                };
+                                                reader.readAsDataURL(file);
+                                              }
+                                            }}
+                                          />
+                                        </label>
+                                      </div>
+                                    ) : (
+                                      <label className="px-2 py-1 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 text-slate-400 border border-slate-200 border-dashed rounded-lg text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors">
+                                        <ImageIcon className="h-3 w-3" />
+                                        <span>+ รูป</span>
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
+                                          onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                              const reader = new FileReader();
+                                              reader.onloadend = () => {
+                                                const base64 = reader.result as string;
+                                                saveScheduleItem({ ...item, imageUrl: base64, updatedAt: new Date().toISOString() });
+                                              };
+                                              reader.readAsDataURL(file);
+                                            }
+                                          }}
+                                        />
+                                      </label>
+                                    )}
+                                  </td>
+
+                                  {/* Phase 1: Install */}
+                                  <td className="p-2 border-r border-slate-100 text-center">
+                                    {renderPhaseStatusBadge(
+                                      item.installStatus,
+                                      'Install',
+                                      () => saveScheduleItem({ ...item, installStatus: cyclePhaseStatus(item.installStatus), updatedAt: new Date().toISOString() }),
+                                      item.isBypassed
+                                    )}
+                                  </td>
+
+                                  {/* Phase 2: Wiring */}
+                                  <td className="p-2 border-r border-slate-100 text-center">
+                                    {renderPhaseStatusBadge(
+                                      item.wiringStatus,
+                                      'Wiring',
+                                      () => saveScheduleItem({ ...item, wiringStatus: cyclePhaseStatus(item.wiringStatus), updatedAt: new Date().toISOString() }),
+                                      item.isBypassed
+                                    )}
+                                  </td>
+
+                                  {/* Phase 3: Test IO */}
+                                  <td className="p-2 border-r border-slate-100 text-center">
+                                    {renderPhaseStatusBadge(
+                                      item.testIoStatus,
+                                      'Test IO',
+                                      () => saveScheduleItem({ ...item, testIoStatus: cyclePhaseStatus(item.testIoStatus), updatedAt: new Date().toISOString() }),
+                                      item.isBypassed
+                                    )}
+                                  </td>
+
+                                  {/* Phase 4: Manual HMI */}
+                                  <td className="p-2 border-r border-slate-100 text-center">
+                                    {renderPhaseStatusBadge(
+                                      item.manualHmiStatus,
+                                      'Manual HMI',
+                                      () => saveScheduleItem({ ...item, manualHmiStatus: cyclePhaseStatus(item.manualHmiStatus), updatedAt: new Date().toISOString() }),
+                                      item.isBypassed
+                                    )}
+                                  </td>
+
+                                  {/* Phase 5: Semi-Auto */}
+                                  <td className="p-2 border-r border-slate-100 text-center">
+                                    {renderPhaseStatusBadge(
+                                      item.semiAutoStatus,
+                                      'Semi-Auto',
+                                      () => saveScheduleItem({ ...item, semiAutoStatus: cyclePhaseStatus(item.semiAutoStatus), updatedAt: new Date().toISOString() }),
+                                      item.isBypassed
+                                    )}
+                                  </td>
+
+                                  {/* Phase 6: Auto */}
+                                  <td className="p-2 border-r border-slate-100 text-center">
+                                    {renderPhaseStatusBadge(
+                                      item.autoStatus,
+                                      'Auto',
+                                      () => saveScheduleItem({ ...item, autoStatus: cyclePhaseStatus(item.autoStatus), updatedAt: new Date().toISOString() }),
+                                      item.isBypassed
+                                    )}
+                                  </td>
+
+                                  {/* Assignee Selection */}
+                                  <td className="p-2 border-r border-slate-100">
+                                    <select
+                                      value={item.assignee || ''}
+                                      onChange={(e) => saveScheduleItem({ ...item, assignee: e.target.value, updatedAt: new Date().toISOString() })}
+                                      className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+                                    >
+                                      <option value="">-- ระบุ --</option>
+                                      {employees.map(emp => (
+                                        <option key={emp.id} value={emp.name}>
+                                          {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+
+                                  {/* Remark Input */}
+                                  <td className="p-2 border-r border-slate-100">
+                                    <input
+                                      type="text"
+                                      defaultValue={item.remark || ''}
+                                      onBlur={(e) => {
+                                        if (e.target.value !== item.remark) {
+                                          saveScheduleItem({ ...item, remark: e.target.value, updatedAt: new Date().toISOString() });
                                         }
                                       }}
+                                      placeholder="พิมพ์หมายเหตุ / ข้อสังเกต..."
+                                      className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-700 focus:outline-hidden focus:bg-white focus:border-indigo-400"
                                     />
-                                  </label>
-                                </div>
-                              ) : (
-                                <label className="px-2 py-1 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 text-slate-400 border border-slate-200 border-dashed rounded-lg text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors">
-                                  <ImageIcon className="h-3 w-3" />
-                                  <span>+ รูป</span>
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) {
-                                        const reader = new FileReader();
-                                        reader.onloadend = () => {
-                                          const base64 = reader.result as string;
-                                          saveScheduleItem({ ...item, imageUrl: base64, updatedAt: new Date().toISOString() });
-                                        };
-                                        reader.readAsDataURL(file);
-                                      }
-                                    }}
-                                  />
-                                </label>
-                              )}
-                            </td>
+                                  </td>
 
-                            {/* Phase 1: Install */}
-                            <td className="p-2 border-r border-slate-100 text-center">
-                              {renderPhaseStatusBadge(
-                                item.installStatus,
-                                'Install',
-                                () => saveScheduleItem({ ...item, installStatus: cyclePhaseStatus(item.installStatus), updatedAt: new Date().toISOString() }),
-                                item.isBypassed
-                              )}
-                            </td>
-
-                            {/* Phase 2: Wiring */}
-                            <td className="p-2 border-r border-slate-100 text-center">
-                              {renderPhaseStatusBadge(
-                                item.wiringStatus,
-                                'Wiring',
-                                () => saveScheduleItem({ ...item, wiringStatus: cyclePhaseStatus(item.wiringStatus), updatedAt: new Date().toISOString() }),
-                                item.isBypassed
-                              )}
-                            </td>
-
-                            {/* Phase 3: Test IO */}
-                            <td className="p-2 border-r border-slate-100 text-center">
-                              {renderPhaseStatusBadge(
-                                item.testIoStatus,
-                                'Test IO',
-                                () => saveScheduleItem({ ...item, testIoStatus: cyclePhaseStatus(item.testIoStatus), updatedAt: new Date().toISOString() }),
-                                item.isBypassed
-                              )}
-                            </td>
-
-                            {/* Phase 4: Manual HMI */}
-                            <td className="p-2 border-r border-slate-100 text-center">
-                              {renderPhaseStatusBadge(
-                                item.manualHmiStatus,
-                                'Manual HMI',
-                                () => saveScheduleItem({ ...item, manualHmiStatus: cyclePhaseStatus(item.manualHmiStatus), updatedAt: new Date().toISOString() }),
-                                item.isBypassed
-                              )}
-                            </td>
-
-                            {/* Phase 5: Semi-Auto */}
-                            <td className="p-2 border-r border-slate-100 text-center">
-                              {renderPhaseStatusBadge(
-                                item.semiAutoStatus,
-                                'Semi-Auto',
-                                () => saveScheduleItem({ ...item, semiAutoStatus: cyclePhaseStatus(item.semiAutoStatus), updatedAt: new Date().toISOString() }),
-                                item.isBypassed
-                              )}
-                            </td>
-
-                            {/* Phase 6: Auto */}
-                            <td className="p-2 border-r border-slate-100 text-center">
-                              {renderPhaseStatusBadge(
-                                item.autoStatus,
-                                'Auto',
-                                () => saveScheduleItem({ ...item, autoStatus: cyclePhaseStatus(item.autoStatus), updatedAt: new Date().toISOString() }),
-                                item.isBypassed
-                              )}
-                            </td>
-
-                            {/* Assignee Selection */}
-                            <td className="p-2 border-r border-slate-100">
-                              <select
-                                value={item.assignee || ''}
-                                onChange={(e) => saveScheduleItem({ ...item, assignee: e.target.value, updatedAt: new Date().toISOString() })}
-                                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-800 focus:outline-hidden cursor-pointer"
-                              >
-                                <option value="">-- ระบุ --</option>
-                                {employees.map(emp => (
-                                  <option key={emp.id} value={emp.name}>
-                                    {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-
-                            {/* Remark Input */}
-                            <td className="p-2 border-r border-slate-100">
-                              <input
-                                type="text"
-                                defaultValue={item.remark || ''}
-                                onBlur={(e) => {
-                                  if (e.target.value !== item.remark) {
-                                    saveScheduleItem({ ...item, remark: e.target.value, updatedAt: new Date().toISOString() });
-                                  }
-                                }}
-                                placeholder="พิมพ์หมายเหตุ / ข้อสังเกต..."
-                                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-700 focus:outline-hidden focus:bg-white focus:border-indigo-400"
-                              />
-                            </td>
-
-                            {/* Progress % */}
-                            <td className="p-3 text-center">
-                              <div className="flex flex-col items-center gap-1">
-                                <span className={`text-[11px] font-mono font-black ${
-                                  item.isBypassed ? 'text-slate-400' : progressPct === 100 ? 'text-emerald-600' : progressPct >= 50 ? 'text-amber-600' : 'text-slate-600'
-                                }`}>
-                                  {item.isBypassed ? 'ข้าม' : `${progressPct}%`}
-                                </span>
-                                <div className="w-14 bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                  <div
-                                    className={`h-full rounded-full transition-all duration-300 ${
-                                      item.isBypassed ? 'bg-slate-300' : progressPct === 100 ? 'bg-emerald-500' : progressPct >= 50 ? 'bg-amber-500' : 'bg-indigo-500'
-                                    }`}
-                                    style={{ width: `${progressPct}%` }}
-                                  />
-                                </div>
-                              </div>
-                            </td>
-
-                          </tr>
-                        );
-                      })}
-                  </tbody>
+                                  {/* Progress % */}
+                                  <td className="p-3 text-center">
+                                    <div className="flex flex-col items-center gap-1">
+                                      <span className={`text-[11px] font-mono font-black ${
+                                        item.isBypassed ? 'text-slate-400' : progressPct === 100 ? 'text-emerald-600' : progressPct >= 50 ? 'text-amber-600' : 'text-slate-600'
+                                      }`}>
+                                        {item.isBypassed ? 'ข้าม' : `${progressPct}%`}
+                                      </span>
+                                      <div className="w-14 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full transition-all duration-300 ${
+                                            item.isBypassed ? 'bg-slate-300' : progressPct === 100 ? 'bg-emerald-500' : progressPct >= 50 ? 'bg-amber-500' : 'bg-indigo-500'
+                                          }`}
+                                          style={{ width: `${progressPct}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          });
+                        })()}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
                 </table>
               </div>
             </div>
@@ -3182,36 +3753,80 @@ export default function JobAssignmentView({
                   />
                 </div>
 
-                {/* Image Upload / URL */}
+                {/* Drag and Drop / Paste Area for Module Image */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-500 block">รูปภาพโมดูล / ภาพประกอบ</label>
-                  <div className="flex items-center gap-2">
-                    <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0">
-                      <Camera className="h-3.5 w-3.5 text-indigo-600" />
-                      <span>แนบไฟล์รูป</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setNewPhaseImageUrl(reader.result as string);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
+                  <div 
+                    onPaste={handlePhaseFormPaste}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handlePhaseFormDrop}
+                    className="border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/30 rounded-xl p-3.5 transition-all text-center space-y-2 cursor-pointer relative group"
+                  >
                     <input
-                      type="text"
-                      value={newPhaseImageUrl}
-                      onChange={(e) => setNewPhaseImageUrl(e.target.value)}
-                      placeholder="หรือวาง URL รูปภาพ..."
-                      className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800"
+                      type="file"
+                      id="newPhaseModuleImageInput"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setNewPhaseImageUrl(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
                     />
+                    
+                    {newPhaseImageUrl ? (
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <div className="relative h-28 w-full max-w-[200px] rounded-lg border border-slate-200 overflow-hidden shadow-xs bg-white">
+                          <img src={newPhaseImageUrl} alt="Preview" className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setNewPhaseImageUrl(''); }}
+                            className="absolute top-1.5 right-1.5 p-1 bg-rose-500 hover:bg-rose-600 text-white rounded-full shadow-md transition-colors cursor-pointer"
+                            title="ลบรูปภาพ"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <span className="text-[10px] text-indigo-600 font-extrabold bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                          แนบรูปภาพโมดูลแล้ว (คลิก/ลากวาง/กด Ctrl+V เพื่อเปลี่ยน)
+                        </span>
+                      </div>
+                    ) : (
+                      <div 
+                        onClick={() => document.getElementById('newPhaseModuleImageInput')?.click()}
+                        className="flex flex-col items-center justify-center py-2"
+                      >
+                        <div className="p-2 bg-indigo-50 text-indigo-600 rounded-full mb-1.5 group-hover:scale-110 transition-transform">
+                          <Camera className="h-4 w-4" />
+                        </div>
+                        <p className="text-xs font-bold text-slate-700">คลิกเพื่ออัปโหลด หรือลากไฟล์รูปภาพมาวางที่นี่</p>
+                        <p className="text-[10px] text-slate-400 mt-1 font-semibold">หรือคลิกในนี้แล้วกด <kbd className="bg-slate-100 px-1 py-0.5 border border-slate-200 rounded text-slate-600">Ctrl + V</kbd> เพื่อวางรูปภาพ</p>
+                      </div>
+                    )}
+
+                    {/* Pre-fill Preset Buttons inside Modal */}
+                    <div className="flex items-center justify-center gap-1.5 pt-2 border-t border-slate-100/60 mt-2">
+                      <span className="text-[9px] text-slate-400 font-sans">รูปตัวอย่างรวดเร็ว:</span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setNewPhaseImageUrl('https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80'); }}
+                        className="text-[9px] bg-white hover:bg-slate-150 text-slate-600 px-2 py-0.5 rounded border border-slate-250 font-bold cursor-pointer transition-colors shadow-3xs"
+                      >
+                        +ตู้คอนโทรลไฟ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setNewPhaseImageUrl('https://images.unsplash.com/photo-1537462715879-360eeb61a0bc?auto=format&fit=crop&w=600&q=80'); }}
+                        className="text-[9px] bg-white hover:bg-slate-150 text-slate-600 px-2 py-0.5 rounded border border-slate-250 font-bold cursor-pointer transition-colors shadow-3xs"
+                      >
+                        +แผงวงจรไฟฟ้า
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -3406,6 +4021,310 @@ export default function JobAssignmentView({
             />
             <div className="bg-slate-900/90 border-t border-slate-800 text-center px-4 py-3">
               <p className="text-xs text-slate-300 font-sans font-semibold">ภาพถ่ายผลงานเสร็จสมบูรณ์ / หลักฐานตรวจสอบหน้าไซต์งาน</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- EDIT GOOGLE SHEET URL MODAL -------------------- */}
+      {googleSheetModalProj && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-100 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="flex items-center justify-between p-5 bg-gradient-to-r from-emerald-900 via-teal-950 to-slate-900 text-white">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/20 rounded-xl border border-emerald-400/30">
+                  <FileSpreadsheet className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 bg-emerald-500 text-slate-950 font-mono font-black rounded text-[10px] tracking-wider">
+                      JOB: {googleSheetModalProj.jobNo}
+                    </span>
+                    <h3 className="text-base font-bold font-sans text-white">
+                      สร้าง / เชื่อมต่อ Google Sheet ประจำโปรเจกต์
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-300 font-sans mt-0.5">
+                    {googleSheetModalProj.projectName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGoogleSheetModalProj(null)}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl cursor-pointer transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form
+              className="p-6 space-y-4 font-sans text-xs"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const updatedUrl = inputGoogleSheetUrl.trim();
+                const updatedProj: JobProject = {
+                  ...googleSheetModalProj,
+                  googleSheetUrl: updatedUrl
+                };
+
+                if (onEditJobProject) {
+                  onEditJobProject(googleSheetModalProj.id, { googleSheetUrl: updatedUrl });
+                } else {
+                  const storedProjs = localStorage.getItem('stock_manager_job_projects_list');
+                  if (storedProjs) {
+                    const list: JobProject[] = JSON.parse(storedProjs);
+                    const idx = list.findIndex(p => p.id === updatedProj.id || p.jobNo === updatedProj.jobNo);
+                    if (idx !== -1) {
+                      list[idx] = updatedProj;
+                      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(list));
+                    }
+                  }
+                }
+
+                setGoogleSheetModalProj(null);
+                alert(`บันทึกลิงก์ Google Sheet สำหรับ JOB ${updatedProj.jobNo} สำเร็จ!`);
+              }}
+            >
+              {/* Card 1: Create & Copy Table Data to Google Sheet */}
+              <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200/90 rounded-2xl space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span className="font-extrabold text-slate-800 text-xs">
+                    ขั้นตอนที่ 1: สร้างไฟล์ Google Sheet & ดึงข้อมูลตารางไปใส่
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  สร้างไฟล์ Google Sheet ใหม่ใน Google Drive แล้วคัดลอกตาราง Phase วิศวกรรมประจำ JOB <strong>{googleSheetModalProj.jobNo}</strong> ไปวางใน Sheet ได้เลย
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportPhaseDataToCsvOrCopy(googleSheetModalProj.jobNo, 'copy');
+                    }}
+                    className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                  >
+                    <Copy className="h-4 w-4 text-indigo-200" />
+                    <span>1. คัดลอกตาราง Phase (Ctrl+V วางใน Sheet)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.open('https://sheet.new', '_blank');
+                    }}
+                    className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                  >
+                    <Plus className="h-4 w-4 text-emerald-200" />
+                    <span>2. สร้างไฟล์ Google Sheet ใหม่ (sheet.new)</span>
+                    <ExternalLink className="h-3.5 w-3.5 opacity-80" />
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-emerald-200/60 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportPhaseDataToCsvOrCopy(googleSheetModalProj.jobNo, 'download');
+                    }}
+                    className="text-emerald-800 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>หรือดาวน์โหลดเป็นไฟล์ CSV (สำหรับ Import เข้า Google Sheet)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputGoogleSheetUrl('https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit');
+                    }}
+                    className="text-slate-500 hover:text-indigo-700 font-medium cursor-pointer"
+                  >
+                    📋 ใส่ URL ตัวอย่างทดสอบระบบ
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 2: URL Input Form */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-extrabold text-slate-800 block">
+                  ขั้นตอนที่ 2: วาง URL / ลิงก์ Google Sheet ประจำโครงการ *
+                </label>
+                <input
+                  type="url"
+                  required
+                  value={inputGoogleSheetUrl}
+                  onChange={(e) => setInputGoogleSheetUrl(e.target.value)}
+                  placeholder="https://docs.google.com/spreadsheets/d/1..."
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:bg-white focus:border-emerald-500 font-bold"
+                />
+                <p className="text-[11px] text-slate-500 leading-relaxed pt-1">
+                  💡 <strong>หมายเหตุ:</strong> ระบบจะบันทึกและแสดงปุ่มสำหรับเปิดแก้ไขหรือดูตัวอย่างผ่านหน้าเว็บได้ทันที
+                </p>
+              </div>
+
+              {googleSheetModalProj.googleSheetUrl && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+                  <span className="text-[11px] text-emerald-800 font-bold">มีไฟล์ Google Sheet เชื่อมต่ออยู่แล้ว</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm('ต้องการลบลิงก์ Google Sheet ของโปรเจกต์นี้หรือไม่?')) {
+                        if (onEditJobProject) onEditJobProject(googleSheetModalProj.id, { googleSheetUrl: '' });
+                        setGoogleSheetModalProj(null);
+                      }
+                    }}
+                    className="text-[10px] text-rose-600 hover:underline font-bold"
+                  >
+                    ลบลิงก์นี้ออก
+                  </button>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setGoogleSheetModalProj(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  <span>บันทึก Google Sheet</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- EMBEDDED GOOGLE SHEET IFRAME VIEW MODAL -------------------- */}
+      {isViewIframeModalOpen && viewIframeUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-6xl h-[90vh] border border-slate-200 shadow-2xl flex flex-col overflow-hidden relative">
+            {/* Top Bar Header */}
+            <div className="flex items-center justify-between p-4 bg-slate-900 text-white border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+                  <FileSpreadsheet className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold font-sans text-white flex items-center gap-2">
+                    <span>{viewIframeTitle || 'Google Sheet - รายละเอียดโครงการ'}</span>
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-mono truncate max-w-md">
+                    {viewIframeUrl}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.open(viewIframeUrl, '_blank')}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span>เปิดใน Google Sheets (แท็บใหม่)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsViewIframeModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Iframe Display Container */}
+            <div className="flex-1 bg-slate-100 relative overflow-hidden">
+              <iframe
+                src={viewIframeUrl.includes('/edit') ? viewIframeUrl.replace('/edit', '/edit?rm=minimal') : viewIframeUrl}
+                title="Google Sheet Viewer"
+                className="w-full h-full border-0"
+                allow="autoplay; camera; microphone; geolocation"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- PASTE / IMPORT FROM GOOGLE SHEETS MODAL -------------------- */}
+      {isImportPasteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-2xl border border-slate-200 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-100 text-emerald-700 rounded-2xl">
+                  <FileSpreadsheet className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 font-sans">
+                    นำเข้า / วางตารางข้อมูลจาก Google Sheet (CSV / TSV)
+                  </h3>
+                  <p className="text-xs text-slate-500 font-sans">
+                    คัดลอกตารางจาก Google Sheet แล้วกด วาง (Ctrl+V) ลงในช่องด้านล่างเพื่ออัปเดตระบบตารางงานทันที
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsImportPasteModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-700 font-sans">
+                วางข้อมูลตาราง (Paste Table Data from Google Sheet):
+              </label>
+              <textarea
+                rows={10}
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder={`ตัวอย่างคัดลอกจาก Google Sheet:
+โมดูล / ระบบงาน\tSub-module / รายการย่อย\tAddress IO\tรูปภาพ\t1. Install\t2. Wiring\t3. Test IO\t4. Manual HMI\t5. Semi-Auto\t6. Auto\tผู้รับผิดชอบ\tRemark / หมายเหตุ
+CONVEYOR 1\tMOTOR DRIVE 01\tI00.00\t\tเสร็จเรียบร้อย\tเสร็จเรียบร้อย\tกำลังทำ\tยังไม่เริ่ม\tยังไม่เริ่ม\tยังไม่เริ่ม\tสมชาย\tติดตั้งเสร็จแล้ว`}
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono text-slate-800 focus:outline-hidden focus:bg-white focus:border-indigo-500 placeholder:text-slate-400"
+              />
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                คำแนะนำรองรับรูปแบบตาราง:
+              </p>
+              <p className="text-[11px] leading-relaxed text-amber-700">
+                • รองรับ 13 หัวข้อคอลัมน์มาตรฐาน (โมดูล, Sub-module, Address IO, รูปภาพ, Install, Wiring, Test IO, Manual HMI, Semi-Auto, Auto, ผู้รับผิดชอบ, Remark, ความคืบหน้า)
+                <br />
+                • ระบบจะซิงค์ข้อมูลเข้ากับตาราง Phase และบันทึกอัตโนมัติ
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsImportPasteModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handlePasteImport}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-600/20"
+              >
+                <Check className="h-4 w-4" />
+                <span>นำเข้าและบันทึกข้อมูล</span>
+              </button>
             </div>
           </div>
         </div>
