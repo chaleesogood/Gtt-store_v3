@@ -396,15 +396,19 @@ export const CatalogView: React.FC<CatalogViewProps> = ({
   const handleDeleteSubSeries = (idx: number) => {
     const target = catSubSeriesList[idx];
     if (!target) return;
-    if (confirm(`คุณต้องการลบ Series ย่อย "${target.name}" หรือไม่?`)) {
-      setCatSubSeriesList(prev => prev.filter((_, i) => i !== idx));
-      if (editingSubSeriesIndex === idx) {
-        setEditingSubSeriesIndex(null);
-        setSubSeriesNameInput('');
-        setSubSeriesImageInput('');
-        setSubSeriesPdfInput('');
+    (window as any).triggerConfirm(
+      'ยืนยันการลบ Series ย่อย',
+      `คุณต้องการลบ Series ย่อย "${target.name}" หรือไม่?`,
+      () => {
+        setCatSubSeriesList(prev => prev.filter((_, i) => i !== idx));
+        if (editingSubSeriesIndex === idx) {
+          setEditingSubSeriesIndex(null);
+          setSubSeriesNameInput('');
+          setSubSeriesImageInput('');
+          setSubSeriesPdfInput('');
+        }
       }
-    }
+    );
   };
 
   const handleMoveSubSeries = (idx: number, dir: 'up' | 'down') => {

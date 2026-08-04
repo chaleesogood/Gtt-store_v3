@@ -18,8 +18,13 @@ import {
   ExternalLink, 
   Send, 
   Sliders,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileDown,
+  Printer,
+  X
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas-pro';
 import { collection, doc, setDoc } from 'firebase/firestore';
 import { db, cleanUndefined } from '../firebase';
 
@@ -55,6 +60,163 @@ export default function ShoppingCartView({
   const [lineUserId, setLineUserId] = useState(() => localStorage.getItem('line_user_id') || '');
   const [isSendingLine, setIsSendingLine] = useState(false);
   const [showLineApiConfig, setShowLineApiConfig] = useState(false);
+
+  // PDF Preview & Print States
+  const [isPdfPreviewOpen, setIsPdfPreviewOpen] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [documentNo] = useState(() => {
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `PR-${today}-${rand}`;
+  });
+
+  const formatThaiDate = (dateStr?: string) => {
+    const date = dateStr ? new Date(dateStr) : new Date();
+    const months = [
+      'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+    ];
+    return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear() + 543}`;
+  };
+
+  const arabicToThaiBaht = (num: number): string => {
+    if (num === 0) return 'ศูนย์บาทถ้วน';
+    const thaiNums = ['ศูนย์', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'];
+    const thaiPositions = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน', 'ล้าน'];
+    
+    const [integerPart, decimalPart] = num.toFixed(2).split('.');
+    
+    let result = '';
+    const len = integerPart.length;
+    for (let i = 0; i < len; i++) {
+      const digit = parseInt(integerPart[i]);
+      const pos = len - i - 1;
+      
+      if (digit !== 0) {
+        if (pos === 0 && digit === 1 && len > 1) {
+          result += 'เอ็ด';
+        } else if (pos === 1 && digit === 1) {
+          result += 'สิบ';
+        } else if (pos === 1 && digit === 2) {
+          result += 'ยี่สิบ';
+        } else {
+          result += thaiNums[digit] + thaiPositions[pos];
+        }
+      }
+    }
+    
+    if (result !== '') {
+      result += 'บาท';
+    }
+    
+    if (parseInt(decimalPart) === 0) {
+      result += 'ถ้วน';
+    } else {
+      const decLen = decimalPart.length;
+      for (let i = 0; i < decLen; i++) {
+        const digit = parseInt(decimalPart[i]);
+        const pos = decLen - i - 1;
+        
+        if (digit !== 0) {
+          if (pos === 0 && digit === 1 && decLen > 1) {
+            result += 'เอ็ด';
+          } else if (pos === 1 && digit === 1) {
+            result += 'สิบ';
+          } else if (pos === 1 && digit === 2) {
+            result += 'ยี่สิบ';
+          } else {
+            result += thaiNums[digit] + (pos === 1 ? 'สิบ' : '');
+          }
+        }
+      }
+      result += 'สตางค์';
+    }
+    
+    return result;
+  };
+
+  const handleBrowserPrint = () => {
+    const printContent = document.getElementById('purchase-requisition-print-area');
+    if (!printContent) return;
+
+    const style = document.createElement('style');
+    style.id = 'temp-print-style';
+    style.innerHTML = `
+      @media print {
+        body * {
+          visibility: hidden !important;
+        }
+        #purchase-requisition-print-area, #purchase-requisition-print-area * {
+          visibility: visible !important;
+        }
+        #purchase-requisition-print-area {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          background: white !important;
+          color: black !important;
+          box-shadow: none !important;
+          border: none !important;
+        }
+        @page {
+          size: A4;
+          margin: 15mm;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    window.print();
+    setTimeout(() => {
+      const tempStyle = document.getElementById('temp-print-style');
+      if (tempStyle) tempStyle.remove();
+    }, 1000);
+  };
+
+  const generatePdf = async () => {
+    const element = document.getElementById('purchase-requisition-print-area');
+    if (!element) return;
+
+    setIsGeneratingPdf(true);
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const imgWidth = 210;
+      const pageHeight = 297;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`PR_PanelAssembly_${new Date().toISOString().slice(0, 10)}_${documentNo}.pdf`);
+      addToast('success', 'ดาวน์โหลด PDF สำเร็จ', 'ดาวน์โหลดใบขอเสนอจัดซื้อพัสดุประกอบแผงเรียบร้อยแล้ว');
+      setIsPdfPreviewOpen(false);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      addToast('warning', 'เกิดข้อผิดพลาด', 'ไม่สามารถสร้างไฟล์ PDF ได้');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
 
   // Auto pre-fill missing requesterName/purchaserName in cart items from last selected
   useEffect(() => {
@@ -112,10 +274,14 @@ export default function ShoppingCartView({
   };
 
   const clearCart = () => {
-    if (confirm('คุณแน่ใจหรือไม่ที่จะล้างตะกร้าพัสดุทั้งหมด?')) {
-      setCartItems([]);
-      addToast('info', 'ล้างตะกร้าเรียบร้อย', 'ข้อมูลทั้งหมดในตะกร้าถูกลบแล้ว');
-    }
+    (window as any).triggerConfirm(
+      'ล้างตะกร้าพัสดุ',
+      'คุณแน่ใจหรือไม่ที่จะล้างตะกร้าพัสดุทั้งหมด?',
+      () => {
+        setCartItems([]);
+        addToast('info', 'ล้างตะกร้าเรียบร้อย', 'ข้อมูลทั้งหมดในตะกร้าถูกลบแล้ว');
+      }
+    );
   };
 
   // Bulk apply function
@@ -328,6 +494,12 @@ export default function ShoppingCartView({
     acc[key].push(item);
     return acc;
   }, {});
+
+  const uniqueRequesters = Array.from(new Set(cartItems.map((item) => item.requesterName).filter(Boolean))) as string[];
+  const uniquePurchasers = Array.from(new Set(cartItems.map((item) => item.purchaserName).filter(Boolean))) as string[];
+  const uniqueJobs = Array.from(
+    new Map(cartItems.map((item) => [item.jobNo, item.jobName])).entries()
+  ).map(([jobNo, jobName]) => ({ jobNo: jobNo || 'ทั่วไป', jobName: jobName || '' }));
 
   // Generate beautiful LINE share text
   const generateLineText = () => {
@@ -712,7 +884,6 @@ export default function ShoppingCartView({
                                   </span>
                                 )}
                                 <div className="text-[9.5px] text-slate-400 font-mono mt-1">Code: {item.product.sku}</div>
-                                <div className="text-[9.5px] text-slate-400 mt-0.5">คลังสินค้า: {item.product.warehouse || 'คลังหลัก'}</div>
                               </div>
                             </div>
 
@@ -982,6 +1153,14 @@ export default function ShoppingCartView({
                 </button>
                 <button
                   type="button"
+                  onClick={() => setIsPdfPreviewOpen(true)}
+                  className="w-full py-2 bg-slate-900 hover:bg-slate-850 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-black rounded-lg text-xs cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-98 shadow-sm"
+                >
+                  <FileText className="h-4.5 w-4.5 text-indigo-400" />
+                  สร้างใบขอจัดซื้อ PDF / พิมพ์
+                </button>
+                <button
+                  type="button"
                   onClick={() => setActiveSubTab('products')}
                   className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-lg text-[10.5px] cursor-pointer transition-all flex items-center justify-center gap-1"
                 >
@@ -1096,6 +1275,260 @@ export default function ShoppingCartView({
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF / Printing Modal Preview */}
+      {isPdfPreviewOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-slate-100 dark:bg-slate-900 rounded-2xl max-w-5xl w-full max-h-[95vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-850 rounded-t-2xl">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-indigo-500" />
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 font-sans">
+                    ตัวอย่างเอกสารใบขอจัดซื้อพัสดุ (PR Document Preview)
+                  </h3>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                    ตรวจสอบความถูกต้องของรายการและจำนวนเงินก่อนส่งพิมพ์หรือดาวน์โหลด PDF
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsPdfPreviewOpen(false)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg cursor-pointer transition-all"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Toolbar */}
+            <div className="p-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                <span className="font-bold">ขนาดที่แนะนำ:</span> A4 แนวตั้ง (ความกว้างมาตรฐาน)
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleBrowserPrint}
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 dark:text-indigo-300 border border-indigo-150 dark:border-indigo-850 text-xs font-black rounded-lg cursor-pointer transition-all flex items-center gap-1.5"
+                >
+                  <Printer className="h-4 w-4" />
+                  พิมพ์จากเบราว์เซอร์
+                </button>
+                <button
+                  type="button"
+                  onClick={generatePdf}
+                  disabled={isGeneratingPdf}
+                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-black rounded-lg cursor-pointer transition-all flex items-center gap-1.5 shadow-sm"
+                >
+                  {isGeneratingPdf ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      กำลังสร้าง PDF...
+                    </>
+                  ) : (
+                    <>
+                      <FileDown className="h-4 w-4" />
+                      ดาวน์โหลด PDF
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body - Document Preview Container */}
+            <div className="flex-grow p-6 overflow-y-auto bg-slate-200 dark:bg-slate-950 flex justify-center">
+              {/* Actual Print Area */}
+              <div 
+                id="purchase-requisition-print-area"
+                className="bg-white text-slate-900 p-8 shadow-md rounded-sm w-[794px] min-h-[1123px] mx-auto font-sans text-left border border-slate-300 relative leading-normal"
+                style={{ contentVisibility: 'auto' }}
+              >
+                {/* Document Header Table/Grid */}
+                <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
+                  <div>
+                    <h1 className="text-base font-black tracking-tight text-indigo-950 uppercase">
+                      Stock Manager Requisition System
+                    </h1>
+                    <h2 className="text-sm font-black text-slate-800 mt-1">
+                      ใบขออนุมัติจัดซื้อพัสดุและอุปกรณ์ประกอบแผงควบคุม
+                    </h2>
+                    <p className="text-[10px] text-slate-500 font-bold mt-0.5 uppercase">
+                      Purchase Requisition Form (PR) - Panel Assembly Division
+                    </p>
+                  </div>
+                  <div className="border border-slate-400 p-2 text-[10px] rounded bg-slate-50 min-w-[220px]">
+                    <div className="flex justify-between border-b border-slate-200 pb-1 mb-1">
+                      <span className="font-bold text-slate-500">เลขที่เอกสาร / No:</span>
+                      <span className="font-mono font-bold text-slate-900">{documentNo}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-bold text-slate-500">วันที่ขอจัดซื้อ / Date:</span>
+                      <span className="font-bold text-slate-900">{formatThaiDate()}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Requisition Info Block */}
+                <div className="bg-slate-50 border border-slate-250 p-4 rounded mb-6 text-xs grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <div>
+                      <span className="font-black text-slate-500">โครงการ / JOB No ที่เกี่ยวข้อง:</span>{' '}
+                      <span className="font-bold text-slate-800">
+                        {uniqueJobs.map((j) => `${j.jobNo} ${j.jobName ? `(${j.jobName})` : ''}`).join(', ') || 'ทั่วไป'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-black text-slate-500">โมดูลงาน (Module):</span>{' '}
+                      <span className="font-bold text-slate-800">
+                        {Array.from(new Set(cartItems.map((item) => item.module).filter(Boolean))).join(', ') || 'ทั่วไป (General)'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 border-l border-slate-200 pl-4">
+                    <div>
+                      <span className="font-black text-slate-500">ผู้เสนอขอจัดซื้อ (Requester):</span>{' '}
+                      <span className="font-bold text-indigo-900">
+                        {uniqueRequesters.join(', ') || 'ไม่ได้ระบุ'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-black text-slate-500">ผู้จัดดำเนินการซื้อ (Purchaser):</span>{' '}
+                      <span className="font-bold text-slate-800">
+                        {uniquePurchasers.join(', ') || 'ไม่ได้ระบุ'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items Table */}
+                <div className="mb-6">
+                  <table className="w-full border-collapse text-[10.5px] border border-slate-400">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-800 font-black border-b border-slate-400">
+                        <th className="p-2 border-r border-slate-400 text-center w-10">ลำดับ</th>
+                        <th className="p-2 border-r border-slate-400 text-left w-24">รหัสสินค้า / Code</th>
+                        <th className="p-2 border-r border-slate-400 text-left">รายการพัสดุและคุณสมบัติ (Item Details)</th>
+                        <th className="p-2 border-r border-slate-400 text-left w-28">JOB & โมดูล</th>
+                        <th className="p-2 border-r border-slate-400 text-center w-14">จำนวน</th>
+                        <th className="p-2 border-r border-slate-400 text-center w-12">หน่วย</th>
+                        <th className="p-2 border-r border-slate-400 text-right w-20">ราคา/หน่วย</th>
+                        <th className="p-2 text-right w-24">รวมเงิน (฿)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cartItems.map((item, index) => {
+                        const amount = (Number(item.pricePerUnit) || 0) * item.quantity;
+                        return (
+                          <tr key={item.product.id} className="border-b border-slate-300 hover:bg-slate-50/55">
+                            <td className="p-2 border-r border-slate-300 text-center font-bold">{index + 1}</td>
+                            <td className="p-2 border-r border-slate-300 font-mono font-bold text-slate-700">{item.product.sku}</td>
+                            <td className="p-2 border-r border-slate-300">
+                              <div className="flex items-start gap-2.5">
+                                <img
+                                  src={item.product.image || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=150'}
+                                  alt={item.product.name}
+                                  className="w-11 h-11 object-cover rounded border border-slate-200 bg-slate-50 shrink-0"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <div className="min-w-0 flex-grow">
+                                  <div className="font-bold text-slate-900 leading-tight">{item.product.name}</div>
+                                  <div className="text-[9px] text-slate-500 flex flex-wrap gap-1 mt-0.5">
+                                    {item.product.series && <span>รุ่น: {item.product.series}</span>}
+                                    {item.product.brand && <span>| แบรนด์: {item.product.brand}</span>}
+                                    {item.product.supplier && <span>| ร้านค้า: {item.product.supplier}</span>}
+                                    {item.product.compatibleWith && <span className="text-amber-800 bg-amber-50 px-1 rounded font-bold">| ใช้ร่วม Code: {item.product.compatibleWith}</span>}
+                                  </div>
+                                  {item.remark && (
+                                    <div className="text-[8.5px] text-indigo-700 font-semibold mt-1 bg-indigo-50/50 px-1 py-0.5 rounded border border-indigo-100">
+                                      📌 หมายเหตุ: {item.remark}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-2 border-r border-slate-300">
+                              <div className="font-bold text-slate-700">JOB No: {item.jobNo}</div>
+                              {item.module && <div className="text-[9px] text-slate-500 font-medium">{item.module}</div>}
+                            </td>
+                            <td className="p-2 border-r border-slate-300 text-center font-bold font-mono">{item.quantity}</td>
+                            <td className="p-2 border-r border-slate-300 text-center text-slate-600">{item.unit || item.product.unit || 'ชิ้น'}</td>
+                            <td className="p-2 border-r border-slate-300 text-right font-mono">
+                              {(Number(item.pricePerUnit) || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="p-2 text-right font-mono font-bold text-slate-900">
+                              {amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {/* Total and Baht Text row */}
+                      <tr className="bg-slate-50 border-t border-slate-400 font-bold">
+                        <td colSpan={4} className="p-2.5 border-r border-slate-300 text-left">
+                          <span className="text-[9.5px] text-slate-400 uppercase font-black block">จำนวนเงินตัวอักษร / Total in Words</span>
+                          <span className="text-xs text-indigo-900 font-black">{arabicToThaiBaht(totalCost)}</span>
+                        </td>
+                        <td colSpan={2} className="p-2 text-center border-r border-slate-300">
+                          <div className="text-[9px] text-slate-400 uppercase tracking-wider">รวมพัสดุทั้งสิ้น</div>
+                          <div className="text-xs font-black text-slate-800">
+                            {cartItems.reduce((sum, item) => sum + item.quantity, 0)} {cartItems[0]?.unit || 'ชิ้น'}
+                          </div>
+                        </td>
+                        <td className="p-2 text-right border-r border-slate-300">
+                          <span className="text-[8.5px] text-slate-400 block uppercase">ราคารวม (฿)</span>
+                          <span className="text-xs font-black">TOTAL</span>
+                        </td>
+                        <td className="p-2 text-right font-mono font-black text-sm text-slate-950">
+                          ฿{totalCost.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Signatures Area */}
+                <div className="mt-14 grid grid-cols-3 gap-6 text-[10.5px]">
+                  <div className="flex flex-col items-center text-center space-y-4">
+                    <span className="font-bold text-slate-500">ผู้ขอเสนอจัดซื้อ / Requester</span>
+                    <div className="w-full border-b border-slate-300 pt-10"></div>
+                    <div className="space-y-0.5">
+                      <p className="font-bold text-slate-800">( {uniqueRequesters.join(', ') || '...........................................'} )</p>
+                      <p className="text-[9.5px] text-slate-400">พนักงานผู้ขออนุมัติจัดซื้อ</p>
+                      <p className="text-[9.5px] text-slate-400">วันที่: ..... / ..... / .....</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center text-center space-y-4">
+                    <span className="font-bold text-slate-500">ผู้ประสานงานจัดซื้อ / Purchaser</span>
+                    <div className="w-full border-b border-slate-300 pt-10"></div>
+                    <div className="space-y-0.5">
+                      <p className="font-bold text-slate-800">( {uniquePurchasers.join(', ') || '...........................................'} )</p>
+                      <p className="text-[9.5px] text-slate-400">เจ้าหน้าที่ฝ่ายจัดซื้อพัสดุ</p>
+                      <p className="text-[9.5px] text-slate-400">วันที่: ..... / ..... / .....</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center text-center space-y-4">
+                    <span className="font-bold text-slate-500">ผู้อนุมัติจัดซื้อ / Project PM</span>
+                    <div className="w-full border-b border-slate-300 pt-10"></div>
+                    <div className="space-y-0.5">
+                      <p className="font-bold text-slate-850">( ...................................................... )</p>
+                      <p className="text-[9.5px] text-slate-400">ผู้จัดการโครงการ / ผู้อนุมัติจ่ายเงิน</p>
+                      <p className="text-[9.5px] text-slate-400">วันที่: ..... / ..... / .....</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Page Footer Note */}
+                <div className="absolute bottom-4 left-8 right-8 flex justify-between text-[8px] text-slate-400 font-mono border-t border-slate-100 pt-2">
+                  <span>Requisition System Powered by Stock Manager Cloud Platform 🚀</span>
+                  <span>หน้า 1 / 1</span>
+                </div>
               </div>
             </div>
           </div>

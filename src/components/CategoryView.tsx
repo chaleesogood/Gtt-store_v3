@@ -143,14 +143,18 @@ export default function CategoryView({
     const cat = categories.find((c) => c.id === catId);
     if (!cat) return;
 
-    if (confirm(`คุณแน่ใจหรือไม่ที่จะลบ Series ย่อย "${seriesName}"? สินค้าในคลังที่สังกัด Series นี้จะคงอยู่แต่จะถูกจัดอยู่ในกลุ่มทั่วไป`)) {
-      const updatedSeries = (cat.series || []).filter((s) => s !== seriesName);
-      const updatedSubSeries = (cat.subSeries || []).filter((s) => s.name !== seriesName);
-      onEditCategory(catId, { 
-        series: updatedSeries,
-        subSeries: updatedSubSeries
-      });
-    }
+    (window as any).triggerConfirm(
+      'ยืนยันการลบ Series ย่อย',
+      `คุณแน่ใจหรือไม่ที่จะลบ Series ย่อย "${seriesName}"?\nสินค้าในคลังที่สังกัด Series นี้จะคงอยู่แต่จะถูกจัดอยู่ในกลุ่มทั่วไป`,
+      () => {
+        const updatedSeries = (cat.series || []).filter((s) => s !== seriesName);
+        const updatedSubSeries = (cat.subSeries || []).filter((s) => s.name !== seriesName);
+        onEditCategory(catId, { 
+          series: updatedSeries,
+          subSeries: updatedSubSeries
+        });
+      }
+    );
   };
 
   const handleOpenPdf = (pdfUrl?: string) => {

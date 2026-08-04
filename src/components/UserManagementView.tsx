@@ -459,8 +459,8 @@ export default function UserManagementView({
 
     if (triggerConfirm) {
       triggerConfirm('ยืนยันการเปลี่ยนบทบาท', confirmMsg, executeToggle);
-    } else if (confirm(confirmMsg)) {
-      executeToggle();
+    } else {
+      (window as any).triggerConfirm('ยืนยันการเปลี่ยนบทบาท', confirmMsg, executeToggle);
     }
   };
 
@@ -505,8 +505,8 @@ export default function UserManagementView({
 
     if (triggerConfirm) {
       triggerConfirm(isDuplicateEmail ? 'ยืนยันการลบบัญชีอีเมลซ้ำ' : 'ยืนยันการลบสิทธิ์ผู้ใช้งาน', confirmMsg, executeDelete);
-    } else if (confirm(confirmMsg)) {
-      executeDelete();
+    } else {
+      (window as any).triggerConfirm(isDuplicateEmail ? 'ยืนยันการลบบัญชีอีเมลซ้ำ' : 'ยืนยันการลบสิทธิ์ผู้ใช้งาน', confirmMsg, executeDelete);
     }
   };
 

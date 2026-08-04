@@ -34,7 +34,8 @@ export interface Product {
   color?: string; // Selected color name for this product
   sortOrder?: number; // Custom sorting order for display
   modelNumber?: number | string; // ตัวเลข (รุ่น)
-  modelUnit?: 'Kg' | 'mm' | 'A' | 'W' | 'V' | 'Hp' | 'Pin' | 'Ch' | 'Rpm' | string; // หน่วยเลือกได้
+  modelUnit?: 'Kg' | 'mm' | 'A' | 'W' | 'V' | 'Hp' | 'Pin' | 'Ch' | 'Rpm' | 'M.' | string; // หน่วยเลือกได้
+  compatibleWith?: string; // ใช้ร่วมกับ รายการอื่น / Compatible with other items
 }
 
 export interface SubSeries {
@@ -231,11 +232,22 @@ export interface Employee {
   companyLogoUrl?: string; // รูปโลโก้บริษัท
 }
 
+export interface SubModuleItem {
+  name: string;
+  imageUrl?: string;
+  quantity?: number; // General quantity (sets of sub-modules)
+  qtyInput?: number; // Quantity of Inputs (DI)
+  qtyOutput?: number; // Quantity of Outputs (DO)
+  addressInput?: string;
+  addressOutput?: string;
+  subModules?: (string | SubModuleItem)[]; // Sub-module ชั้น 2
+}
+
 export interface ProjectModule {
   code: string;       // เลขโมดูล (e.g. "01")
   name: string;       // ชื่อโมดูล (e.g. "ตู้คอนโทรล")
   imageUrl?: string;  // รูปภาพโมดูล
-  subModules?: string[]; // รายการ Sub-module ย่อย
+  subModules?: (string | SubModuleItem)[]; // รายการ Sub-module ย่อย (ชั้น 1)
 }
 
 export interface EngineeringPhaseSchedule {
@@ -272,6 +284,25 @@ export interface JobProject {
   googleSheetUrl?: string; // ไฟล์ Google Sheet ประจำโครงการสำหรับแก้ไขรายละเอียด
 }
 
+export function normalizeSubModulesList(subs: any[] | undefined): SubModuleItem[] {
+  if (!subs) return [];
+  return subs.map((sub: any) => {
+    if (typeof sub === 'string') {
+      return { name: sub, quantity: 1, subModules: [] };
+    }
+    return {
+      name: sub.name || '',
+      imageUrl: sub.imageUrl || '',
+      quantity: sub.quantity || 1,
+      qtyInput: sub.qtyInput,
+      qtyOutput: sub.qtyOutput,
+      addressInput: sub.addressInput || '',
+      addressOutput: sub.addressOutput || '',
+      subModules: normalizeSubModulesList(sub.subModules)
+    };
+  });
+}
+
 export function normalizeModules(modules: any[] | undefined): ProjectModule[] {
   if (!modules) return [];
   return modules.map((m, index) => {
@@ -296,7 +327,7 @@ export function normalizeModules(modules: any[] | undefined): ProjectModule[] {
       code: m.code || '',
       name: m.name || '',
       imageUrl: m.imageUrl || '',
-      subModules: m.subModules || []
+      subModules: normalizeSubModulesList(m.subModules)
     };
   });
 }

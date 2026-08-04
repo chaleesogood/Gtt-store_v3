@@ -345,14 +345,19 @@ function ProjectModulesManager({ proj, onEditJobProject, addToast, onAddMediaFil
   };
 
   const handleDeleteModule = async (code: string) => {
-    if (!confirm(`คุณต้องการลบโมดูล ${code} หรือไม่?`)) return;
-    const updated = modules.filter(m => m.code !== code);
-    try {
-      await onEditJobProject(proj.id, { modules: updated });
-      addToast('info', 'ลบโมดูลสำเร็จ', `นำโมดูล ${code} ออกเรียบร้อย`);
-    } catch (err: any) {
-      addToast('warning', 'เกิดข้อผิดพลาด', err.message);
-    }
+    (window as any).triggerConfirm(
+      'ยืนยันการลบโมดูล',
+      `คุณต้องการลบโมดูล ${code} หรือไม่?`,
+      async () => {
+        const updated = modules.filter(m => m.code !== code);
+        try {
+          await onEditJobProject(proj.id, { modules: updated });
+          addToast('info', 'ลบโมดูลสำเร็จ', `นำโมดูล ${code} ออกเรียบร้อย`);
+        } catch (err: any) {
+          addToast('warning', 'เกิดข้อผิดพลาด', err.message);
+        }
+      }
+    );
   };
 
   const handleUploadImage = async (code: string, base64Data: string) => {
@@ -371,19 +376,24 @@ function ProjectModulesManager({ proj, onEditJobProject, addToast, onAddMediaFil
   };
 
   const handleDeleteImage = async (code: string) => {
-    if (!confirm('คุณแน่ใจว่าต้องการลบรูปภาพโมดูลนี้ใช่หรือไม่?')) return;
-    const updated = modules.map(m => {
-      if (m.code === code) {
-        return { ...m, imageUrl: '' };
+    (window as any).triggerConfirm(
+      'ยืนยันการลบรูปภาพโมดูล',
+      'คุณแน่ใจว่าต้องการลบรูปภาพโมดูลนี้ใช่หรือไม่?',
+      async () => {
+        const updated = modules.map(m => {
+          if (m.code === code) {
+            return { ...m, imageUrl: '' };
+          }
+          return m;
+        });
+        try {
+          await onEditJobProject(proj.id, { modules: updated });
+          addToast('info', 'ลบรูปภาพสำเร็จ', `ลบรูปภาพสำหรับโมดูล ${code} แล้ว`);
+        } catch (err: any) {
+          addToast('warning', 'เกิดข้อผิดพลาด', err.message);
+        }
       }
-      return m;
-    });
-    try {
-      await onEditJobProject(proj.id, { modules: updated });
-      addToast('info', 'ลบรูปภาพสำเร็จ', `ลบรูปภาพสำหรับโมดูล ${code} แล้ว`);
-    } catch (err: any) {
-      addToast('warning', 'เกิดข้อผิดพลาด', err.message);
-    }
+    );
   };
 
   return (
@@ -988,18 +998,23 @@ export default function ProjectBomView({
   };
 
   const handleDeleteProject = async (id: string, jobNo: string) => {
-    if (!confirm(`คุณต้องการลบโครงการ ${jobNo} ออกจากระบบหลักหรือไม่? ข้อมูลโมดูลย่อยจะถูกลบทั้งหมด`)) return;
-    try {
-      if (onDeleteJobProject) {
-        await onDeleteJobProject(id);
-        addToast('info', 'ลบโครงการสำเร็จ', `นำข้อมูลโครงการออกจากฐานข้อมูลเรียบร้อย`);
-        if (selectedProj?.id === id) {
-          setSelectedProj(null);
+    (window as any).triggerConfirm(
+      'ยืนยันการลบโครงการ',
+      `คุณต้องการลบโครงการ ${jobNo} ออกจากระบบหลักหรือไม่? ข้อมูลโมดูลย่อยจะถูกลบทั้งหมด`,
+      async () => {
+        try {
+          if (onDeleteJobProject) {
+            await onDeleteJobProject(id);
+            addToast('info', 'ลบโครงการสำเร็จ', `นำข้อมูลโครงการออกจากฐานข้อมูลเรียบร้อย`);
+            if (selectedProj?.id === id) {
+              setSelectedProj(null);
+            }
+          }
+        } catch (err: any) {
+          addToast('warning', 'เกิดข้อผิดพลาด', err.message);
         }
       }
-    } catch (err: any) {
-      addToast('warning', 'เกิดข้อผิดพลาด', err.message);
-    }
+    );
   };
 
   const handleAddNewGroupNameInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1093,21 +1108,26 @@ export default function ProjectBomView({
   const handleDeleteItem = async (indexToDelete: number) => {
     if (!activeBom) return;
     const item = activeBom.items[indexToDelete];
-    if (!confirm(`ต้องการนำ "${item.productName}" ออกจากใบงาน BOM นี้หรือไม่?`)) return;
+    (window as any).triggerConfirm(
+      'ยืนยันการนำพัสดุออก',
+      `ต้องการนำ "${item.productName}" ออกจากใบงาน BOM นี้หรือไม่?`,
+      async () => {
+        const updatedItems = activeBom.items.filter((_, idx) => idx !== indexToDelete);
+        updateLocalBoms(prev => prev.map(b => b.id === activeBom.id ? { ...b, items: updatedItems, updatedAt: new Date().toISOString() } : b));
 
-    const updatedItems = activeBom.items.filter((_, idx) => idx !== indexToDelete);
-    updateLocalBoms(prev => prev.map(b => b.id === activeBom.id ? { ...b, items: updatedItems, updatedAt: new Date().toISOString() } : b));
-
-    try {
-      await updateDoc(doc(db, 'boms', activeBom.id), {
-        items: updatedItems,
-        updatedAt: new Date().toISOString()
-      });
-      addToast('info', 'นำรายการออกแล้ว', `ถอดวัตถุดิบประกอบสำเร็จ`);
-    } catch (err: any) {
-      addToast('warning', 'ผิดพลาด', err.message);
-    }
+        try {
+          await updateDoc(doc(db, 'boms', activeBom.id), {
+            items: updatedItems,
+            updatedAt: new Date().toISOString()
+          });
+          addToast('info', 'นำพัสดุออกสำเร็จ', `นำพัสดุออกจากใบงานเรียบร้อย`);
+        } catch (err: any) {
+          addToast('warning', 'เกิดข้อผิดพลาด', err.message);
+        }
+      }
+    );
   };
+
 
   // Create New BOM Sheet
   const handleCreateBomSubmit = async (e: React.FormEvent) => {
@@ -1313,19 +1333,23 @@ export default function ProjectBomView({
   const handleDeleteBom = async (targetBom: Bom) => {
     const isAdmin = !currentUserRole || currentUserRole === 'admin';
     const rolePrefix = isAdmin ? '🛡️ [สิทธิ์ ADMIN]' : '';
-    if (!confirm(`${rolePrefix} คุณแน่ใจว่าต้องการลบสูตรใบงาน BOM "${targetBom.name}" (Job No: ${targetBom.jobNo || 'ไม่ระบุ'}) ออกจากระบบถาวรหรือไม่?\n\nข้อมูลพัสดุประกอบ ชิ้นส่วน และสถิติทั้งหมดใน BOM นี้จะถูกลบออกเรียบร้อย`)) return;
+    (window as any).triggerConfirm(
+      'ยืนยันการลบสูตรใบงาน BOM',
+      `${rolePrefix} คุณแน่ใจว่าต้องการลบสูตรใบงาน BOM "${targetBom.name}" (Job No: ${targetBom.jobNo || 'ไม่ระบุ'}) ออกจากระบบถาวรหรือไม่?\n\nข้อมูลพัสดุประกอบ ชิ้นส่วน และสถิติทั้งหมดใน BOM นี้จะถูกลบออกเรียบร้อย`,
+      async () => {
+        updateLocalBoms(prev => prev.filter(b => b.id !== targetBom.id));
 
-    updateLocalBoms(prev => prev.filter(b => b.id !== targetBom.id));
-
-    try {
-      await deleteDoc(doc(db, 'boms', targetBom.id));
-      addToast('info', 'ลบสูตร BOM สำเร็จ', `นำข้อมูล BOM ${targetBom.name} (Job: ${targetBom.jobNo || '-'}) ออกจากระบบเรียบร้อยแล้ว`);
-      if (selectedBom?.id === targetBom.id) {
-        setSelectedBom(null);
+        try {
+          await deleteDoc(doc(db, 'boms', targetBom.id));
+          addToast('info', 'ลบสูตร BOM สำเร็จ', `นำข้อมูล BOM ${targetBom.name} (Job: ${targetBom.jobNo || '-'}) ออกจากระบบเรียบร้อยแล้ว`);
+          if (selectedBom?.id === targetBom.id) {
+            setSelectedBom(null);
+          }
+        } catch (err: any) {
+          addToast('warning', 'เกิดข้อผิดพลาดในการลบ BOM', err.message);
+        }
       }
-    } catch (err: any) {
-      addToast('warning', 'เกิดข้อผิดพลาดในการลบ BOM', err.message);
-    }
+    );
   };
 
   // Quick Purchase Requisition Modal Trigger
@@ -1500,13 +1524,21 @@ export default function ProjectBomView({
 
     if (shortfalls.length > 0) {
       const msg = shortfalls.map(s => `- ${s.productName}: ต้องการ ${s.needed} (มีในสต็อก ${s.available})`).join('\n');
-      if (confirm(`⚠️ คำเตือน: สต็อกสินค้าไม่เพียงพอประกอบรายการดังนี้:\n${msg}\n\nคุณยังคงต้องการดำเนินการและยินยอมให้ยอดสต็อกติดลบหรือไม่?`)) {
-        await executeDeduction();
-      }
+      (window as any).triggerConfirm(
+        '⚠️ คำเตือน: สต็อกสินค้าไม่เพียงพอ',
+        `สต็อกสินค้าไม่เพียงพอประกอบรายการดังนี้:\n${msg}\n\nคุณยังคงต้องการดำเนินการและยินยอมให้ยอดสต็อกติดลบหรือไม่?`,
+        () => {
+          executeDeduction();
+        }
+      );
     } else {
-      if (confirm(`ยืนยันการทำรายการ "หักยอดสต็อกพัสดุจริง" จำนวน ${bom.requiredQuantity} ชุดสำหรับใบงาน BOM "${bom.name}" หรือไม่?`)) {
-        await executeDeduction();
-      }
+      (window as any).triggerConfirm(
+        'ยืนยันการหักสต็อกพัสดุ',
+        `ยืนยันการทำรายการ "หักยอดสต็อกพัสดุจริง" จำนวน ${bom.requiredQuantity} ชุดสำหรับใบงาน BOM "${bom.name}" หรือไม่?`,
+        () => {
+          executeDeduction();
+        }
+      );
     }
   };
 

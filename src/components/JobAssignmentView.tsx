@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Job, Employee, JobProject, DailyReport, normalizeModules, Bom, MediaFile, EngineeringPhaseSchedule } from '../types';
 import Logo from './Logo';
+import { compressImageFile } from '../imageUtils';
 import { 
   Briefcase, 
   User, 
@@ -254,11 +255,9 @@ export default function JobAssignmentView({
       if (item.type.indexOf('image') !== -1) {
         const file = item.getAsFile();
         if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            setNewPhaseImageUrl(reader.result as string);
-          };
-          reader.readAsDataURL(file);
+          compressImageFile(file).then(compressed => {
+            setNewPhaseImageUrl(compressed);
+          });
           e.preventDefault();
         }
       }
@@ -271,11 +270,9 @@ export default function JobAssignmentView({
     if (files && files.length > 0) {
       const file = files[0];
       if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setNewPhaseImageUrl(reader.result as string);
-        };
-        reader.readAsDataURL(file);
+        compressImageFile(file).then(compressed => {
+          setNewPhaseImageUrl(compressed);
+        });
       }
     }
   };
@@ -301,7 +298,7 @@ export default function JobAssignmentView({
     autoSyncProjectAndModuleStatusIfEnabled(jobProjects as any, jobs, updatedList);
   };
 
-  // Auto-sync project modules into Phase Matrix automatically
+  // Auto-sync project modules and sub-modules into Phase Matrix automatically
   useEffect(() => {
     if (!jobProjects || jobProjects.length === 0) return;
 
@@ -311,30 +308,121 @@ export default function JobAssignmentView({
       jobProjects.forEach(proj => {
         const modules = normalizeModules(proj.modules);
         modules.forEach(mod => {
-          const exists = schedules.some(
-            s => s.jobNo === proj.jobNo && (s.moduleName === mod.name || (mod.code && s.moduleCode === mod.code))
-          );
-          if (!exists) {
-            missing.push({
-              id: `eng_${proj.jobNo}_${(mod.code || mod.name).replace(/\s+/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
-              jobNo: proj.jobNo,
-              projectName: proj.projectName,
-              moduleCode: mod.code || '',
-              moduleName: mod.name,
-              subModuleName: '',
-              isBypassed: false,
-              addressIo: '',
-              imageUrl: mod.imageUrl || '',
-              installStatus: 'pending',
-              wiringStatus: 'pending',
-              testIoStatus: 'pending',
-              manualHmiStatus: 'pending',
-              semiAutoStatus: 'pending',
-              autoStatus: 'pending',
-              assignee: employees.length > 0 ? employees[0].name : '',
-              remark: '',
-              updatedAt: new Date().toISOString()
-            });
+          const subModules = mod.subModules || [];
+          if (subModules.length === 0) {
+            const exists = schedules.some(
+              s => s.jobNo === proj.jobNo && (s.moduleName === mod.name || (mod.code && s.moduleCode === mod.code))
+            );
+            if (!exists) {
+              missing.push({
+                id: `eng_${proj.jobNo}_${(mod.code || mod.name).replace(/\s+/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+                jobNo: proj.jobNo,
+                projectName: proj.projectName,
+                moduleCode: mod.code || '',
+                moduleName: mod.name,
+                subModuleName: '',
+                isBypassed: false,
+                addressIo: '',
+                imageUrl: mod.imageUrl || proj.projectImageUrl || '',
+                installStatus: 'pending',
+                wiringStatus: 'pending',
+                testIoStatus: 'pending',
+                manualHmiStatus: 'pending',
+                semiAutoStatus: 'pending',
+                autoStatus: 'pending',
+                assignee: employees.length > 0 ? employees[0].name : '',
+                remark: '',
+                updatedAt: new Date().toISOString()
+              });
+            }
+          } else {
+            const processSubItem = (sub: any, parentName: string = '') => {
+              const subName = typeof sub === 'string' ? sub : (sub.name || '');
+              const fullName = parentName ? `${parentName} > ${subName}` : subName;
+              const subImg = typeof sub === 'object' && sub.imageUrl ? sub.imageUrl : (mod.imageUrl || proj.projectImageUrl || '');
+
+              let ioList: string[] = [];
+              if (typeof sub === 'object') {
+                if (sub.addressInput) {
+                  const inputs = sub.addressInput.split(',').map((s: string) => s.trim()).filter(Boolean);
+                  inputs.forEach((inp: string) => ioList.push(`DI: ${inp}`));
+                }
+                if (sub.addressOutput) {
+                  const outputs = sub.addressOutput.split(',').map((s: string) => s.trim()).filter(Boolean);
+                  outputs.forEach((outp: string) => ioList.push(`DO: ${outp}`));
+                }
+              }
+
+              if (ioList.length === 0) {
+                const exists = schedules.some(
+                  s => s.jobNo === proj.jobNo &&
+                       (s.moduleName === mod.name || (mod.code && s.moduleCode === mod.code)) &&
+                       (s.subModuleName || '').trim() === fullName.trim() &&
+                       (!s.addressIo || s.addressIo === '')
+                );
+                if (!exists) {
+                  missing.push({
+                    id: `eng_${proj.jobNo}_${(mod.code || mod.name).replace(/\s+/g, '_')}_${fullName.replace(/\s+/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+                    jobNo: proj.jobNo,
+                    projectName: proj.projectName,
+                    moduleCode: mod.code || '',
+                    moduleName: mod.name,
+                    subModuleName: fullName,
+                    isBypassed: false,
+                    addressIo: '',
+                    imageUrl: subImg,
+                    installStatus: 'pending',
+                    wiringStatus: 'pending',
+                    testIoStatus: 'pending',
+                    manualHmiStatus: 'pending',
+                    semiAutoStatus: 'pending',
+                    autoStatus: 'pending',
+                    assignee: employees.length > 0 ? employees[0].name : '',
+                    remark: '',
+                    updatedAt: new Date().toISOString()
+                  });
+                }
+              } else {
+                ioList.forEach((ioAddr, ioIdx) => {
+                  const exists = schedules.some(
+                    s => s.jobNo === proj.jobNo &&
+                         (s.moduleName === mod.name || (mod.code && s.moduleCode === mod.code)) &&
+                         (s.subModuleName || '').trim() === fullName.trim() &&
+                         (s.addressIo || '').trim() === ioAddr.trim()
+                  );
+                  if (!exists) {
+                    missing.push({
+                      id: `eng_${proj.jobNo}_${(mod.code || mod.name).replace(/\s+/g, '_')}_${fullName.replace(/\s+/g, '_')}_io${ioIdx}_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+                      jobNo: proj.jobNo,
+                      projectName: proj.projectName,
+                      moduleCode: mod.code || '',
+                      moduleName: mod.name,
+                      subModuleName: fullName,
+                      isBypassed: false,
+                      addressIo: ioAddr,
+                      imageUrl: subImg,
+                      installStatus: 'pending',
+                      wiringStatus: 'pending',
+                      testIoStatus: 'pending',
+                      manualHmiStatus: 'pending',
+                      semiAutoStatus: 'pending',
+                      autoStatus: 'pending',
+                      assignee: employees.length > 0 ? employees[0].name : '',
+                      remark: '',
+                      updatedAt: new Date().toISOString()
+                    });
+                  }
+                });
+              }
+
+              if (typeof sub === 'object' && Array.isArray(sub.subModules) && sub.subModules.length > 0) {
+                sub.subModules.forEach((subL2: any) => {
+                  processSubItem(subL2, fullName);
+                });
+              }
+            };
+
+            subModules.forEach(sub => processSubItem(sub, ''));
           }
         });
       });
@@ -360,7 +448,7 @@ export default function JobAssignmentView({
     }
   };
 
-  // Sync modules from all JobProjects into Phase Matrix
+  // Sync modules & sub-modules from all JobProjects into Phase Matrix
   const handleSyncProjectModulesToPhaseMatrix = async () => {
     let createdCount = 0;
     const newItems: EngineeringPhaseSchedule[] = [];
@@ -368,32 +456,74 @@ export default function JobAssignmentView({
     jobProjects.forEach(proj => {
       const modules = normalizeModules(proj.modules);
       modules.forEach(mod => {
-        const exists = schedules.some(
-          s => s.jobNo === proj.jobNo && (s.moduleName === mod.name || (mod.code && s.moduleCode === mod.code))
-        );
-        if (!exists) {
-          const item: EngineeringPhaseSchedule = {
-            id: `eng_${proj.jobNo}_${(mod.code || mod.name).replace(/\s+/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
-            jobNo: proj.jobNo,
-            projectName: proj.projectName,
-            moduleCode: mod.code || '',
-            moduleName: mod.name,
-            subModuleName: '',
-            isBypassed: false,
-            addressIo: '',
-            imageUrl: mod.imageUrl || '',
-            installStatus: 'pending',
-            wiringStatus: 'pending',
-            testIoStatus: 'pending',
-            manualHmiStatus: 'pending',
-            semiAutoStatus: 'pending',
-            autoStatus: 'pending',
-            assignee: employees.length > 0 ? employees[0].name : '',
-            remark: '',
-            updatedAt: new Date().toISOString()
-          };
-          newItems.push(item);
-          createdCount++;
+        const subModules = mod.subModules || [];
+        if (subModules.length === 0) {
+          const exists = schedules.some(
+            s => s.jobNo === proj.jobNo && (s.moduleName === mod.name || (mod.code && s.moduleCode === mod.code))
+          );
+          if (!exists) {
+            const item: EngineeringPhaseSchedule = {
+              id: `eng_${proj.jobNo}_${(mod.code || mod.name).replace(/\s+/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+              jobNo: proj.jobNo,
+              projectName: proj.projectName,
+              moduleCode: mod.code || '',
+              moduleName: mod.name,
+              subModuleName: '',
+              isBypassed: false,
+              addressIo: '',
+              imageUrl: mod.imageUrl || proj.projectImageUrl || '',
+              installStatus: 'pending',
+              wiringStatus: 'pending',
+              testIoStatus: 'pending',
+              manualHmiStatus: 'pending',
+              semiAutoStatus: 'pending',
+              autoStatus: 'pending',
+              assignee: employees.length > 0 ? employees[0].name : '',
+              remark: '',
+              updatedAt: new Date().toISOString()
+            };
+            newItems.push(item);
+            createdCount++;
+          }
+        } else {
+          subModules.forEach(sub => {
+            const subName = typeof sub === 'string' ? sub : (sub.name || '');
+            const subAddr = typeof sub === 'object' ? ([
+              sub.addressInput ? `DI: ${sub.addressInput}` : '',
+              sub.addressOutput ? `DO: ${sub.addressOutput}` : ''
+            ].filter(Boolean).join(' | ')) : '';
+            const subImg = typeof sub === 'object' && sub.imageUrl ? sub.imageUrl : (mod.imageUrl || proj.projectImageUrl || '');
+
+            const exists = schedules.some(
+              s => s.jobNo === proj.jobNo &&
+                   (s.moduleName === mod.name || (mod.code && s.moduleCode === mod.code)) &&
+                   (s.subModuleName || '').trim() === subName.trim()
+            );
+            if (!exists) {
+              const item: EngineeringPhaseSchedule = {
+                id: `eng_${proj.jobNo}_${(mod.code || mod.name).replace(/\s+/g, '_')}_${subName.replace(/\s+/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+                jobNo: proj.jobNo,
+                projectName: proj.projectName,
+                moduleCode: mod.code || '',
+                moduleName: mod.name,
+                subModuleName: subName,
+                isBypassed: false,
+                addressIo: subAddr,
+                imageUrl: subImg,
+                installStatus: 'pending',
+                wiringStatus: 'pending',
+                testIoStatus: 'pending',
+                manualHmiStatus: 'pending',
+                semiAutoStatus: 'pending',
+                autoStatus: 'pending',
+                assignee: employees.length > 0 ? employees[0].name : '',
+                remark: '',
+                updatedAt: new Date().toISOString()
+              };
+              newItems.push(item);
+              createdCount++;
+            }
+          });
         }
       });
     });
@@ -402,7 +532,7 @@ export default function JobAssignmentView({
       for (const item of newItems) {
         await saveScheduleItem(item);
       }
-      alert(`ซิงค์โมดูลเข้าสู่ตารางงาน Phase วิศวกรรมสำเร็จ! เพิ่มรายการใหม่ ${createdCount} รายการ`);
+      alert(`ซิงค์โมดูลและหัวข้อย่อยเข้าสู่ตารางงาน Phase วิศวกรรมสำเร็จ! เพิ่มรายการใหม่ ${createdCount} รายการ`);
     } else {
       alert('โมดูลจากทุกโปรเจกต์ซิงค์ลงในตารางงาน Phase ครบถ้วนแล้ว');
     }
@@ -468,21 +598,25 @@ export default function JobAssignmentView({
       return;
     }
 
-    if (confirm(`พบรายการที่มีชื่อและข้อมูลซ้ำกันจำนวน ${duplicateIdsToRemove.length} รายการ\n\nต้องการลบรายการซ้ำเพื่อเหลือเฉพาะรายการเดียวที่มีข้อมูลสมบูรณ์ที่สุดหรือไม่?`)) {
-      const uniqueList = Array.from(map.values());
+    (window as any).triggerConfirm(
+      'ยืนยันการลบรายการซ้ำ',
+      `พบรายการที่มีชื่อและข้อมูลซ้ำกันจำนวน ${duplicateIdsToRemove.length} รายการ\n\nต้องการลบรายการซ้ำเพื่อเหลือเฉพาะรายการเดียวที่มีข้อมูลสมบูรณ์ที่สุดหรือไม่?`,
+      async () => {
+        const uniqueList = Array.from(map.values());
 
-      setLocalSchedules(uniqueList);
-      localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(uniqueList));
-      window.dispatchEvent(new CustomEvent('engineering_schedules_updated', { detail: uniqueList }));
+        setLocalSchedules(uniqueList);
+        localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(uniqueList));
+        window.dispatchEvent(new CustomEvent('engineering_schedules_updated', { detail: uniqueList }));
 
-      if (onDeleteEngineeringSchedule) {
-        for (const id of duplicateIdsToRemove) {
-          await onDeleteEngineeringSchedule(id);
+        if (onDeleteEngineeringSchedule) {
+          for (const id of duplicateIdsToRemove) {
+            await onDeleteEngineeringSchedule(id);
+          }
         }
-      }
 
-      alert(`ลบรายการซ้ำเรียบร้อยแล้ว!\n• ลบรายการซ้ำไป: ${duplicateIdsToRemove.length} รายการ\n• เหลือรายการเดียวที่ไม่ซ้ำ: ${uniqueList.length} รายการ`);
-    }
+        alert(`ลบรายการซ้ำเรียบร้อยแล้ว!\n• ลบรายการซ้ำไป: ${duplicateIdsToRemove.length} รายการ\n• เหลือรายการเดียวที่ไม่ซ้ำ: ${uniqueList.length} รายการ`);
+      }
+    );
   };
 
   const filteredSchedules = useMemo(() => {
@@ -1388,9 +1522,13 @@ export default function JobAssignmentView({
                                           </div>
                                           <button
                                             onClick={() => {
-                                              if (confirm('ต้องการลบรูปงานออกหรือไม่?')) {
-                                                onEditJob(task.id, { imageUrl: '' });
-                                              }
+                                              (window as any).triggerConfirm(
+                                                'ยืนยันการลบรูปงาน',
+                                                'ต้องการลบรูปงานออกหรือไม่?',
+                                                () => {
+                                                  onEditJob(task.id, { imageUrl: '' });
+                                                }
+                                              );
                                             }}
                                             className="text-[8px] text-rose-500 hover:text-rose-600 font-bold hover:underline"
                                           >
@@ -1406,14 +1544,11 @@ export default function JobAssignmentView({
                                               type="file" 
                                               accept="image/*" 
                                               className="hidden" 
-                                              onChange={(e) => {
+                                              onChange={async (e) => {
                                                 const file = e.target.files?.[0];
                                                 if (!file) return;
-                                                const reader = new FileReader();
-                                                reader.onloadend = () => {
-                                                  onEditJob(task.id, { imageUrl: reader.result as string });
-                                                };
-                                                reader.readAsDataURL(file);
+                                                const compressed = await compressImageFile(file);
+                                                onEditJob(task.id, { imageUrl: compressed });
                                               }} 
                                             />
                                           </label>
@@ -1440,9 +1575,13 @@ export default function JobAssignmentView({
                                       </button>
                                       <button
                                         onClick={() => {
-                                          if (confirm(`ต้องการลบงาน "${task.module}" สำหรับ JOB ${task.jobNo} หรือไม่?`)) {
-                                            onDeleteJob(task.id);
-                                          }
+                                          (window as any).triggerConfirm(
+                                            'ยืนยันการลบงาน',
+                                            `ต้องการลบงาน "${task.module}" สำหรับ JOB ${task.jobNo} หรือไม่?`,
+                                            () => {
+                                              onDeleteJob(task.id);
+                                            }
+                                          );
                                         }}
                                         className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
                                         title="ลบงานนี้ออก"
@@ -1807,18 +1946,18 @@ export default function JobAssignmentView({
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[1100px]">
                   <thead>
-                    <tr className="bg-slate-900 text-slate-200 text-[11px] font-mono font-extrabold uppercase tracking-wider">
-                      <th className="p-3 pl-4 border-r border-slate-800 w-[200px]">Sub-module / รายการย่อย</th>
-                      <th className="p-3 border-r border-slate-800 w-[180px]">Address IO (จุดเชื่อมต่อ)</th>
-                      <th className="p-3 border-r border-slate-800 text-center w-[70px]">รูปภาพ</th>
-                      <th className="p-2 border-r border-slate-800 text-center w-[70px]">1. Install</th>
-                      <th className="p-2 border-r border-slate-800 text-center w-[70px]">2. Wiring</th>
-                      <th className="p-2 border-r border-slate-800 text-center w-[70px]">3. Test IO</th>
-                      <th className="p-2 border-r border-slate-800 text-center w-[75px]">4. Manual HMI</th>
-                      <th className="p-2 border-r border-slate-800 text-center w-[70px]">5. Semi-Auto</th>
-                      <th className="p-2 border-r border-slate-800 text-center w-[70px]">6. Auto</th>
-                      <th className="p-3 border-r border-slate-800 w-[120px]">ผู้รับผิดชอบ</th>
-                      <th className="p-3 border-r border-slate-800 min-w-[140px]">Remark / หมายเหตุ</th>
+                    <tr className="bg-slate-100/90 text-slate-700 text-[11px] font-mono font-bold uppercase tracking-wider border-b border-slate-200">
+                      <th className="p-3 pl-4 border-r border-slate-200 w-[200px]">Sub-module / รายการย่อย</th>
+                      <th className="p-3 border-r border-slate-200 w-[180px]">Address IO (จุดเชื่อมต่อ)</th>
+                      <th className="p-3 border-r border-slate-200 text-center w-[70px]">รูปภาพ</th>
+                      <th className="p-2 border-r border-slate-200 text-center w-[70px]">1. Install</th>
+                      <th className="p-2 border-r border-slate-200 text-center w-[70px]">2. Wiring</th>
+                      <th className="p-2 border-r border-slate-200 text-center w-[70px]">3. Test IO</th>
+                      <th className="p-2 border-r border-slate-200 text-center w-[75px]">4. Manual HMI</th>
+                      <th className="p-2 border-r border-slate-200 text-center w-[70px]">5. Semi-Auto</th>
+                      <th className="p-2 border-r border-slate-200 text-center w-[70px]">6. Auto</th>
+                      <th className="p-3 border-r border-slate-200 w-[120px]">ผู้รับผิดชอบ</th>
+                      <th className="p-3 border-r border-slate-200 min-w-[140px]">Remark / หมายเหตุ</th>
                       <th className="p-3 text-center w-[85px]">ความคืบหน้า</th>
                     </tr>
                   </thead>
@@ -1834,97 +1973,30 @@ export default function JobAssignmentView({
                         return (
                           <React.Fragment key={group.key}>
                             {/* Module Group Header Row */}
-                            <tr className="bg-slate-800 text-slate-100 font-sans border-y border-slate-700/80">
+                            <tr className="bg-slate-50/90 text-slate-800 font-sans border-y border-slate-200">
                               <td colSpan={12} className="p-2.5 pl-4">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <div className="flex items-center gap-2">
-                                    <Cpu className="h-4 w-4 text-indigo-400 shrink-0" />
-                                    <span className="text-xs sm:text-sm font-extrabold text-white font-sans">
+                                    <Cpu className="h-4 w-4 text-indigo-600 shrink-0" />
+                                    <span className="text-xs sm:text-sm font-extrabold text-slate-900 font-sans">
                                       {group.moduleName}
                                     </span>
                                     {group.moduleCode && (
-                                      <span className="text-[10px] font-mono text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-700/50">
+                                      <span className="text-[10px] font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
                                         [{group.moduleCode}]
                                       </span>
                                     )}
                                     {phaseMatrixProjectFilter === 'all' && (
-                                      <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-700/50">
+                                      <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                                         JOB: {group.jobNo}
                                       </span>
                                     )}
-                                    <span className="text-[11px] text-slate-300 font-medium font-sans">
+                                    <span className="text-[11px] text-slate-500 font-medium font-sans">
                                       ({group.items.length} รายการ IO)
                                     </span>
                                   </div>
 
                                   <div className="flex items-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const newItem: EngineeringPhaseSchedule = {
-                                          id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                                          jobNo: group.jobNo,
-                                          projectName: group.projectName,
-                                          moduleCode: group.moduleCode,
-                                          moduleName: group.moduleName,
-                                          subModuleName: group.items[0]?.subModuleName || '',
-                                          addressIo: '',
-                                          imageUrl: group.items[0]?.imageUrl || '',
-                                          installStatus: 'pending',
-                                          wiringStatus: 'pending',
-                                          testIoStatus: 'pending',
-                                          manualHmiStatus: 'pending',
-                                          semiAutoStatus: 'pending',
-                                          autoStatus: 'pending',
-                                          assignee: group.items[0]?.assignee || '',
-                                          remark: '',
-                                          isBypassed: group.items[0]?.isBypassed || false,
-                                          updatedAt: new Date().toISOString()
-                                        };
-                                        saveScheduleItem(newItem);
-                                      }}
-                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
-                                      title="เพิ่ม Address IO ใหม่ในโมดูลนี้"
-                                    >
-                                      <Plus className="h-3.5 w-3.5" />
-                                      <span>+ เพิ่ม Address IO</span>
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const subName = prompt(`ระบุชื่อ Sub-module / รายการย่อย สำหรับโมดูล "${group.moduleName}":`);
-                                        if (subName !== null) {
-                                          const newItem: EngineeringPhaseSchedule = {
-                                            id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                                            jobNo: group.jobNo,
-                                            projectName: group.projectName,
-                                            moduleCode: group.moduleCode,
-                                            moduleName: group.moduleName,
-                                            subModuleName: subName,
-                                            addressIo: '',
-                                            imageUrl: group.items[0]?.imageUrl || '',
-                                            installStatus: 'pending',
-                                            wiringStatus: 'pending',
-                                            testIoStatus: 'pending',
-                                            manualHmiStatus: 'pending',
-                                            semiAutoStatus: 'pending',
-                                            autoStatus: 'pending',
-                                            assignee: group.items[0]?.assignee || '',
-                                            remark: '',
-                                            isBypassed: group.items[0]?.isBypassed || false,
-                                            updatedAt: new Date().toISOString()
-                                          };
-                                          saveScheduleItem(newItem);
-                                        }
-                                      }}
-                                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
-                                      title="เพิ่ม Sub-module ใหม่"
-                                    >
-                                      <Plus className="h-3.5 w-3.5" />
-                                      <span>+ เพิ่ม Sub-module</span>
-                                    </button>
-
                                     {group.items[0] && (
                                       <button
                                         type="button"
@@ -1932,7 +2004,7 @@ export default function JobAssignmentView({
                                           setEditingPhaseItem(group.items[0]);
                                           setIsPhaseSheetOpen(true);
                                         }}
-                                        className="p-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs transition-colors cursor-pointer"
+                                        className="p-1 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-xs transition-colors cursor-pointer"
                                         title="แก้ไข Sheet รายละเอียดโมดูล"
                                       >
                                         <FileEdit className="h-3.5 w-3.5" />
@@ -1942,11 +2014,16 @@ export default function JobAssignmentView({
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        if (confirm(`ต้องการลบโมดูล "${group.moduleName}" พร้อมรายการ IO ทั้งหมด (${group.items.length} รายการ) หรือไม่?`)) {
-                                          group.items.forEach(it => deleteScheduleItem(it.id));
-                                        }
+                                        (window as any).triggerConfirm(
+                                          'ยืนยันการลบโมดูล',
+                                          `ต้องการลบโมดูล "${group.moduleName}" พร้อมรายการ IO ทั้งหมด (${group.items.length} รายการ) หรือไม่?`,
+                                          () => {
+                                            group.items.forEach(it => deleteScheduleItem(it.id));
+                                          },
+                                          true
+                                        );
                                       }}
-                                      className="p-1 bg-rose-950/80 hover:bg-rose-900 text-rose-300 rounded-lg text-xs transition-colors cursor-pointer"
+                                      className="p-1 bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 rounded-lg text-xs transition-colors cursor-pointer"
                                       title="ลบโมดูลนี้และรายการทั้งหมด"
                                     >
                                       <Trash2 className="h-3.5 w-3.5" />
@@ -1987,6 +2064,15 @@ export default function JobAssignmentView({
                                     r.jobsDetail.includes(item.moduleName) || (item.subModuleName && r.jobsDetail.includes(item.subModuleName))
                                   ));
 
+                                  // Source matching Project Settings info
+                                  const matchedProj = jobProjects?.find(p => p.jobNo === item.jobNo);
+                                  const matchedMod = matchedProj ? normalizeModules(matchedProj.modules).find(m => m.name === item.moduleName || (m.code && m.code === item.moduleCode)) : null;
+                                  const matchedSub = matchedMod?.subModules?.map(s => typeof s === 'string' ? { name: s, addressInput: '', addressOutput: '', imageUrl: '' } : s).find(s => (s.name || '').trim() === (item.subModuleName || '').trim());
+
+                                  const derivedSubAddr = matchedSub ? [matchedSub.addressInput ? `DI: ${matchedSub.addressInput}` : '', matchedSub.addressOutput ? `DO: ${matchedSub.addressOutput}` : ''].filter(Boolean).join(' | ') : '';
+                                  const displayAddr = item.addressIo || derivedSubAddr || '-';
+                                  const displayImg = item.imageUrl || matchedSub?.imageUrl || matchedMod?.imageUrl || matchedProj?.projectImageUrl || '';
+
                                   return (
                                     <tr 
                                       key={item.id} 
@@ -2000,71 +2086,30 @@ export default function JobAssignmentView({
                                       {isFirstRowOfSubGroup && (
                                         <td
                                           rowSpan={subGroup.items.length}
-                                          className={`p-2 pl-4 border-r border-slate-100 align-top ${
+                                          className={`p-2 pl-4 border-r border-slate-200 align-top ${
                                             subGroup.items.length > 1
-                                              ? 'bg-slate-50/70 border-l-2 border-l-indigo-500 shadow-2xs'
+                                              ? 'bg-indigo-50/30 border-l-2 border-l-indigo-500 shadow-2xs'
                                               : 'bg-white'
                                           }`}
                                         >
                                           <div className="space-y-1">
-                                            <div className="flex items-center gap-1">
-                                              <input
-                                                type="text"
-                                                key={`submod_grp_${subGroup.items[0].id}_${subGroup.subModuleName}`}
-                                                defaultValue={subGroup.subModuleName}
-                                                onBlur={(e) => {
-                                                  const newVal = e.target.value;
-                                                  if (newVal !== subGroup.subModuleName) {
-                                                    subGroup.items.forEach(it => {
-                                                      saveScheduleItem({ ...it, subModuleName: newVal, updatedAt: new Date().toISOString() });
-                                                    });
-                                                  }
-                                                }}
-                                                placeholder="พิมพ์ Sub-module..."
-                                                className={`w-full px-2 py-1 border rounded-lg text-[11px] font-extrabold focus:outline-hidden focus:bg-white focus:border-indigo-500 transition-colors ${
-                                                  subGroup.items.length > 1
-                                                    ? 'bg-white border-indigo-200 text-indigo-950 shadow-2xs'
-                                                    : 'bg-slate-50 border-slate-200 text-slate-800'
-                                                }`}
-                                              />
+                                            <div className="flex items-center justify-between gap-1">
+                                              <span className="text-xs font-extrabold text-slate-800 font-sans block py-0.5">
+                                                {subGroup.subModuleName || group.moduleName || '-'}
+                                              </span>
                                               <button
                                                 type="button"
                                                 onClick={() => {
-                                                  const newItem: EngineeringPhaseSchedule = {
-                                                    id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                                                    jobNo: subGroup.items[0].jobNo,
-                                                    projectName: subGroup.items[0].projectName,
-                                                    moduleCode: subGroup.items[0].moduleCode,
-                                                    moduleName: subGroup.items[0].moduleName,
-                                                    subModuleName: subGroup.subModuleName,
-                                                    addressIo: '',
-                                                    imageUrl: subGroup.items[0].imageUrl,
-                                                    installStatus: 'pending',
-                                                    wiringStatus: 'pending',
-                                                    testIoStatus: 'pending',
-                                                    manualHmiStatus: 'pending',
-                                                    semiAutoStatus: 'pending',
-                                                    autoStatus: 'pending',
-                                                    assignee: subGroup.items[0].assignee,
-                                                    remark: '',
-                                                    isBypassed: subGroup.items[0].isBypassed,
-                                                    updatedAt: new Date().toISOString()
-                                                  };
-                                                  saveScheduleItem(newItem);
+                                                  (window as any).triggerConfirm(
+                                                    'ยืนยันการลบ Sub-module',
+                                                    `ต้องการลบ Sub-module "${subGroup.subModuleName || 'นี้'}" พร้อมรายการ IO ทั้งหมด (${subGroup.items.length} รายการ) หรือไม่?`,
+                                                    () => {
+                                                      subGroup.items.forEach(it => deleteScheduleItem(it.id));
+                                                    },
+                                                    true
+                                                  );
                                                 }}
-                                                className="p-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-md transition-all cursor-pointer shrink-0"
-                                                title="เพิ่ม Address IO ภายใต้ Sub-module เดียวกัน"
-                                              >
-                                                <Plus className="h-3.5 w-3.5" />
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (confirm(`ต้องการลบ Sub-module "${subGroup.subModuleName || 'นี้'}" พร้อมรายการ IO ทั้งหมด (${subGroup.items.length} รายการ) หรือไม่?`)) {
-                                                    subGroup.items.forEach(it => deleteScheduleItem(it.id));
-                                                  }
-                                                }}
-                                                className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-all cursor-pointer shrink-0"
+                                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-all cursor-pointer shrink-0"
                                                 title="ลบ Sub-module นี้และรายการย่อยทั้งหมด"
                                               >
                                                 <Trash2 className="h-3.5 w-3.5" />
@@ -2092,213 +2137,135 @@ export default function JobAssignmentView({
                                         </td>
                                       )}
 
-                                      {/* Address IO (with inline Add/Delete controls) */}
-                                  <td className="p-2 border-r border-slate-100 font-mono">
-                                    <div className="flex items-center gap-1">
-                                      <input
-                                        type="text"
-                                        key={`addrio_${item.id}_${item.addressIo || ''}`}
-                                        defaultValue={item.addressIo || ''}
-                                        onBlur={(e) => {
-                                          if (e.target.value !== (item.addressIo || '')) {
-                                            saveScheduleItem({ ...item, addressIo: e.target.value, updatedAt: new Date().toISOString() });
-                                          }
-                                        }}
-                                        placeholder="เช่น I:0.0 / O:1.2 / X0..."
-                                        className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-mono font-bold text-slate-800 focus:outline-hidden focus:bg-white focus:border-indigo-500"
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const newItem: EngineeringPhaseSchedule = {
-                                            id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                                            jobNo: item.jobNo,
-                                            projectName: item.projectName,
-                                            moduleCode: item.moduleCode,
-                                            moduleName: item.moduleName,
-                                            subModuleName: item.subModuleName,
-                                            addressIo: '',
-                                            imageUrl: item.imageUrl,
-                                            installStatus: 'pending',
-                                            wiringStatus: 'pending',
-                                            testIoStatus: 'pending',
-                                            manualHmiStatus: 'pending',
-                                            semiAutoStatus: 'pending',
-                                            autoStatus: 'pending',
-                                            assignee: item.assignee,
-                                            remark: '',
-                                            isBypassed: item.isBypassed,
-                                            updatedAt: new Date().toISOString()
-                                          };
-                                          saveScheduleItem(newItem);
-                                        }}
-                                        className="p-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-md transition-all cursor-pointer shrink-0"
-                                        title="เพิ่ม Address IO ใหม่ใน Sub-module นี้"
-                                      >
-                                        <Plus className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (confirm(`ต้องการลบ Address IO "${item.addressIo || 'นี้'}" หรือไม่?`)) {
-                                            deleteScheduleItem(item.id);
-                                          }
-                                        }}
-                                        className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-all cursor-pointer shrink-0"
-                                        title="ลบ Address IO นี้"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  </td>
-
-                                  {/* Image */}
-                                  <td className="p-2 border-r border-slate-100 text-center">
-                                    {item.imageUrl ? (
-                                      <div className="relative group inline-block">
-                                        <img
-                                          src={item.imageUrl}
-                                          alt={item.moduleName}
-                                          onClick={() => setActiveImagePreview(item.imageUrl!)}
-                                          className="h-9 w-9 object-cover rounded-lg border border-slate-200 shadow-2xs cursor-pointer hover:scale-105 transition-transform"
-                                        />
-                                        <label
-                                          className="absolute -bottom-1 -right-1 bg-slate-900 text-white p-0.5 rounded-full text-[9px] cursor-pointer hover:bg-indigo-600 shadow-2xs"
-                                          title="เปลี่ยนรูปภาพโมดูล"
-                                        >
-                                          <Upload className="h-2.5 w-2.5" />
-                                          <input
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            onChange={(e) => {
-                                              const file = e.target.files?.[0];
-                                              if (file) {
-                                                const reader = new FileReader();
-                                                reader.onloadend = () => {
-                                                  const base64 = reader.result as string;
-                                                  saveScheduleItem({ ...item, imageUrl: base64, updatedAt: new Date().toISOString() });
-                                                };
-                                                reader.readAsDataURL(file);
-                                              }
+                                      {/* Address IO (Sourced from Project Settings) */}
+                                      <td className="p-2 border-r border-slate-200 font-mono">
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="px-2 py-1 bg-slate-50 border border-slate-200/80 rounded-lg text-[11px] font-mono font-bold text-slate-800 w-full truncate">
+                                            {displayAddr}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              (window as any).triggerConfirm(
+                                                'ยืนยันการลบ Address IO',
+                                                `ต้องการลบ Address IO "${displayAddr}" หรือไม่?`,
+                                                () => {
+                                                  deleteScheduleItem(item.id);
+                                                }
+                                              );
                                             }}
+                                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-all cursor-pointer shrink-0"
+                                            title="ลบ Address IO นี้"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      </td>
+
+                                      {/* Image (Sourced from Project Settings) */}
+                                      <td className="p-2 border-r border-slate-200 text-center">
+                                        {displayImg ? (
+                                          <img
+                                            src={displayImg}
+                                            alt={item.moduleName}
+                                            onClick={() => setActiveImagePreview(displayImg)}
+                                            className="h-9 w-9 object-cover rounded-lg border border-slate-200 shadow-2xs cursor-pointer hover:scale-105 transition-transform mx-auto"
                                           />
-                                        </label>
-                                      </div>
-                                    ) : (
-                                      <label className="px-2 py-1 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 text-slate-400 border border-slate-200 border-dashed rounded-lg text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors">
-                                        <ImageIcon className="h-3 w-3" />
-                                        <span>+ รูป</span>
+                                        ) : (
+                                          <span className="text-[10px] text-slate-400 italic font-mono">-</span>
+                                        )}
+                                      </td>
+
+                                      {/* Phase 1: Install */}
+                                      <td className="p-2 border-r border-slate-200 text-center">
+                                        {renderPhaseStatusBadge(
+                                          item.installStatus,
+                                          'Install',
+                                          () => saveScheduleItem({ ...item, installStatus: cyclePhaseStatus(item.installStatus), updatedAt: new Date().toISOString() }),
+                                          item.isBypassed
+                                        )}
+                                      </td>
+
+                                      {/* Phase 2: Wiring */}
+                                      <td className="p-2 border-r border-slate-200 text-center">
+                                        {renderPhaseStatusBadge(
+                                          item.wiringStatus,
+                                          'Wiring',
+                                          () => saveScheduleItem({ ...item, wiringStatus: cyclePhaseStatus(item.wiringStatus), updatedAt: new Date().toISOString() }),
+                                          item.isBypassed
+                                        )}
+                                      </td>
+
+                                      {/* Phase 3: Test IO */}
+                                      <td className="p-2 border-r border-slate-200 text-center">
+                                        {renderPhaseStatusBadge(
+                                          item.testIoStatus,
+                                          'Test IO',
+                                          () => saveScheduleItem({ ...item, testIoStatus: cyclePhaseStatus(item.testIoStatus), updatedAt: new Date().toISOString() }),
+                                          item.isBypassed
+                                        )}
+                                      </td>
+
+                                      {/* Phase 4: Manual HMI */}
+                                      <td className="p-2 border-r border-slate-200 text-center">
+                                        {renderPhaseStatusBadge(
+                                          item.manualHmiStatus,
+                                          'Manual HMI',
+                                          () => saveScheduleItem({ ...item, manualHmiStatus: cyclePhaseStatus(item.manualHmiStatus), updatedAt: new Date().toISOString() }),
+                                          item.isBypassed
+                                        )}
+                                      </td>
+
+                                      {/* Phase 5: Semi-Auto */}
+                                      <td className="p-2 border-r border-slate-200 text-center">
+                                        {renderPhaseStatusBadge(
+                                          item.semiAutoStatus,
+                                          'Semi-Auto',
+                                          () => saveScheduleItem({ ...item, semiAutoStatus: cyclePhaseStatus(item.semiAutoStatus), updatedAt: new Date().toISOString() }),
+                                          item.isBypassed
+                                        )}
+                                      </td>
+
+                                      {/* Phase 6: Auto */}
+                                      <td className="p-2 border-r border-slate-200 text-center">
+                                        {renderPhaseStatusBadge(
+                                          item.autoStatus,
+                                          'Auto',
+                                          () => saveScheduleItem({ ...item, autoStatus: cyclePhaseStatus(item.autoStatus), updatedAt: new Date().toISOString() }),
+                                          item.isBypassed
+                                        )}
+                                      </td>
+
+                                      {/* Assignee Selection */}
+                                      <td className="p-2 border-r border-slate-200">
+                                        <select
+                                          value={item.assignee || ''}
+                                          onChange={(e) => saveScheduleItem({ ...item, assignee: e.target.value, updatedAt: new Date().toISOString() })}
+                                          className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+                                        >
+                                          <option value="">-- ระบุ --</option>
+                                          {employees.map(emp => (
+                                            <option key={emp.id} value={emp.name}>
+                                              {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </td>
+
+                                      {/* Remark Input */}
+                                      <td className="p-2 border-r border-slate-200">
                                         <input
-                                          type="file"
-                                          accept="image/*"
-                                          className="hidden"
-                                          onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) {
-                                              const reader = new FileReader();
-                                              reader.onloadend = () => {
-                                                const base64 = reader.result as string;
-                                                saveScheduleItem({ ...item, imageUrl: base64, updatedAt: new Date().toISOString() });
-                                              };
-                                              reader.readAsDataURL(file);
+                                          type="text"
+                                          defaultValue={item.remark || ''}
+                                          onBlur={(e) => {
+                                            if (e.target.value !== item.remark) {
+                                              saveScheduleItem({ ...item, remark: e.target.value, updatedAt: new Date().toISOString() });
                                             }
                                           }}
+                                          placeholder="พิมพ์หมายเหตุ / ข้อสังเกต..."
+                                          className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-700 focus:outline-hidden focus:bg-white focus:border-indigo-400"
                                         />
-                                      </label>
-                                    )}
-                                  </td>
-
-                                  {/* Phase 1: Install */}
-                                  <td className="p-2 border-r border-slate-100 text-center">
-                                    {renderPhaseStatusBadge(
-                                      item.installStatus,
-                                      'Install',
-                                      () => saveScheduleItem({ ...item, installStatus: cyclePhaseStatus(item.installStatus), updatedAt: new Date().toISOString() }),
-                                      item.isBypassed
-                                    )}
-                                  </td>
-
-                                  {/* Phase 2: Wiring */}
-                                  <td className="p-2 border-r border-slate-100 text-center">
-                                    {renderPhaseStatusBadge(
-                                      item.wiringStatus,
-                                      'Wiring',
-                                      () => saveScheduleItem({ ...item, wiringStatus: cyclePhaseStatus(item.wiringStatus), updatedAt: new Date().toISOString() }),
-                                      item.isBypassed
-                                    )}
-                                  </td>
-
-                                  {/* Phase 3: Test IO */}
-                                  <td className="p-2 border-r border-slate-100 text-center">
-                                    {renderPhaseStatusBadge(
-                                      item.testIoStatus,
-                                      'Test IO',
-                                      () => saveScheduleItem({ ...item, testIoStatus: cyclePhaseStatus(item.testIoStatus), updatedAt: new Date().toISOString() }),
-                                      item.isBypassed
-                                    )}
-                                  </td>
-
-                                  {/* Phase 4: Manual HMI */}
-                                  <td className="p-2 border-r border-slate-100 text-center">
-                                    {renderPhaseStatusBadge(
-                                      item.manualHmiStatus,
-                                      'Manual HMI',
-                                      () => saveScheduleItem({ ...item, manualHmiStatus: cyclePhaseStatus(item.manualHmiStatus), updatedAt: new Date().toISOString() }),
-                                      item.isBypassed
-                                    )}
-                                  </td>
-
-                                  {/* Phase 5: Semi-Auto */}
-                                  <td className="p-2 border-r border-slate-100 text-center">
-                                    {renderPhaseStatusBadge(
-                                      item.semiAutoStatus,
-                                      'Semi-Auto',
-                                      () => saveScheduleItem({ ...item, semiAutoStatus: cyclePhaseStatus(item.semiAutoStatus), updatedAt: new Date().toISOString() }),
-                                      item.isBypassed
-                                    )}
-                                  </td>
-
-                                  {/* Phase 6: Auto */}
-                                  <td className="p-2 border-r border-slate-100 text-center">
-                                    {renderPhaseStatusBadge(
-                                      item.autoStatus,
-                                      'Auto',
-                                      () => saveScheduleItem({ ...item, autoStatus: cyclePhaseStatus(item.autoStatus), updatedAt: new Date().toISOString() }),
-                                      item.isBypassed
-                                    )}
-                                  </td>
-
-                                  {/* Assignee Selection */}
-                                  <td className="p-2 border-r border-slate-100">
-                                    <select
-                                      value={item.assignee || ''}
-                                      onChange={(e) => saveScheduleItem({ ...item, assignee: e.target.value, updatedAt: new Date().toISOString() })}
-                                      className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-800 focus:outline-hidden cursor-pointer"
-                                    >
-                                      <option value="">-- ระบุ --</option>
-                                      {employees.map(emp => (
-                                        <option key={emp.id} value={emp.name}>
-                                          {emp.nickname ? `[${emp.nickname}] ` : ''}{emp.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </td>
-
-                                  {/* Remark Input */}
-                                  <td className="p-2 border-r border-slate-100">
-                                    <input
-                                      type="text"
-                                      defaultValue={item.remark || ''}
-                                      onBlur={(e) => {
-                                        if (e.target.value !== item.remark) {
-                                          saveScheduleItem({ ...item, remark: e.target.value, updatedAt: new Date().toISOString() });
-                                        }
-                                      }}
-                                      placeholder="พิมพ์หมายเหตุ / ข้อสังเกต..."
-                                      className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-700 focus:outline-hidden focus:bg-white focus:border-indigo-400"
-                                    />
-                                  </td>
+                                      </td>
 
                                   {/* Progress % */}
                                   <td className="p-3 text-center">
@@ -3600,10 +3567,14 @@ export default function JobAssignmentView({
                 <button
                   type="button"
                   onClick={() => {
-                    if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบ Sheet โมดูล "${editingPhaseItem.moduleName}" นี้?`)) {
-                      deleteScheduleItem(editingPhaseItem.id);
-                      setIsPhaseSheetOpen(false);
-                    }
+                    (window as any).triggerConfirm(
+                      'ยืนยันการลบ Sheet โมดูล',
+                      `คุณแน่ใจหรือไม่ว่าต้องการลบ Sheet โมดูล "${editingPhaseItem.moduleName}" นี้?`,
+                      () => {
+                        deleteScheduleItem(editingPhaseItem.id);
+                        setIsPhaseSheetOpen(false);
+                      }
+                    );
                   }}
                   className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
@@ -4170,10 +4141,14 @@ export default function JobAssignmentView({
                   <button
                     type="button"
                     onClick={() => {
-                      if (confirm('ต้องการลบลิงก์ Google Sheet ของโปรเจกต์นี้หรือไม่?')) {
-                        if (onEditJobProject) onEditJobProject(googleSheetModalProj.id, { googleSheetUrl: '' });
-                        setGoogleSheetModalProj(null);
-                      }
+                      (window as any).triggerConfirm(
+                        'ยืนยันการลบลิงก์ Google Sheet',
+                        'ต้องการลบลิงก์ Google Sheet ของโปรเจกต์นี้หรือไม่?',
+                        () => {
+                          if (onEditJobProject) onEditJobProject(googleSheetModalProj.id, { googleSheetUrl: '' });
+                          setGoogleSheetModalProj(null);
+                        }
+                      );
                     }}
                     className="text-[10px] text-rose-600 hover:underline font-bold"
                   >

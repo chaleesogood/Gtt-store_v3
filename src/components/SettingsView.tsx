@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Job, Employee, JobProject, normalizeModules, Brand, Supplier, SubStore, UserRole, MediaFile, CompanyProfile } from '../types';
 import { BusinessCardModal } from './BusinessCardModal';
+import { compressImageFile } from '../imageUtils';
 import { 
   FolderGit2, 
   Users, 
@@ -321,84 +322,404 @@ function ProjectModulesManager({
     }
   };
 
-  // Sub-module management handlers
-  const handleAddSubModule = async (moduleCode: string) => {
-    const subName = prompt('ระบุชื่อ Sub-module / รายการย่อย ใหม่:');
-    if (!subName || !subName.trim()) return;
-    
-    const targetModule = modules.find(m => m.code === moduleCode);
-    if (!targetModule) return;
+  // Sub-module modal states
+  const [isAddSubModuleModalOpen, setIsAddSubModuleModalOpen] = useState(false);
+  const [activeModuleCodeForSub, setActiveModuleCodeForSub] = useState('');
+  const [subModuleLevel, setSubModuleLevel] = useState<1 | 2>(1);
+  const [parentSubModuleName, setParentSubModuleName] = useState('');
+  const [editingSubModuleOriginalName, setEditingSubModuleOriginalName] = useState<string | null>(null);
+  const [subModuleNameInput, setSubModuleNameInput] = useState('');
+  const [subModuleQtyInput, setSubModuleQtyInput] = useState(1);
+  const [subModuleQtyIn, setSubModuleQtyIn] = useState(1);
+  const [subModuleQtyOut, setSubModuleQtyOut] = useState(1);
+  const [subModuleImgInput, setSubModuleImgInput] = useState('');
+  const [subModuleAddressInputs, setSubModuleAddressInputs] = useState<string[]>(['']);
+  const [subModuleAddressOutputs, setSubModuleAddressOutputs] = useState<string[]>(['']);
 
-    const updated = modules.map(m => {
-      if (m.code === moduleCode) {
-        const subs = m.subModules || [];
-        if (subs.includes(subName.trim())) {
-          alert('มีชื่อ Sub-module นี้อยู่แล้ว');
-          return m;
-        }
-        return { ...m, subModules: [...subs, subName.trim()] };
-      }
-      return m;
+  const handleQtyInChange = (val: number) => {
+    const qty = Math.max(1, isNaN(val) ? 1 : val);
+    setSubModuleQtyIn(qty);
+    setSubModuleAddressInputs(prev => {
+      const next = [...prev];
+      while (next.length < qty) next.push('');
+      return next.slice(0, qty);
     });
-    
-    await onEditJobProject(proj.id, { modules: updated });
+  };
 
-    // Proactively save to Engineering Phase Schedules
-    if (engineeringSchedules && onSaveEngineeringSchedule) {
-      const exists = engineeringSchedules.some(
-        s => s.jobNo === proj.jobNo &&
-             (s.moduleCode === moduleCode || s.moduleName === targetModule.name) &&
-             (s.subModuleName || '').trim() === subName.trim()
-      );
-      if (!exists) {
-        await onSaveEngineeringSchedule({
-          id: `eng_${proj.jobNo}_${moduleCode}_${subName.trim().replace(/\s+/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
-          jobNo: proj.jobNo,
-          projectName: proj.projectName,
-          moduleCode: moduleCode,
-          moduleName: targetModule.name,
-          subModuleName: subName.trim(),
-          isBypassed: false,
-          addressIo: '',
-          imageUrl: targetModule.imageUrl || '',
-          installStatus: 'pending',
-          wiringStatus: 'pending',
-          testIoStatus: 'pending',
-          manualHmiStatus: 'pending',
-          semiAutoStatus: 'pending',
-          autoStatus: 'pending',
-          assignee: '',
-          remark: '',
-          updatedAt: new Date().toISOString()
-        });
+  const handleQtyOutChange = (val: number) => {
+    const qty = Math.max(1, isNaN(val) ? 1 : val);
+    setSubModuleQtyOut(qty);
+    setSubModuleAddressOutputs(prev => {
+      const next = [...prev];
+      while (next.length < qty) next.push('');
+      return next.slice(0, qty);
+    });
+  };
+
+  const handleImagePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            if (event.target?.result) {
+              setSubModuleImgInput(event.target.result as string);
+            }
+          };
+          reader.readAsDataURL(blob);
+          e.preventDefault();
+        }
       }
     }
   };
 
-  const handleDeleteSubModule = async (moduleCode: string, subName: string) => {
-    if (!confirm(`ยืนยันการลบ Sub-module "${subName}" หรือไม่? ข้อมูลตารางงานในระบบวิศวกรรม (Phase Matrix) จะถูกลบไปด้วย`)) return;
-    
-    const matchModule = modules.find(m => m.code === moduleCode);
+  const openAddSubModuleModal = (moduleCode: string) => {
+    setActiveModuleCodeForSub(moduleCode);
+    setSubModuleLevel(1);
+    setParentSubModuleName('');
+    setEditingSubModuleOriginalName(null);
+    setSubModuleNameInput('');
+    setSubModuleQtyInput(1);
+    setSubModuleQtyIn(1);
+    setSubModuleQtyOut(1);
+    const targetMod = modules.find(m => m.code === moduleCode);
+    setSubModuleImgInput(targetMod?.imageUrl || '');
+    setSubModuleAddressInputs(['']);
+    setSubModuleAddressOutputs(['']);
+    setIsAddSubModuleModalOpen(true);
+  };
 
-    const updated = modules.map(m => {
-      if (m.code === moduleCode) {
-        return { ...m, subModules: (m.subModules || []).filter(s => s !== subName) };
+  const openAddSubModuleLevel2Modal = (moduleCode: string, parentSubName: string) => {
+    setActiveModuleCodeForSub(moduleCode);
+    setSubModuleLevel(2);
+    setParentSubModuleName(parentSubName);
+    setEditingSubModuleOriginalName(null);
+    setSubModuleNameInput('');
+    setSubModuleQtyInput(1);
+    setSubModuleQtyIn(1);
+    setSubModuleQtyOut(1);
+    const targetMod = modules.find(m => m.code === moduleCode);
+    setSubModuleImgInput(targetMod?.imageUrl || '');
+    setSubModuleAddressInputs(['']);
+    setSubModuleAddressOutputs(['']);
+    setIsAddSubModuleModalOpen(true);
+  };
+
+  const openEditSubModuleModal = (moduleCode: string, sub: any) => {
+    setActiveModuleCodeForSub(moduleCode);
+    setSubModuleLevel(1);
+    setParentSubModuleName('');
+    const sName = typeof sub === 'string' ? sub : (sub.name || '');
+    setEditingSubModuleOriginalName(sName);
+    setSubModuleNameInput(sName);
+    const qty = typeof sub === 'object' && sub.quantity ? sub.quantity : 1;
+    setSubModuleQtyInput(qty);
+    const targetMod = modules.find(m => m.code === moduleCode);
+    setSubModuleImgInput(typeof sub === 'object' && sub.imageUrl ? sub.imageUrl : (targetMod?.imageUrl || ''));
+    
+    let inArr: string[] = [''];
+    if (typeof sub === 'object' && sub.addressInput) {
+      inArr = sub.addressInput.includes(',') 
+        ? sub.addressInput.split(',').map((s: string) => s.trim())
+        : [sub.addressInput];
+    }
+    const qtyIn = typeof sub === 'object' && sub.qtyInput ? sub.qtyInput : Math.max(1, inArr.length);
+    setSubModuleQtyIn(qtyIn);
+    while (inArr.length < qtyIn) inArr.push('');
+    setSubModuleAddressInputs(inArr.slice(0, qtyIn));
+
+    let outArr: string[] = [''];
+    if (typeof sub === 'object' && sub.addressOutput) {
+      outArr = sub.addressOutput.includes(',') 
+        ? sub.addressOutput.split(',').map((s: string) => s.trim())
+        : [sub.addressOutput];
+    }
+    const qtyOut = typeof sub === 'object' && sub.qtyOutput ? sub.qtyOutput : Math.max(1, outArr.length);
+    setSubModuleQtyOut(qtyOut);
+    while (outArr.length < qtyOut) outArr.push('');
+    setSubModuleAddressOutputs(outArr.slice(0, qtyOut));
+
+    setIsAddSubModuleModalOpen(true);
+  };
+
+  const openEditSubModuleLevel2Modal = (moduleCode: string, parentSubName: string, subL2: any) => {
+    setActiveModuleCodeForSub(moduleCode);
+    setSubModuleLevel(2);
+    setParentSubModuleName(parentSubName);
+    const sName = typeof subL2 === 'string' ? subL2 : (subL2.name || '');
+    setEditingSubModuleOriginalName(sName);
+    setSubModuleNameInput(sName);
+    const qty = typeof subL2 === 'object' && subL2.quantity ? subL2.quantity : 1;
+    setSubModuleQtyInput(qty);
+    const targetMod = modules.find(m => m.code === moduleCode);
+    setSubModuleImgInput(typeof subL2 === 'object' && subL2.imageUrl ? subL2.imageUrl : (targetMod?.imageUrl || ''));
+    
+    let inArr: string[] = [''];
+    if (typeof subL2 === 'object' && subL2.addressInput) {
+      inArr = subL2.addressInput.includes(',') 
+        ? subL2.addressInput.split(',').map((s: string) => s.trim())
+        : [subL2.addressInput];
+    }
+    const qtyIn = typeof subL2 === 'object' && subL2.qtyInput ? subL2.qtyInput : Math.max(1, inArr.length);
+    setSubModuleQtyIn(qtyIn);
+    while (inArr.length < qtyIn) inArr.push('');
+    setSubModuleAddressInputs(inArr.slice(0, qtyIn));
+
+    let outArr: string[] = [''];
+    if (typeof subL2 === 'object' && subL2.addressOutput) {
+      outArr = subL2.addressOutput.includes(',') 
+        ? subL2.addressOutput.split(',').map((s: string) => s.trim())
+        : [subL2.addressOutput];
+    }
+    const qtyOut = typeof subL2 === 'object' && subL2.qtyOutput ? subL2.qtyOutput : Math.max(1, outArr.length);
+    setSubModuleQtyOut(qtyOut);
+    while (outArr.length < qtyOut) outArr.push('');
+    setSubModuleAddressOutputs(outArr.slice(0, qtyOut));
+
+    setIsAddSubModuleModalOpen(true);
+  };
+
+  const handleSaveSubModule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeModuleCodeForSub || !subModuleNameInput.trim()) return;
+
+    const targetModule = modules.find(m => m.code === activeModuleCodeForSub);
+    if (!targetModule) return;
+
+    const subName = subModuleNameInput.trim();
+    const addrIn = subModuleAddressInputs.filter(Boolean).join(', ');
+    const addrOut = subModuleAddressOutputs.filter(Boolean).join(', ');
+
+    if (subModuleLevel === 1) {
+      let existingSubL2s: any[] = [];
+      const existingSub = (targetModule.subModules || []).find(s => (typeof s === 'string' ? s : s.name) === (editingSubModuleOriginalName || subName));
+      if (existingSub && typeof existingSub === 'object' && existingSub.subModules) {
+        existingSubL2s = existingSub.subModules;
       }
-      return m;
-    });
-    
-    await onEditJobProject(proj.id, { modules: updated });
 
-    if (engineeringSchedules && onDeleteEngineeringSchedule) {
-      const targetScheds = engineeringSchedules.filter(
-        s => s.jobNo === proj.jobNo && 
-             (s.moduleCode === moduleCode || s.moduleName === (matchModule?.name || '')) &&
-             s.subModuleName === subName
-      );
-      for (const item of targetScheds) {
-        await onDeleteEngineeringSchedule(item.id);
+      const subItem = {
+        name: subName,
+        imageUrl: subModuleImgInput.trim() || targetModule.imageUrl || '',
+        quantity: Number(subModuleQtyInput) || 1,
+        qtyInput: Number(subModuleQtyIn) || 0,
+        qtyOutput: Number(subModuleQtyOut) || 0,
+        addressInput: addrIn,
+        addressOutput: addrOut,
+        subModules: existingSubL2s
+      };
+
+      const updated = modules.map(m => {
+        if (m.code === activeModuleCodeForSub) {
+          let subs = m.subModules || [];
+          if (editingSubModuleOriginalName && editingSubModuleOriginalName !== subItem.name) {
+            subs = subs.filter(s => (typeof s === 'string' ? s : s.name) !== editingSubModuleOriginalName);
+          }
+          const existingIdx = subs.findIndex(s => (typeof s === 'string' ? s : s.name) === subItem.name);
+          let newSubs = [...subs];
+          if (existingIdx >= 0) {
+            newSubs[existingIdx] = subItem;
+          } else {
+            newSubs.push(subItem);
+          }
+          return { ...m, subModules: newSubs };
+        }
+        return m;
+      });
+
+      await onEditJobProject(proj.id, { modules: updated });
+
+      // Proactively save to Engineering Phase Schedules
+      if (engineeringSchedules && onSaveEngineeringSchedule) {
+        const combinedAddr = [
+          subItem.addressInput ? `DI: ${subItem.addressInput}` : '',
+          subItem.addressOutput ? `DO: ${subItem.addressOutput}` : ''
+        ].filter(Boolean).join(' | ');
+
+        const exists = engineeringSchedules.some(
+          s => s.jobNo === proj.jobNo &&
+               (s.moduleCode === activeModuleCodeForSub || s.moduleName === targetModule.name) &&
+               (s.subModuleName || '').trim() === subItem.name
+        );
+        if (!exists) {
+          await onSaveEngineeringSchedule({
+            id: `eng_${proj.jobNo}_${activeModuleCodeForSub}_${subItem.name.replace(/\s+/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+            jobNo: proj.jobNo,
+            projectName: proj.projectName,
+            moduleCode: activeModuleCodeForSub,
+            moduleName: targetModule.name,
+            subModuleName: subItem.name,
+            isBypassed: false,
+            addressIo: combinedAddr,
+            imageUrl: subItem.imageUrl || targetModule.imageUrl || '',
+            installStatus: 'pending',
+            wiringStatus: 'pending',
+            testIoStatus: 'pending',
+            manualHmiStatus: 'pending',
+            semiAutoStatus: 'pending',
+            autoStatus: 'pending',
+            assignee: '',
+            remark: subItem.quantity > 1 ? `จำนวน: ${subItem.quantity}` : '',
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+    } else {
+      // Level 2 Sub-module
+      const subItemL2 = {
+        name: subName,
+        imageUrl: subModuleImgInput.trim() || targetModule.imageUrl || '',
+        quantity: Number(subModuleQtyInput) || 1,
+        qtyInput: Number(subModuleQtyIn) || 0,
+        qtyOutput: Number(subModuleQtyOut) || 0,
+        addressInput: addrIn,
+        addressOutput: addrOut
+      };
+
+      const updated = modules.map(m => {
+        if (m.code === activeModuleCodeForSub) {
+          const updatedSubs = (m.subModules || []).map(s => {
+            const sName = typeof s === 'string' ? s : s.name;
+            if (sName === parentSubModuleName && typeof s === 'object') {
+              let l2List = s.subModules || [];
+              if (editingSubModuleOriginalName && editingSubModuleOriginalName !== subItemL2.name) {
+                l2List = l2List.filter(l2 => (typeof l2 === 'string' ? l2 : l2.name) !== editingSubModuleOriginalName);
+              }
+              const existingIdx = l2List.findIndex(l2 => (typeof l2 === 'string' ? l2 : l2.name) === subItemL2.name);
+              let newL2s = [...l2List];
+              if (existingIdx >= 0) {
+                newL2s[existingIdx] = subItemL2;
+              } else {
+                newL2s.push(subItemL2);
+              }
+              return { ...s, subModules: newL2s };
+            }
+            return s;
+          });
+          return { ...m, subModules: updatedSubs };
+        }
+        return m;
+      });
+
+      await onEditJobProject(proj.id, { modules: updated });
+
+      if (engineeringSchedules && onSaveEngineeringSchedule) {
+        const combinedAddr = [
+          subItemL2.addressInput ? `DI: ${subItemL2.addressInput}` : '',
+          subItemL2.addressOutput ? `DO: ${subItemL2.addressOutput}` : ''
+        ].filter(Boolean).join(' | ');
+
+        const fullName = `${parentSubModuleName} > ${subItemL2.name}`;
+        const exists = engineeringSchedules.some(
+          s => s.jobNo === proj.jobNo &&
+               (s.moduleCode === activeModuleCodeForSub || s.moduleName === targetModule.name) &&
+               (s.subModuleName || '').trim() === fullName
+        );
+        if (!exists) {
+          await onSaveEngineeringSchedule({
+            id: `eng_${proj.jobNo}_${activeModuleCodeForSub}_${subItemL2.name.replace(/\s+/g, '_')}_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+            jobNo: proj.jobNo,
+            projectName: proj.projectName,
+            moduleCode: activeModuleCodeForSub,
+            moduleName: targetModule.name,
+            subModuleName: fullName,
+            isBypassed: false,
+            addressIo: combinedAddr,
+            imageUrl: subItemL2.imageUrl || targetModule.imageUrl || '',
+            installStatus: 'pending',
+            wiringStatus: 'pending',
+            testIoStatus: 'pending',
+            manualHmiStatus: 'pending',
+            semiAutoStatus: 'pending',
+            autoStatus: 'pending',
+            assignee: '',
+            remark: subItemL2.quantity > 1 ? `จำนวน: ${subItemL2.quantity}` : '',
+            updatedAt: new Date().toISOString()
+          });
+        }
       }
     }
+
+    setIsAddSubModuleModalOpen(false);
+  };
+
+  const handleDeleteSubModule = async (moduleCode: string, subName: string) => {
+    (window as any).triggerConfirm(
+      'ยืนยันการลบ Sub-module',
+      `ยืนยันการลบ Sub-module "${subName}" หรือไม่? ข้อมูลตารางงานในระบบวิศวกรรม (Phase Matrix) จะถูกลบไปด้วย`,
+      async () => {
+        const matchModule = modules.find(m => m.code === moduleCode);
+
+        const updated = modules.map(m => {
+          if (m.code === moduleCode) {
+            return { 
+              ...m, 
+              subModules: (m.subModules || []).filter(s => {
+                const name = typeof s === 'string' ? s : s.name;
+                return name !== subName;
+              }) 
+            };
+          }
+          return m;
+        });
+        
+        await onEditJobProject(proj.id, { modules: updated });
+
+        if (engineeringSchedules && onDeleteEngineeringSchedule) {
+          const targetScheds = engineeringSchedules.filter(
+            s => s.jobNo === proj.jobNo && 
+                 (s.moduleCode === moduleCode || s.moduleName === (matchModule?.name || '')) &&
+                 (s.subModuleName === subName || s.subModuleName?.startsWith(`${subName} >`))
+          );
+          for (const item of targetScheds) {
+            await onDeleteEngineeringSchedule(item.id);
+          }
+        }
+      }
+    );
+  };
+
+  const handleDeleteSubModuleL2 = async (moduleCode: string, parentSubName: string, l2SubName: string) => {
+    (window as any).triggerConfirm(
+      'ยืนยันการลบ Sub-module ชั้น 2',
+      `ยืนยันการลบ Sub-module ชั้น 2 "${l2SubName}" หรือไม่?`,
+      async () => {
+        const matchModule = modules.find(m => m.code === moduleCode);
+
+        const updated = modules.map(m => {
+          if (m.code === moduleCode) {
+            const updatedSubs = (m.subModules || []).map(s => {
+              const sName = typeof s === 'string' ? s : s.name;
+              if (sName === parentSubName && typeof s === 'object') {
+                return {
+                  ...s,
+                  subModules: (s.subModules || []).filter(l2 => (typeof l2 === 'string' ? l2 : l2.name) !== l2SubName)
+                };
+              }
+              return s;
+            });
+            return { ...m, subModules: updatedSubs };
+          }
+          return m;
+        });
+
+        await onEditJobProject(proj.id, { modules: updated });
+
+        if (engineeringSchedules && onDeleteEngineeringSchedule) {
+          const fullName = `${parentSubName} > ${l2SubName}`;
+          const targetScheds = engineeringSchedules.filter(
+            s => s.jobNo === proj.jobNo && 
+                 (s.moduleCode === moduleCode || s.moduleName === (matchModule?.name || '')) &&
+                 s.subModuleName === fullName
+          );
+          for (const item of targetScheds) {
+            await onDeleteEngineeringSchedule(item.id);
+          }
+        }
+      }
+    );
   };
 
   return (
@@ -553,40 +874,337 @@ function ProjectModulesManager({
                 </div>
               </div>
 
-              {/* Collapsible/Flexible Sub-modules Row */}
-              <div className="pl-15 pr-1 py-1.5 border-t border-slate-100/65 flex flex-wrap gap-1.5 items-center">
-                <span className="text-[10px] text-slate-400 font-extrabold select-none">ระบบย่อย / Sub-modules:</span>
+              {/* Collapsible/Flexible Sub-modules Row (Vertical List) */}
+              <div className="pl-15 pr-3 py-2.5 border-t border-slate-100/65 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400 font-extrabold select-none uppercase tracking-wider">ระบบย่อย / Sub-modules ({ (m.subModules || []).length }):</span>
+                  <button
+                    type="button"
+                    onClick={() => openAddSubModuleModal(m.code)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-[10px] font-extrabold text-indigo-700 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
+                  >
+                    <Plus className="h-3 w-3 stroke-[3]" />
+                    <span>เพิ่ม Sub-module</span>
+                  </button>
+                </div>
                 {(m.subModules || []).length === 0 ? (
-                  <span className="text-[10px] text-slate-400 italic">ยังไม่มีหัวข้อย่อย</span>
+                  <span className="text-[10px] text-slate-400 italic pl-1">ยังไม่มีหัวข้อย่อย</span>
                 ) : (
-                  (m.subModules || []).map((sub, sIdx) => (
-                    <span 
-                      key={sIdx}
-                      className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-600 rounded-full border border-slate-200/50 transition-colors"
-                    >
-                      <span>{sub}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSubModule(m.code, sub)}
-                        className="text-slate-400 hover:text-rose-600 cursor-pointer p-0.5 rounded-full"
-                        title="ลบ Sub-module"
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    </span>
-                  ))
+                  <div className="flex flex-col gap-2">
+                    {(m.subModules || []).map((sub, sIdx) => {
+                      const subName = typeof sub === 'string' ? sub : (sub.name || '');
+                      const subQty = typeof sub === 'object' && sub.quantity && sub.quantity > 1 ? ` (x${sub.quantity})` : '';
+                      const subImg = typeof sub === 'object' && sub.imageUrl ? sub.imageUrl : '';
+                      
+                      const qtyIn = typeof sub === 'object' ? (sub.qtyInput || (sub.addressInput ? sub.addressInput.split(',').filter(Boolean).length : 0)) : 0;
+                      const qtyOut = typeof sub === 'object' ? (sub.qtyOutput || (sub.addressOutput ? sub.addressOutput.split(',').filter(Boolean).length : 0)) : 0;
+                      
+                      const subAddrIn = typeof sub === 'object' && sub.addressInput ? sub.addressInput : '';
+                      const subAddrOut = typeof sub === 'object' && sub.addressOutput ? sub.addressOutput : '';
+                      const subL2List = typeof sub === 'object' && Array.isArray(sub.subModules) ? sub.subModules : [];
+
+                      return (
+                        <div key={sIdx} className="flex flex-col gap-1 bg-slate-50/90 rounded-lg border border-slate-200/80 p-2">
+                          <div className="flex items-center justify-between gap-2 text-xs font-medium text-slate-700">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {subImg ? (
+                                <img src={subImg} alt="" className="w-6 h-6 rounded object-cover shrink-0 border border-slate-200" />
+                              ) : (
+                                <div className="w-6 h-6 rounded bg-slate-200 flex items-center justify-center text-[10px] text-slate-500 font-bold shrink-0">Sub</div>
+                              )}
+                              <div className="flex flex-col min-w-0">
+                                <span className="font-bold text-slate-800 truncate text-xs">{subName}{subQty}</span>
+                                <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                  {qtyIn > 0 && subAddrIn.trim() !== '' && (
+                                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200" title={subAddrIn}>
+                                      DI ({qtyIn}): {subAddrIn}
+                                    </span>
+                                  )}
+                                  {qtyOut > 0 && subAddrOut.trim() !== '' && (
+                                    <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200" title={subAddrOut}>
+                                      DO ({qtyOut}): {subAddrOut}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => openAddSubModuleLevel2Modal(m.code, subName)}
+                                className="inline-flex items-center gap-1 px-1.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-[9px] font-bold text-indigo-700 rounded border border-indigo-200 transition-colors cursor-pointer"
+                                title="เพิ่ม Sub-module ชั้น 2"
+                              >
+                                <Plus className="h-3 w-3" />
+                                <span>+ Sub-module ชั้น 2</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openEditSubModuleModal(m.code, sub)}
+                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors cursor-pointer"
+                                title="แก้ไข Sub-module"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSubModule(m.code, subName)}
+                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                title="ลบ Sub-module"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Render Level 2 Sub-modules if any */}
+                          {subL2List.length > 0 && (
+                            <div className="ml-5 pl-2.5 border-l-2 border-indigo-200/80 flex flex-col gap-1 mt-1">
+                              {subL2List.map((l2, l2Idx) => {
+                                const l2Name = typeof l2 === 'string' ? l2 : (l2.name || '');
+                                const l2Qty = typeof l2 === 'object' && l2.quantity && l2.quantity > 1 ? ` (x${l2.quantity})` : '';
+                                const l2Img = typeof l2 === 'object' && l2.imageUrl ? l2.imageUrl : '';
+                                const l2AddrIn = typeof l2 === 'object' && l2.addressInput ? l2.addressInput : '';
+                                const l2AddrOut = typeof l2 === 'object' && l2.addressOutput ? l2.addressOutput : '';
+                                const l2QtyIn = typeof l2 === 'object' ? (l2.qtyInput || (l2AddrIn ? l2AddrIn.split(',').filter(Boolean).length : 0)) : 0;
+                                const l2QtyOut = typeof l2 === 'object' ? (l2.qtyOutput || (l2AddrOut ? l2AddrOut.split(',').filter(Boolean).length : 0)) : 0;
+                                return (
+                                  <div key={l2Idx} className="flex items-center justify-between gap-2 px-2.5 py-1 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 rounded-md border border-slate-200/60 shadow-2xs">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      {l2Img ? (
+                                        <img src={l2Img} alt="" className="w-5 h-5 rounded object-cover shrink-0 border border-slate-200" />
+                                      ) : (
+                                        <div className="w-5 h-5 rounded bg-indigo-50 text-indigo-600 flex items-center justify-center text-[9px] font-black shrink-0">L2</div>
+                                      )}
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="font-bold text-slate-800 truncate text-[11px]">{l2Name}{l2Qty}</span>
+                                        <div className="flex items-center gap-1 flex-wrap">
+                                          {l2QtyIn > 0 && l2AddrIn.trim() !== '' && (
+                                            <span className="text-[8px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200" title={l2AddrIn}>
+                                              DI: {l2AddrIn}
+                                            </span>
+                                          )}
+                                          {l2QtyOut > 0 && l2AddrOut.trim() !== '' && (
+                                            <span className="text-[8px] font-bold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-200" title={l2AddrOut}>
+                                              DO: {l2AddrOut}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-0.5 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditSubModuleLevel2Modal(m.code, subName, l2)}
+                                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer"
+                                        title="แก้ไข Sub-module ชั้น 2"
+                                      >
+                                        <Edit3 className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteSubModuleL2(m.code, subName, l2Name)}
+                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                                        title="ลบ Sub-module ชั้น 2"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => handleAddSubModule(m.code)}
-                  className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-[10px] font-extrabold text-indigo-700 rounded-full border border-indigo-150 transition-colors cursor-pointer"
-                >
-                  <Plus className="h-2.5 w-2.5 stroke-[3]" />
-                  <span>เพิ่ม Sub-module</span>
-                </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Add Sub-Module Popup Modal */}
+      {isAddSubModuleModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-in fade-in duration-200">
+          <form 
+            onSubmit={handleSaveSubModule}
+            className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-xl w-full p-6 space-y-4 animate-in zoom-in-95 duration-200 text-left"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h4 className="text-sm font-black text-slate-800">
+                  {subModuleLevel === 2
+                    ? (editingSubModuleOriginalName ? `แก้ไข Sub-module ชั้น 2 (${parentSubModuleName})` : `เพิ่ม Sub-module ชั้น 2 (อยู่ภายใต้ ${parentSubModuleName})`)
+                    : (editingSubModuleOriginalName ? 'แก้ไข Sub-module ชั้น 1 / รายการย่อย' : 'เพิ่ม Sub-module ชั้น 1 / รายการย่อย')}
+                </h4>
+                <p className="text-[10px] text-slate-400">กำหนดชื่อ รูปภาพ และพอร์ตอินพุต/เอาต์พุต (Address IO) ได้อย่างอิสระ</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddSubModuleModalOpen(false)}
+                className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+              {/* General details */}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">ชื่อ Sub-module / รายการย่อย *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="เช่น ชุด Inverter / เซนเซอร์ตรวจจับ"
+                    value={subModuleNameInput}
+                    onChange={(e) => setSubModuleNameInput(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:bg-white focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-0.5">จำนวนชุด (Quantity)</label>
+                    <span className="text-[9px] text-slate-400 block mb-1">จำนวนชุดอุปกรณ์ทั้งหมดที่ใช้</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={subModuleQtyInput}
+                      onChange={(e) => setSubModuleQtyInput(Math.max(1, Number(e.target.value)))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-hidden focus:bg-white focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-0.5">รูปภาพ (วางรูปภาพจากคลิปบอร์ดได้)</label>
+                    <span className="text-[9px] text-slate-400 block mb-1">คัดลอกรูปแล้วกด Ctrl+V เพื่อวาง</span>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="วางรูปภาพ (Ctrl+V) หรือใส่ URL"
+                        value={subModuleImgInput}
+                        onChange={(e) => setSubModuleImgInput(e.target.value)}
+                        onPaste={handleImagePaste}
+                        className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:outline-hidden focus:bg-white focus:border-indigo-500"
+                      />
+                      {subModuleImgInput && (
+                        <div className="absolute right-2 top-1.5 w-6 h-6 rounded overflow-hidden border border-slate-200 bg-white shadow-xs">
+                          <img src={subModuleImgInput} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* INPUT (DI) CONFIGURATION */}
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-extrabold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      พอร์ตอินพุต (INPUT / DI)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-500">จำนวนช่องอินพุต:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={subModuleQtyIn}
+                      onChange={(e) => handleQtyInChange(Number(e.target.value))}
+                      className="w-16 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-center text-slate-800 focus:outline-hidden focus:bg-white focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {subModuleQtyIn > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 bg-emerald-50/20 rounded-xl border border-emerald-100/50">
+                    {subModuleAddressInputs.map((addr, idx) => (
+                      <div key={idx} className="relative">
+                        <span className="absolute left-2.5 top-2 text-[8px] font-black text-emerald-600 font-mono">I{idx + 1}</span>
+                        <input
+                          type="text"
+                          placeholder={`DI #${idx + 1}`}
+                          value={addr}
+                          onChange={(e) => {
+                            const next = [...subModuleAddressInputs];
+                            next[idx] = e.target.value;
+                            setSubModuleAddressInputs(next);
+                          }}
+                          className="w-full pl-6 pr-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 focus:outline-hidden focus:border-emerald-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-400 italic pl-1">ไม่มีพอร์ตอินพุต (DI)</p>
+                )}
+              </div>
+
+              {/* OUTPUT (DO) CONFIGURATION */}
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-extrabold text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                      พอร์ตเอาต์พุต (OUTPUT / DO)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-500">จำนวนช่องเอาต์พุต:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={subModuleQtyOut}
+                      onChange={(e) => handleQtyOutChange(Number(e.target.value))}
+                      className="w-16 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-center text-slate-800 focus:outline-hidden focus:bg-white focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {subModuleQtyOut > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 bg-blue-50/20 rounded-xl border border-blue-100/50">
+                    {subModuleAddressOutputs.map((addr, idx) => (
+                      <div key={idx} className="relative">
+                        <span className="absolute left-2.5 top-2 text-[8px] font-black text-blue-600 font-mono">O{idx + 1}</span>
+                        <input
+                          type="text"
+                          placeholder={`DO #${idx + 1}`}
+                          value={addr}
+                          onChange={(e) => {
+                            const next = [...subModuleAddressOutputs];
+                            next[idx] = e.target.value;
+                            setSubModuleAddressOutputs(next);
+                          }}
+                          className="w-full pl-6 pr-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 focus:outline-hidden focus:border-blue-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-400 italic pl-1">ไม่มีพอร์ตเอาต์พุต (DO)</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsAddSubModuleModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-indigo-600/20"
+              >
+                บันทึก Sub-module
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
@@ -2258,14 +2876,11 @@ export default function SettingsView({
                             type="file"
                             accept="image/*"
                             className="hidden"
-                            onChange={(e) => {
+                            onChange={async (e) => {
                               const file = e.target.files?.[0];
                               if (!file) return;
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                onEditJobProject(activeProjObj.id, { projectImageUrl: reader.result as string });
-                              };
-                              reader.readAsDataURL(file);
+                              const compressed = await compressImageFile(file);
+                              onEditJobProject(activeProjObj.id, { projectImageUrl: compressed });
                             }}
                           />
                           <button
@@ -2406,14 +3021,11 @@ export default function SettingsView({
                               type="file"
                               accept="image/*"
                               className="hidden"
-                              onChange={(e) => {
+                              onChange={async (e) => {
                                 const file = e.target.files?.[0];
                                 if (!file) return;
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  onEditJobProject(proj.id, { projectImageUrl: reader.result as string });
-                                };
-                                reader.readAsDataURL(file);
+                                const compressed = await compressImageFile(file);
+                                onEditJobProject(proj.id, { projectImageUrl: compressed });
                               }}
                             />
                             <button

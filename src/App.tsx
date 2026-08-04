@@ -19,6 +19,7 @@ import { Settings, LayoutDashboard, Package, Layers, History, Play, Bell, Menu, 
 import { collection, doc, setDoc, getDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, writeBatch, getDocs, getDocsFromServer, where, limit } from 'firebase/firestore';
 import { db, cleanUndefined, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from './firebase';
 import { UserRole } from './types';
+import { sanitizeDocForFirestore, compressImageFile } from './imageUtils';
 
 // Proxy console.error to intercept and downgrade Firestore quota/limit errors to warnings
 const originalConsoleError = console.error;
@@ -192,19 +193,20 @@ export default function App() {
       const chunk = list.slice(i, i + chunkSize);
       const batch = writeBatch(db);
       let count = 0;
-      chunk.forEach((item) => {
+      for (const item of chunk) {
         if (item) {
           const idValue = item.id ?? item.uid;
           if (idValue !== undefined && idValue !== null) {
             const docId = String(idValue).trim();
             if (docId) {
               newListDocIds.add(docId);
-              batch.set(doc(db, collectionName, docId), cleanUndefined(item));
+              const sanitized = await sanitizeDocForFirestore(item);
+              batch.set(doc(db, collectionName, docId), cleanUndefined(sanitized));
               count++;
             }
           }
         }
-      });
+      }
       if (count > 0) {
         await withTimeout(batch.commit(), 5000);
         if ((window as any).__recordFirestoreWrites) (window as any).__recordFirestoreWrites(count);
@@ -660,7 +662,7 @@ export default function App() {
     onConfirm: () => {}
   });
 
-  const triggerConfirm = (title: string, message: string, onConfirm: () => void) => {
+  const triggerConfirm = useCallback((title: string, message: string, onConfirm: () => void) => {
     setConfirmModal({
       isOpen: true,
       title,
@@ -670,7 +672,14 @@ export default function App() {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
       }
     });
-  };
+  }, []);
+
+  useEffect(() => {
+    (window as any).triggerConfirm = triggerConfirm;
+    return () => {
+      delete (window as any).triggerConfirm;
+    };
+  }, [triggerConfirm]);
 
   // Login / Register inputs
   const [loginEmailInput, setLoginEmailInput] = useState('');
@@ -3176,7 +3185,15 @@ export default function App() {
     localStorage.setItem('stock_manager_boms', JSON.stringify(updatedBoms));
 
     try {
-      await setDoc(doc(db, 'jobProjects', proj.id), cleanUndefined(proj));
+      const sanitizedProj = await sanitizeDocForFirestore(proj);
+      const updatedProjsWithSanitized = jobProjects.map(p => p.id === proj.id ? sanitizedProj : p);
+      if (!jobProjects.some(p => p.id === proj.id)) {
+        updatedProjsWithSanitized.unshift(sanitizedProj);
+      }
+      setJobProjects(updatedProjsWithSanitized);
+      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(updatedProjsWithSanitized));
+
+      await setDoc(doc(db, 'jobProjects', proj.id), cleanUndefined(sanitizedProj));
       await setDoc(doc(db, 'boms', bomId), cleanUndefined(newBom));
       addToast('success', 'เพิ่มโปรเจกต์และสร้าง BOM สำเร็จ', `หมายเลขงาน ${proj.jobNo} ถูกบันทึก และระบบสร้างใบงาน "BOM - ${proj.projectName}" อัตโนมัติเรียบร้อยแล้ว`);
     } catch (error: any) {
@@ -3186,16 +3203,17 @@ export default function App() {
   };
 
   const handleEditJobProject = async (id: string, updatedFields: Partial<JobProject>) => {
-    const updatedProjs = jobProjects.map((proj) =>
-      proj.id === id ? { ...proj, ...updatedFields } : proj
-    );
-    setJobProjects(updatedProjs);
-    localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(updatedProjs));
-
     try {
+      const sanitizedFields = await sanitizeDocForFirestore(updatedFields);
+      const updatedProjs = jobProjects.map((proj) =>
+        proj.id === id ? { ...proj, ...sanitizedFields } : proj
+      );
+      setJobProjects(updatedProjs);
+      localStorage.setItem('stock_manager_job_projects_list', JSON.stringify(updatedProjs));
+
       const projRef = doc(db, 'jobProjects', id);
       const cleanFields: Record<string, any> = {};
-      Object.entries(updatedFields).forEach(([key, val]) => {
+      Object.entries(sanitizedFields).forEach(([key, val]) => {
         if (val !== undefined) {
           cleanFields[key] = val;
         }
@@ -3593,8 +3611,11 @@ export default function App() {
               brands,
               dailyReports,
               activities,
-              userRoles
+              userRoles,
+              engineeringSchedules
             }}
+            onSaveEngineeringSchedule={handleSaveEngineeringSchedule}
+            onDeleteEngineeringSchedule={handleDeleteEngineeringSchedule}
             onUpdateAllData={async (newData) => {
               if (newData.products) setProducts(sortProducts(newData.products));
               if (newData.categories) setCategories(newData.categories);
@@ -3606,6 +3627,7 @@ export default function App() {
               if (newData.dailyReports) setDailyReports(newData.dailyReports);
               if (newData.activities) setActivities(newData.activities);
               if (newData.userRoles) setUserRoles(newData.userRoles);
+              if (newData.engineeringSchedules) setEngineeringSchedules(newData.engineeringSchedules);
 
               // Sync updated lists to Firestore in batches with deletion cleanup so all signed-in IDs see identical data
               await Promise.all([
@@ -3618,7 +3640,8 @@ export default function App() {
                 uploadListToFirestoreInBatches('brands', newData.brands || [], true),
                 uploadListToFirestoreInBatches('dailyReports', newData.dailyReports || [], true),
                 uploadListToFirestoreInBatches('activities', newData.activities || [], true),
-                uploadListToFirestoreInBatches('user_roles', newData.userRoles || [], true)
+                uploadListToFirestoreInBatches('user_roles', newData.userRoles || [], true),
+                uploadListToFirestoreInBatches('engineering_schedules', newData.engineeringSchedules || [], true)
               ]);
             }}
             addToast={addToast}

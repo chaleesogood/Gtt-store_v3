@@ -708,9 +708,13 @@ export default function DailyReportView({
                       {rep.isReal && (
                         <button
                           onClick={() => {
-                            if (confirm('คุณแน่ใจหรือไม่ว่าต้องการรีเซ็ตผลรีวิวของวันดังกล่าวกลับไปเป็นแบบร่างเริ่มต้น?')) {
-                              onDeleteDailyReport(rep.id);
-                            }
+                            (window as any).triggerConfirm(
+                              'ยืนยันการรีเซ็ตรายงาน',
+                              'คุณแน่ใจหรือไม่ว่าต้องการรีเซ็ตผลรีวิวของวันดังกล่าวกลับไปเป็นแบบร่างเริ่มต้น?',
+                              () => {
+                                onDeleteDailyReport(rep.id);
+                              }
+                            );
                           }}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl border border-slate-150 hover:border-rose-100 transition-colors cursor-pointer"
                           title="รีเซ็ตรายงาน"

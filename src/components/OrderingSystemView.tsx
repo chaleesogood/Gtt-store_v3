@@ -451,21 +451,25 @@ export default function OrderingSystemView({
 
   // Handle delete order
   const handleDeleteOrder = async (id: string, title: string) => {
-    if (confirm(`คุณแน่ใจหรือไม่ที่ต้องการลบใบสั่งซื้อ "${title}" ออกจากระบบ?`)) {
-      const path = `orders/${id}`;
-      
-      // Optimistic Update
-      const updatedOrders = orders.filter(o => o.id !== id);
-      setOrders(updatedOrders);
-      localStorage.setItem('stock_manager_orders_list', JSON.stringify(updatedOrders));
+    (window as any).triggerConfirm(
+      'ยืนยันการลบใบสั่งซื้อ',
+      `คุณแน่ใจหรือไม่ที่ต้องการลบใบสั่งซื้อ "${title}" ออกจากระบบ?`,
+      async () => {
+        const path = `orders/${id}`;
+        
+        // Optimistic Update
+        const updatedOrders = orders.filter(o => o.id !== id);
+        setOrders(updatedOrders);
+        localStorage.setItem('stock_manager_orders_list', JSON.stringify(updatedOrders));
 
-      try {
-        await deleteDoc(doc(db, 'orders', id));
-        addToast('info', 'ลบใบสั่งซื้อสำเร็จ', `ลบรายการสั่งซื้อ "${title}" เรียบร้อย`);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, path);
+        try {
+          await deleteDoc(doc(db, 'orders', id));
+          addToast('info', 'ลบใบสั่งซื้อสำเร็จ', `ลบรายการสั่งซื้อ "${title}" เรียบร้อย`);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, path);
+        }
       }
-    }
+    );
   };
 
   // Handle Status Update

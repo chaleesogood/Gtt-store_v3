@@ -326,16 +326,20 @@ export default function ProductListView({
     const target = catSubSeriesList[index];
     if (!target) return;
 
-    if (confirm(`คุณแน่ใจหรือไม่ที่จะลบ Sub Series "${target.name}"?`)) {
-      setCatSubSeriesList(prev => prev.filter((_, i) => i !== index));
-      if (editingSubSeriesIndex === index) {
-        setEditingSubSeriesIndex(null);
-        setSubSeriesInputName('');
-        setSubSeriesInputImageUrl('');
-        setSubSeriesInputPdfUrl('');
+    (window as any).triggerConfirm(
+      'ยืนยันการลบ Sub Series',
+      `คุณแน่ใจหรือไม่ที่จะลบ Sub Series "${target.name}"?`,
+      () => {
+        setCatSubSeriesList(prev => prev.filter((_, i) => i !== index));
+        if (editingSubSeriesIndex === index) {
+          setEditingSubSeriesIndex(null);
+          setSubSeriesInputName('');
+          setSubSeriesInputImageUrl('');
+          setSubSeriesInputPdfUrl('');
+        }
+        addToast('info', 'ลบสำเร็จ', `นำ Sub Series "${target.name}" ออกแล้ว`);
       }
-      addToast('info', 'ลบสำเร็จ', `นำ Sub Series "${target.name}" ออกแล้ว`);
-    }
+    );
   };
 
   const handleMoveSubSeriesInModal = (index: number, direction: 'up' | 'down') => {
@@ -471,6 +475,7 @@ export default function ProductListView({
   const [formSupplierLogoUrl, setFormSupplierLogoUrl] = useState('');
   const [formModelNumber, setFormModelNumber] = useState<string | number>('');
   const [formModelUnit, setFormModelUnit] = useState<string>('Kg');
+  const [formCompatibleWith, setFormCompatibleWith] = useState('');
 
   // Auto-reset formBrand if selected brand is deleted or no longer exists
   useEffect(() => {
@@ -601,7 +606,8 @@ export default function ProductListView({
       (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (p.sku || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (p.brand || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.supplier || '').toLowerCase().includes(searchTerm.toLowerCase());
+      (p.supplier || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.compatibleWith || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
     const matchesBrand = brandFilter === 'all' || p.brand === brandFilter;
     const matchesSupplier = supplierFilter === 'all' || p.supplier === supplierFilter;
@@ -657,6 +663,7 @@ export default function ProductListView({
     setFormSupplierLogoUrl('');
     setFormModelNumber('');
     setFormModelUnit('Kg');
+    setFormCompatibleWith('');
     setIsModalOpen(true);
   };
 
@@ -684,6 +691,7 @@ export default function ProductListView({
     setFormSupplierLogoUrl(matchedSupplier?.logoUrl || product.supplierLogoUrl || '');
     setFormModelNumber(product.modelNumber ?? '');
     setFormModelUnit(product.modelUnit ?? 'Kg');
+    setFormCompatibleWith(product.compatibleWith || '');
     setIsModalOpen(true);
   };
 
@@ -711,6 +719,7 @@ export default function ProductListView({
     setFormSupplierLogoUrl(matchedSupplier?.logoUrl || product.supplierLogoUrl || '');
     setFormModelNumber(product.modelNumber ?? '');
     setFormModelUnit(product.modelUnit ?? 'Kg');
+    setFormCompatibleWith(product.compatibleWith || '');
     setIsModalOpen(true);
   };
 
@@ -741,6 +750,7 @@ export default function ProductListView({
       supplierLogoUrl: supplierLogoToSave,
       modelNumber: formModelNumber !== '' ? formModelNumber : undefined,
       modelUnit: formModelNumber !== '' ? formModelUnit : undefined,
+      compatibleWith: formCompatibleWith,
     };
 
     if (editingProduct) {
@@ -1566,6 +1576,11 @@ export default function ProductListView({
                                                 <span className="inline-block px-1.5 py-0.5 text-[8.5px] font-black text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 rounded border border-indigo-100 dark:border-indigo-900 shadow-3xs leading-none">
                                                   📍 คลัง: {p.warehouse || 'A'}
                                                 </span>
+                                                {p.compatibleWith && (
+                                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8.5px] font-black text-amber-800 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 rounded border border-amber-200/60 dark:border-amber-900 shadow-3xs leading-none" title={`ใช้ร่วมกับ: ${p.compatibleWith}`}>
+                                                    🔗 ใช้ร่วมกับ: {p.compatibleWith}
+                                                  </span>
+                                                )}
                                                 {(() => {
                                                    const bMatch = brands.find(b => b.name === p.brand);
                                                    if (bMatch) {
@@ -1881,6 +1896,11 @@ export default function ProductListView({
                               {getColorDotAndBadge(p.color)}
                             </h4>
                             <div className="flex flex-wrap gap-1.5 items-center mt-1 leading-none">
+                              {p.compatibleWith && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8.5px] font-black text-amber-800 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 rounded border border-amber-200/60 dark:border-amber-900 shadow-3xs leading-none" title={`ใช้ร่วมกับ: ${p.compatibleWith}`}>
+                                  🔗 ใช้ร่วมกับ: {p.compatibleWith}
+                                </span>
+                              )}
                               {(() => {
                                 const bMatch = brands.find(b => b.name === p.brand);
                                 if (bMatch) {
@@ -2165,49 +2185,64 @@ export default function ProductListView({
                     />
                   </div>
 
-                  {/* Model Number / Unit and SKU */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="grid grid-cols-3 gap-1">
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-xs font-bold text-slate-600 font-sans">รุ่น (ตัวเลข)</label>
-                        <input
-                          type="number"
-                          step="any"
-                          placeholder="ระบุรุ่น"
-                          className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all"
-                          value={formModelNumber}
-                          onChange={(e) => setFormModelNumber(e.target.value)}
-                        />
-                      </div>
-                      <div className="col-span-1 space-y-1">
-                        <label className="text-xs font-bold text-slate-600 font-sans">หน่วย</label>
-                        <select
-                          className="w-full px-1 py-1.5 border border-slate-200 bg-white rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans cursor-pointer"
-                          value={formModelUnit}
-                          onChange={(e) => setFormModelUnit(e.target.value)}
-                        >
-                          <option value="Kg">Kg</option>
-                          <option value="mm">mm</option>
-                          <option value="A">A</option>
-                          <option value="W">W</option>
-                          <option value="V">V</option>
-                          <option value="Hp">Hp</option>
-                          <option value="Pin">Pin</option>
-                          <option value="Ch">Ch</option>
-                          <option value="Rpm">Rpm</option>
-                        </select>
-                      </div>
+                  {/* Model Number / Unit */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2 space-y-1">
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">รุ่น (ตัวเลข)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="ระบุรุ่น"
+                        className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
+                        value={formModelNumber}
+                        onChange={(e) => setFormModelNumber(e.target.value)}
+                      />
                     </div>
+                    <div className="col-span-1 space-y-1">
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">หน่วย</label>
+                      <select
+                        className="w-full px-1 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans cursor-pointer text-slate-800 dark:text-slate-100"
+                        value={formModelUnit}
+                        onChange={(e) => setFormModelUnit(e.target.value)}
+                      >
+                        <option value="Kg">Kg</option>
+                        <option value="M.">M.</option>
+                        <option value="mm">mm</option>
+                        <option value="A">A</option>
+                        <option value="W">W</option>
+                        <option value="V">V</option>
+                        <option value="Hp">Hp</option>
+                        <option value="Pin">Pin</option>
+                        <option value="Ch">Ch</option>
+                        <option value="Rpm">Rpm</option>
+                      </select>
+                    </div>
+                  </div>
 
+                  {/* Code and Compatible Code */}
+                  <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-600 font-sans">Code <span className="text-rose-500">*</span></label>
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans">Code <span className="text-rose-500">*</span></label>
                       <input
                         type="text"
                         required
                         placeholder="เช่น EL-SP-001"
-                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans font-mono uppercase transition-all"
+                        className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans font-mono uppercase transition-all text-slate-800 dark:text-slate-100"
                         value={formSku}
                         onChange={(e) => setFormSku(e.target.value.toUpperCase())}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300 font-sans flex items-center gap-1">
+                        <Layers className="h-3 w-3 text-slate-400" /> ใช้ร่วม Code
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="เช่น EL-SP-002, EL-SP-003"
+                        className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-sans transition-all text-slate-800 dark:text-slate-100"
+                        value={formCompatibleWith}
+                        onChange={(e) => setFormCompatibleWith(e.target.value)}
+                        id="input-product-compatible"
                       />
                     </div>
                   </div>
@@ -2434,6 +2469,8 @@ export default function ProductListView({
                       id="input-product-desc"
                     />
                   </div>
+
+
 
                   {/* Reference URL */}
                   <div className="space-y-1">

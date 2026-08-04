@@ -21,7 +21,7 @@ import {
   Image as ImageIcon,
   QrCode
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import { Employee, CompanyProfile } from '../types';
 
 interface BusinessCardModalProps {

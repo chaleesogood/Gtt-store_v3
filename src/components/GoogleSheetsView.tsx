@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FileSpreadsheet, 
   ExternalLink, 
@@ -21,8 +21,15 @@ import {
   LogIn, 
   CheckSquare,
   Square,
-  Sparkles
+  Sparkles,
+  Plus,
+  Trash2,
+  Search,
+  Cpu,
+  PlusCircle,
+  X
 } from 'lucide-react';
+import { EngineeringPhaseSchedule } from '../types';
 import { 
   authenticateGoogleSheets, 
   exportToGoogleSheets, 
@@ -36,7 +43,107 @@ interface GoogleSheetsViewProps {
   appData: AllAppData;
   onUpdateAllData: (newData: AllAppData) => Promise<void>;
   addToast: (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => void;
+  onSaveEngineeringSchedule?: (schedule: EngineeringPhaseSchedule) => Promise<void>;
+  onDeleteEngineeringSchedule?: (id: string) => Promise<void>;
 }
+
+interface AddressIoFieldsGroupProps {
+  items: EngineeringPhaseSchedule[];
+  jobNo: string;
+  projectName: string;
+  moduleName: string;
+  subModuleName: string;
+  onSave: (schedule: EngineeringPhaseSchedule) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}
+
+const AddressIoFieldsGroup: React.FC<AddressIoFieldsGroupProps> = React.memo(({
+  items,
+  jobNo,
+  projectName,
+  moduleName,
+  subModuleName,
+  onSave,
+  onDelete
+}) => {
+  const [localItems, setLocalItems] = useState<EngineeringPhaseSchedule[]>(items);
+
+  useEffect(() => {
+    setLocalItems(items);
+  }, [items]);
+
+  const handleAddAddressIo = async () => {
+    const newItem: EngineeringPhaseSchedule = {
+      id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      jobNo,
+      projectName,
+      moduleName,
+      subModuleName,
+      addressIo: '',
+      installStatus: 'pending',
+      wiringStatus: 'pending',
+      testIoStatus: 'pending',
+      manualHmiStatus: 'pending',
+      semiAutoStatus: 'pending',
+      autoStatus: 'pending',
+      assignee: '',
+      remark: '',
+      updatedAt: new Date().toISOString()
+    };
+    setLocalItems(prev => [...prev, newItem]);
+    await onSave(newItem);
+  };
+
+  const handleDeleteIo = async (id: string) => {
+    setLocalItems(prev => prev.filter(item => item.id !== id));
+    await onDelete(id);
+  };
+
+  return (
+    <div className="space-y-1.5 w-full">
+      {localItems.map((item, index) => (
+        <div key={item.id} className="flex items-center gap-1.5">
+          <span className="text-[10px] font-mono font-bold text-slate-400 w-4 text-right shrink-0">{index + 1}.</span>
+          <input
+            type="text"
+            value={item.addressIo || ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              setLocalItems(prev => prev.map(i => i.id === item.id ? { ...i, addressIo: val } : i));
+            }}
+            onBlur={(e) => {
+              const val = e.target.value;
+              if (val !== (item.addressIo || '')) {
+                onSave({ ...item, addressIo: val, updatedAt: new Date().toISOString() });
+              }
+            }}
+            placeholder="เช่น I:0.0 / O:1.2 / X0..."
+            className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono font-bold text-slate-800 dark:text-slate-100 focus:outline-hidden focus:bg-white dark:focus:bg-slate-800 focus:border-emerald-500 transition-all shadow-2xs"
+          />
+          <button
+            type="button"
+            onClick={() => handleDeleteIo(item.id)}
+            className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-all cursor-pointer shrink-0"
+            title="ลบ Address IO นี้"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        id="btn-add-address-io"
+        onClick={handleAddAddressIo}
+        className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+        title="เพิ่มช่องกรอก Address IO ใหม่ใต้ช่องเดิม"
+      >
+        <Plus className="w-3.5 h-3.5" />
+        <span>Add Address IO</span>
+      </button>
+    </div>
+  );
+});
 
 const ALL_TAB_IDS = [
   'Products',
@@ -55,7 +162,9 @@ const ALL_TAB_IDS = [
 export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
   appData,
   onUpdateAllData,
-  addToast
+  addToast,
+  onSaveEngineeringSchedule,
+  onDeleteEngineeringSchedule
 }) => {
   const [spreadsheetId, setSpreadsheetId] = useState<string>(() => {
     return localStorage.getItem('google_sheets_spreadsheet_id') || '';
@@ -67,6 +176,107 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
   const [lastSync, setLastSync] = useState<string>(() => {
     return localStorage.getItem('google_sheets_last_sync') || '';
   });
+
+  const [schedulesList, setSchedulesList] = useState<EngineeringPhaseSchedule[]>(() => {
+    if (appData.engineeringSchedules && appData.engineeringSchedules.length > 0) {
+      return appData.engineeringSchedules;
+    }
+    try {
+      const cached = localStorage.getItem('stock_manager_engineering_schedules_list');
+      if (cached) return JSON.parse(cached);
+    } catch (e) {}
+    return [];
+  });
+
+  useEffect(() => {
+    if (appData.engineeringSchedules && appData.engineeringSchedules.length > 0) {
+      setSchedulesList(appData.engineeringSchedules);
+    }
+  }, [appData.engineeringSchedules]);
+
+  const handleSaveScheduleItem = async (schedule: EngineeringPhaseSchedule) => {
+    setSchedulesList(prev => {
+      const idx = prev.findIndex(s => s.id === schedule.id);
+      let next: EngineeringPhaseSchedule[];
+      if (idx >= 0) {
+        next = prev.map(s => s.id === schedule.id ? schedule : s);
+      } else {
+        next = [schedule, ...prev];
+      }
+      localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(next));
+      return next;
+    });
+
+    if (onSaveEngineeringSchedule) {
+      await onSaveEngineeringSchedule(schedule);
+    }
+  };
+
+  const handleDeleteScheduleItem = async (id: string) => {
+    setSchedulesList(prev => {
+      const next = prev.filter(s => s.id !== id);
+      localStorage.setItem('stock_manager_engineering_schedules_list', JSON.stringify(next));
+      return next;
+    });
+
+    if (onDeleteEngineeringSchedule) {
+      await onDeleteEngineeringSchedule(id);
+    }
+  };
+
+  const [addressIoSearch, setAddressIoSearch] = useState('');
+  const [selectedJobNo, setSelectedJobNo] = useState<string>('all');
+  const [showAddModuleModal, setShowAddModuleModal] = useState(false);
+  const [newModJobNo, setNewModJobNo] = useState('');
+  const [newModName, setNewModName] = useState('');
+  const [newSubModName, setNewSubModName] = useState('');
+  const [newInitialIo, setNewInitialIo] = useState('');
+
+  const moduleGroups = useMemo(() => {
+    const groups: Record<string, {
+      key: string;
+      jobNo: string;
+      projectName: string;
+      moduleName: string;
+      subModuleName: string;
+      items: EngineeringPhaseSchedule[];
+    }> = {};
+
+    schedulesList.forEach(item => {
+      const jNo = item.jobNo || 'N/A';
+      const mName = item.moduleName || 'General';
+      const smName = item.subModuleName || 'General';
+      const key = `${jNo}::${mName}::${smName}`;
+
+      if (!groups[key]) {
+        groups[key] = {
+          key,
+          jobNo: jNo,
+          projectName: item.projectName || '',
+          moduleName: mName,
+          subModuleName: smName,
+          items: []
+        };
+      }
+      groups[key].items.push(item);
+    });
+
+    return Object.values(groups);
+  }, [schedulesList]);
+
+  const filteredModuleGroups = useMemo(() => {
+    return moduleGroups.filter(g => {
+      if (selectedJobNo !== 'all' && g.jobNo !== selectedJobNo) return false;
+      if (!addressIoSearch.trim()) return true;
+      const q = addressIoSearch.toLowerCase();
+      const matchJob = g.jobNo.toLowerCase().includes(q);
+      const matchProj = g.projectName.toLowerCase().includes(q);
+      const matchMod = g.moduleName.toLowerCase().includes(q);
+      const matchSubMod = g.subModuleName.toLowerCase().includes(q);
+      const matchIo = g.items.some(i => (i.addressIo || '').toLowerCase().includes(q));
+      return matchJob || matchProj || matchMod || matchSubMod || matchIo;
+    });
+  }, [moduleGroups, selectedJobNo, addressIoSearch]);
 
   const [autoSyncStatusEnabled, setAutoSyncStatusEnabled] = useState<boolean>(() => {
     return localStorage.getItem('google_sheets_auto_sync_status') !== 'false';
@@ -456,6 +666,228 @@ export const GoogleSheetsView: React.FC<GoogleSheetsViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Address IO & Module Manager Card */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <div>
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 font-sans flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              <span>ตารางจัดการ Address IO & โมดูลงาน (Phase Matrix IO Manager)</span>
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              จัดการและเพิ่ม Address IO ในแต่ละโมดูลงาน กดปุ่ม <strong className="text-emerald-600 dark:text-emerald-400 font-mono">'Add Address IO'</strong> เพื่อเพิ่มช่องกรอก Address IO ใหม่ใต้ช่องเดิมได้แบบไดนามิกโดยไม่ต้องโหลดทั้งแถวใหม่
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              if (appData.projects && appData.projects.length > 0) {
+                setNewModJobNo(appData.projects[0].jobNo);
+              }
+              setShowAddModuleModal(true);
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-2xl shadow-sm transition-all cursor-pointer shrink-0"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>เพิ่มโมดูล/Sub-module ใหม่</span>
+          </button>
+        </div>
+
+        {/* Search & Filter Controls */}
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className="relative flex-1 w-full">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={addressIoSearch}
+              onChange={(e) => setAddressIoSearch(e.target.value)}
+              placeholder="ค้นหา Job No, โมดูล, Sub-module หรือ Address IO..."
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-sans text-slate-800 dark:text-slate-200 focus:outline-hidden focus:border-emerald-500"
+            />
+          </div>
+
+          <select
+            value={selectedJobNo}
+            onChange={(e) => setSelectedJobNo(e.target.value)}
+            className="w-full sm:w-60 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-sans text-slate-800 dark:text-slate-200 focus:outline-hidden focus:border-emerald-500"
+          >
+            <option value="all">-- ทุกโครงการ (All Projects) --</option>
+            {appData.projects.map(p => (
+              <option key={p.id} value={p.jobNo}>
+                {p.jobNo} - {p.projectName}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Table or Empty State */}
+        {filteredModuleGroups.length === 0 ? (
+          <div className="p-8 text-center bg-slate-50/50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-700 rounded-2xl">
+            <Cpu className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400">ยังไม่มีรายการโมดูล / Address IO ที่ตรงตามเงื่อนไขค้นหา</p>
+            <p className="text-[11px] text-slate-400 mt-1">กดปุ่ม "เพิ่มโมดูล/Sub-module ใหม่" หรือเลือกโครงการด้านบนเพื่อเริ่มต้น</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-2xl">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-700">
+                <tr>
+                  <th className="p-3 w-32">Job No</th>
+                  <th className="p-3 min-w-[140px]">โมดูล (Module)</th>
+                  <th className="p-3 min-w-[140px]">Sub-Module</th>
+                  <th className="p-3 min-w-[280px]">Address IO (Dynamic Input List)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {filteredModuleGroups.map((group) => (
+                  <tr key={group.key} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                    <td className="p-3 align-top font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                      <div>{group.jobNo}</div>
+                      {group.projectName && (
+                        <div className="text-[10px] text-slate-400 font-sans font-normal truncate max-w-[110px]">
+                          {group.projectName}
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-3 align-top font-bold text-slate-800 dark:text-slate-200">
+                      {group.moduleName}
+                    </td>
+                    <td className="p-3 align-top text-slate-700 dark:text-slate-300">
+                      {group.subModuleName}
+                    </td>
+                    <td className="p-3 align-top">
+                      <AddressIoFieldsGroup
+                        items={group.items}
+                        jobNo={group.jobNo}
+                        projectName={group.projectName}
+                        moduleName={group.moduleName}
+                        subModuleName={group.subModuleName}
+                        onSave={handleSaveScheduleItem}
+                        onDelete={handleDeleteScheduleItem}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modal for Adding New Module/Sub-module */}
+      {showAddModuleModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-base font-bold text-slate-800 dark:text-slate-100 font-sans flex items-center gap-2">
+                <PlusCircle className="w-5 h-5 text-emerald-600" />
+                <span>เพิ่มโมดูล / Address IO ใหม่</span>
+              </h4>
+              <button
+                onClick={() => setShowAddModuleModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">เลือกโครงการ / Job No</label>
+                <select
+                  value={newModJobNo}
+                  onChange={(e) => setNewModJobNo(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-sans text-slate-800 dark:text-slate-100"
+                >
+                  {appData.projects.map(p => (
+                    <option key={p.id} value={p.jobNo}>
+                      {p.jobNo} - {p.projectName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">ชื่อโมดูล (Module Name)</label>
+                <input
+                  type="text"
+                  value={newModName}
+                  onChange={(e) => setNewModName(e.target.value)}
+                  placeholder="เช่น Power Distribution, PLC Cabinet, Robot Station"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Sub-Module</label>
+                <input
+                  type="text"
+                  value={newSubModName}
+                  onChange={(e) => setNewSubModName(e.target.value)}
+                  placeholder="เช่น Main Circuit, Input Card #1, Sensor Station"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Address IO (เริ่มต้น)</label>
+                <input
+                  type="text"
+                  value={newInitialIo}
+                  onChange={(e) => setNewInitialIo(e.target.value)}
+                  placeholder="เช่น I:0.0 / O:1.2"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-800 dark:text-slate-100"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 mt-6">
+              <button
+                onClick={() => setShowAddModuleModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={async () => {
+                  if (!newModJobNo || !newModName.trim()) {
+                    addToast('warning', 'กรุณากรอกข้อมูล', 'โปรดเลือก Job No และระบุชื่อโมดูล');
+                    return;
+                  }
+                  const proj = appData.projects.find(p => p.jobNo === newModJobNo);
+                  const newItem: EngineeringPhaseSchedule = {
+                    id: `sched_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                    jobNo: newModJobNo,
+                    projectName: proj ? proj.projectName : '',
+                    moduleName: newModName.trim(),
+                    subModuleName: newSubModName.trim() || 'General',
+                    addressIo: newInitialIo.trim(),
+                    installStatus: 'pending',
+                    wiringStatus: 'pending',
+                    testIoStatus: 'pending',
+                    manualHmiStatus: 'pending',
+                    semiAutoStatus: 'pending',
+                    autoStatus: 'pending',
+                    assignee: '',
+                    remark: '',
+                    updatedAt: new Date().toISOString()
+                  };
+                  await handleSaveScheduleItem(newItem);
+                  setShowAddModuleModal(false);
+                  setNewModName('');
+                  setNewSubModName('');
+                  setNewInitialIo('');
+                  addToast('success', 'สร้างโมดูลสำเร็จ', 'เพิ่มโมดูลและ Address IO ใหม่เข้าในตารางเรียบร้อยแล้ว');
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-sm cursor-pointer"
+              >
+                บันทึกโมดูล
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Selectable Collections Grid */}
       <div>
